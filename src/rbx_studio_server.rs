@@ -6,9 +6,11 @@ use axum::response::IntoResponse;
 use axum::{extract::State, Json};
 // color_eyre is not directly used, McpError handles errors.
 use rmcp::model::{
+
     Tool, ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult, JsonObject,
 };
 use rmcp::schemars;
+
 use rmcp::tool;
 use rmcp::{Error as McpError, ServerHandler};
 
@@ -213,9 +215,11 @@ impl RBXStudioServer {
 impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
         let mut base_capabilities = ServerCapabilities::builder().enable_tools().build();
+
         // The type of tools_map needs to be HashMap<String, rmcp::model::Tool>
         // and base_capabilities.tools will be Option<HashMap<String, rmcp::model::Tool>>
         let mut tools_map: HashMap<String, rmcp::model::Tool> = base_capabilities.tools.clone().unwrap_or_default(); // Clone to modify if needed
+
 
         if let Ok(app_state) = self.state.try_lock() {
             for (tool_name, _discovered_tool) in &app_state.discovered_luau_tools {
