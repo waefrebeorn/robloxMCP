@@ -1,3 +1,4 @@
+
 // Necessary imports
 use crate::error::Result;
 use axum::http::StatusCode;
@@ -6,20 +7,27 @@ use axum::{extract::State, Json};
 // color_eyre is not directly used, McpError handles errors.
 use rmcp::model::{
     CallToolResult, Content, /*ErrorData,*/ Implementation, ProtocolVersion, ServerCapabilities, // ErrorData removed
+
     ServerInfo,
+    // ToolDefinition, ToolSchema removed
+
 };
 use rmcp::tool;
 use rmcp::{Error as McpError, ServerHandler};
+
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::env;
+
 use std::sync::Arc;
-use tokio::sync::oneshot::Receiver;
+use tokio::sync::oneshot::Receiver; // If dud_proxy_loop uses it
 use tokio::sync::{mpsc, watch, Mutex};
 use tokio::time::Duration;
 use uuid::Uuid;
+
 use tracing::{debug, error, info, warn};
+
 
 pub const STUDIO_PLUGIN_PORT: u16 = 44755;
 const LONG_POLL_DURATION: Duration = Duration::from_secs(15);
@@ -33,6 +41,7 @@ pub struct DiscoveredTool {
 // discover_luau_tools function
 pub fn discover_luau_tools(tools_dir_path: &Path) -> HashMap<String, DiscoveredTool> {
     let mut tools = HashMap::new();
+
     info!("Attempting to discover Luau tools in: {:?}", tools_dir_path);
     if !tools_dir_path.exists() {
         warn!("Luau tools directory does not exist: {:?}", tools_dir_path);
@@ -42,6 +51,7 @@ pub fn discover_luau_tools(tools_dir_path: &Path) -> HashMap<String, DiscoveredT
         error!("Luau tools path is not a directory: {:?}", tools_dir_path);
         return tools;
     }
+
     match fs::read_dir(tools_dir_path) {
         Ok(entries) => {
             for entry in entries.filter_map(Result::ok) {
@@ -50,8 +60,10 @@ pub fn discover_luau_tools(tools_dir_path: &Path) -> HashMap<String, DiscoveredT
                     if let Some(tool_name) = path.file_stem().and_then(|s| s.to_str()).map(String::from) {
                         info!("Discovered Luau tool: {} at {:?}", tool_name, path);
                         tools.insert(tool_name, DiscoveredTool { file_path: path });
+
                     } else {
                         warn!("Could not convert tool name (file stem) to string for path: {:?}", path);
+
                     }
                 }
             }
@@ -60,6 +72,7 @@ pub fn discover_luau_tools(tools_dir_path: &Path) -> HashMap<String, DiscoveredT
             error!("Failed to read Luau tools directory {:?}: {}", tools_dir_path, e);
         }
     }
+
     if tools.is_empty() {
         info!("No Luau tools discovered or directory was empty: {:?}", tools_dir_path);
     } else {
@@ -69,6 +82,7 @@ pub fn discover_luau_tools(tools_dir_path: &Path) -> HashMap<String, DiscoveredT
 }
 
 // AppState struct and ::new()
+
 pub struct AppState {
     process_queue: VecDeque<ToolArguments>,
     output_map: HashMap<Uuid, mpsc::UnboundedSender<Result<String, McpError>>>,
@@ -78,9 +92,69 @@ pub struct AppState {
 }
 pub type PackedState = Arc<Mutex<AppState>>;
 
+fn discover_luau_tools(tools_dir_path: &Path) -> HashMap<String, DiscoveredTool> {
+    let mut tools = HashMap::new();
+    tracing::info!("Attempting to discover Luau tools in: {:?}", tools_dir_path);
+
+    if !tools_dir_path.exists() {
+        tracing::warn!("Luau tools directory does not exist: {:?}", tools_dir_path);
+        return tools; // Return empty map if dir doesn't exist
+    }
+    if !tools_dir_path.is_dir() {
+        tracing::error!("Luau tools path is not a directory: {:?}", tools_dir_path);
+        // In case of error, return empty map, error already logged.
+        return tools;
+    }
+
+    match fs::read_dir(tools_dir_path) {
+        Ok(entries) => {
+            for entry in entries {
+                match entry {
+                    Ok(entry) => {
+                        let path = entry.path();
+                        if path.is_file() {
+                            if let Some(extension) = path.extension() {
+                                if extension == "luau" {
+                                    if let Some(stem) = path.file_stem() {
+                                        if let Some(tool_name) = stem.to_str() {
+                                            tracing::info!("Discovered Luau tool: {} at {:?}", tool_name, path);
+                                            tools.insert(
+                                                tool_name.to_string(),
+                                                DiscoveredTool { file_path: path.clone() },
+                                            );
+                                        } else {
+                                            tracing::warn!("Could not convert tool name (file stem) to string for path: {:?}", path);
+                                        }
+                                    } else {
+                                        tracing::warn!("Could not get file stem for path: {:?}", path);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Error reading directory entry in {:?}: {}", tools_dir_path, e);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to read Luau tools directory {:?}: {}", tools_dir_path, e);
+            // Return empty map on error, error already logged.
+        }
+    }
+    if tools.is_empty() {
+        tracing::info!("No Luau tools discovered or directory was empty: {:?}", tools_dir_path);
+    } else {
+        tracing::info!("Successfully discovered {} Luau tools: [{}]", tools.len(), tools.keys().cloned().collect::<Vec<String>>().join(", "));
+    }
+    tools
+}
+
 impl AppState {
     pub fn new() -> Self {
         let (trigger, waiter) = watch::channel(());
+
         // Corrected path finding logic for AppState::new()
         let base_path = env::current_exe().ok()
             .and_then(|p| p.parent().map(PathBuf::from)) // target/debug or target/release
@@ -97,12 +171,15 @@ impl AppState {
             warn!("No Luau tools discovered in {:?}. Ensure path is correct and .luau files exist.", tools_dir_pathbuf);
         }
 
+
         Self {
             process_queue: VecDeque::new(),
             output_map: HashMap::new(),
             waiter,
             trigger,
+
             discovered_luau_tools: discovered_tools,
+
         }
     }
 }
@@ -136,10 +213,12 @@ impl ToolArguments {
      }
 }
 
+
 // RunCommandResponse struct
 #[derive(rmcp::serde::Deserialize, rmcp::serde::Serialize, Clone, Debug)]
 pub struct RunCommandResponse {
     response: String,
+
     id: Uuid,
 }
 
@@ -180,6 +259,8 @@ impl RBXStudioServer {
                 Ok(CallToolResult::success(vec![Content::text(res_str)]))
             }
             Err(mcp_err) => {
+
+
                 error!("Received error from plugin for id {}: {:?}", id, mcp_err);
                 Ok(CallToolResult::error(vec![Content::text(mcp_err.to_string())]))
             }
@@ -187,11 +268,42 @@ impl RBXStudioServer {
     }
 }
 
+
+
 #[tool(tool_box)]
 impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
+        let mut base_capabilities = ServerCapabilities::builder().enable_tools().build();
+        let mut tools_map = base_capabilities.tools.unwrap_or_default();
+
+        if let Ok(app_state) = self.state.try_lock() {
+            for (tool_name, _discovered_tool) in &app_state.discovered_luau_tools {
+                if !tools_map.contains_key(tool_name) {
+                    tracing::info!("Adding discovered Luau tool to capabilities: {}", tool_name);
+                    tools_map.insert(
+                        tool_name.clone(),
+                        ToolDefinition {
+                            description: Some(format!(
+                                "Executes the Luau tool: {}. (Parameters are generic, actual parameters defined in Luau script)",
+                                tool_name
+                            )),
+                            // Using a generic object schema, assuming Luau script handles its own args.
+                            // Actual parameters would ideally be parsed from comments in the Luau files in the future.
+                            parameters: Some(ToolSchema::object_builder().build()),
+                        },
+                    );
+                } else {
+                    tracing::warn!("Luau tool name conflict with an existing tool: {}. Luau tool not added.", tool_name);
+                }
+            }
+        } else {
+            tracing::warn!("Could not lock AppState in get_info to add Luau tools to capabilities. Proceeding with macro-defined tools only.");
+        }
+        base_capabilities.tools = Some(tools_map);
+
         ServerInfo {
             protocol_version: ProtocolVersion::V_2025_03_26,
+
             server_info: Implementation::from_build_env(),
             instructions: Some(
                 "Use 'execute_discovered_luau_tool' to run Luau scripts by name (e.g., CreateInstance, RunCode). Also available: run_command (direct Luau string), insert_model.".to_string()
@@ -201,14 +313,18 @@ impl ServerHandler for RBXStudioServer {
     }
 }
 
+
 #[tool(tool_box)]
 impl RBXStudioServer {
     #[tool(description = "Runs a raw Luau command string in Roblox Studio.")]
+
     async fn run_command(
         &self,
         #[tool(param)] #[schemars(description = "The Luau code to execute.")] command: String,
     ) -> Result<CallToolResult, McpError> {
+
         self.generic_tool_run(ToolArgumentValues::RunCommand { command }).await
+
     }
 
     #[tool(description = "Inserts a model from the Roblox marketplace into the workspace.")]
@@ -245,7 +361,9 @@ pub async fn response_handler(
      debug!("Received reply from studio plugin: {:?}", payload);
      let mut app_state = state.lock().await;
      if let Some(tx) = app_state.output_map.remove(&payload.id) {
+
          if let Err(_e) = tx.send(Ok(payload.response)) { // Plugin sends string, which could be success JSON or error JSON
+
              error!("Failed to send plugin response to internal channel for id: {}", payload.id);
          }
      } else {
@@ -266,6 +384,7 @@ pub async fn response_handler(
              };
              if waiter.changed().await.is_err() {
                  error!("Waiter channel closed, MCP server might be shutting down.");
+
                  return Err(McpError::internal_error("Server shutting down, poll aborted.".to_string(), None));
              }
          }
@@ -300,13 +419,16 @@ pub async fn response_handler(
          _ = app_state.trigger.send(());
      }
 
+
      match tokio::time::timeout(LONG_POLL_DURATION + Duration::from_secs(5), rx.recv()).await {
          Ok(Some(Ok(response_str))) => {
              Ok(Json(RunCommandResponse { response: response_str, id }).into_response())
          }
          Ok(Some(Err(mcp_err))) => {
              error!("Error proxied from tool execution for id {}: {:?}", id, mcp_err);
+
              Ok((StatusCode::INTERNAL_SERVER_ERROR, format!("Proxied error: {}", mcp_err.message)).into_response())
+
          }
          Ok(None) => {
              error!("Proxy: Response channel closed for id {}", id);
@@ -325,6 +447,7 @@ pub async fn response_handler(
      info!("Dud proxy loop started. Polling for tasks to send to actual HTTP plugin endpoint.");
 
      loop {
+
          let task_to_proxy = tokio::select! {
             biased; // Process exit signal with higher priority
             _ = &mut exit_rx => {
@@ -406,6 +529,7 @@ pub async fn response_handler(
              break;
         }
         tokio::time::sleep(Duration::from_millis(10)).await; // Shorter sleep, select! handles waiting
+
      }
      info!("Dud proxy loop finished.");
  }
