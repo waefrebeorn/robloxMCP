@@ -5,14 +5,18 @@ use axum::{extract::State, Json};
 use color_eyre::eyre::{Error, OptionExt};
 use rmcp::model::{
     CallToolResult, Content, ErrorData, Implementation, ProtocolVersion, ServerCapabilities,
+
     ServerInfo,
     // ToolDefinition, ToolSchema removed
+
 };
 use rmcp::tool;
 use rmcp::{Error as McpError, ServerHandler};
 use serde::{Deserialize, Serialize};
+
 // serde_json::Value removed for now as a diagnostic step
 use std::collections::{HashMap, VecDeque}; // HashMap might be unused now in this file's scope
+
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -164,11 +168,41 @@ pub struct RBXStudioServer {
 #[tool(tool_box)]
 impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
+        let mut base_capabilities = ServerCapabilities::builder().enable_tools().build();
+        let mut tools_map = base_capabilities.tools.unwrap_or_default();
+
+        if let Ok(app_state) = self.state.try_lock() {
+            for (tool_name, _discovered_tool) in &app_state.discovered_luau_tools {
+                if !tools_map.contains_key(tool_name) {
+                    tracing::info!("Adding discovered Luau tool to capabilities: {}", tool_name);
+                    tools_map.insert(
+                        tool_name.clone(),
+                        ToolDefinition {
+                            description: Some(format!(
+                                "Executes the Luau tool: {}. (Parameters are generic, actual parameters defined in Luau script)",
+                                tool_name
+                            )),
+                            // Using a generic object schema, assuming Luau script handles its own args.
+                            // Actual parameters would ideally be parsed from comments in the Luau files in the future.
+                            parameters: Some(ToolSchema::object_builder().build()),
+                        },
+                    );
+                } else {
+                    tracing::warn!("Luau tool name conflict with an existing tool: {}. Luau tool not added.", tool_name);
+                }
+            }
+        } else {
+            tracing::warn!("Could not lock AppState in get_info to add Luau tools to capabilities. Proceeding with macro-defined tools only.");
+        }
+        base_capabilities.tools = Some(tools_map);
+
         ServerInfo {
             protocol_version: ProtocolVersion::V_2025_03_26,
+
             server_info: Implementation::from_build_env(),
             instructions: Some(
                 "Use 'execute_discovered_luau_tool' to run Luau scripts by name (e.g., CreateInstance, RunCode). Also available: run_command (direct Luau string), insert_model.".to_string()
+
             ),
             // Let `#[tool(tool_box)]` and `Default::default()` populate capabilities.
             // The `capabilities.tools` field will be derived from `ServerCapabilities::default()`
@@ -200,12 +234,14 @@ impl RBXStudioServer {
     )]
     async fn execute_discovered_luau_tool(
         &self,
+
         #[tool(param)]
         #[schemars(description = "Name of the Luau tool file (without .luau extension) to execute.")]
         tool_name: String,
         #[tool(param)]
         #[schemars(description = "A JSON string representing arguments for the Luau tool.")] // Updated description
         tool_arguments_str: String, // Changed from tool_arguments: Value to tool_arguments_str: String
+
     ) -> Result<CallToolResult, McpError> {
         // Lock state to check if the tool exists
         let app_state = self.state.lock().await;
@@ -223,6 +259,7 @@ impl RBXStudioServer {
         // Basic validation could be added here to ensure it's a valid JSON string if necessary,
         // but for now, we'll pass it directly.
         let arguments_json = tool_arguments_str;
+
 
         self.generic_tool_run(ToolArgumentValues::ExecuteLuauByName {
             tool_name,
