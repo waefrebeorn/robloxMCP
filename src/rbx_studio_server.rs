@@ -184,20 +184,23 @@ impl RBXStudioServer {
 
             // Wrap lock acquisition with a 5-second timeout
             let mut state_guard = match tokio::time::timeout(std::time::Duration::from_secs(5), self.state.lock()).await {
-                Ok(lock_result_outer) => { // Outer Ok: timeout did not occur, lock_result_outer is Result<MutexGuard, PoisonError>
-                    match lock_result_outer { // This is the Result from self.state.lock()
-                        Ok(guard) => { // Inner Ok: lock acquired successfully
+                Ok(Ok(guard_result)) => { // guard_result is now assumed to be Result<MutexGuard, SomeError>
+                    match guard_result {
+                        Ok(actual_guard) => { // actual_guard should be MutexGuard
                             info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Acquired state lock for queuing");
-                            guard
+                            actual_guard
                         }
-                        Err(poisoned_error) => { // Inner Err: Mutex was poisoned
-                            error!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: AppState mutex is poisoned! Error: {}", poisoned_error.to_string());
-                            return Err(McpError::internal_error(format!("Server state is corrupted (mutex poisoned: {})", poisoned_error.to_string()), None));
+                        Err(inner_lock_error) => { // Assuming inner_lock_error can be .to_string()
+                            error!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Inner error layer while acquiring lock: {}", inner_lock_error.to_string());
+                            return Err(McpError::internal_error(format!("Inner error layer while acquiring lock: {}", inner_lock_error.to_string()), None));
                         }
                     }
                 }
-                Err(_timeout_elapsed) => { // Outer Err: Timeout occurred for self.state.lock()
-
+                Ok(Err(poisoned_error)) => { // Mutex was poisoned
+                    error!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: AppState mutex is poisoned! Error: {}", poisoned_error.to_string());
+                    return Err(McpError::internal_error(format!("Server state is corrupted (mutex poisoned: {})", poisoned_error.to_string()), None));
+                }
+                Err(_timeout_elapsed) => { // Timeout occurred for self.state.lock()
                     error!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Timeout acquiring AppState lock after 5 seconds!");
                     return Err(McpError::internal_error("Server busy or deadlocked (timeout acquiring state lock).", None));
                 }
