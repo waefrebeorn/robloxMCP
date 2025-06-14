@@ -439,8 +439,10 @@ pub async fn response_handler(
 
             match res {
                 Ok(response) => {
-                    let response_status_for_log = response.status();
-                    info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, status = %response_status_for_log, "Received HTTP response from plugin");
+
+                    let response_status = response.status(); // Consistent name
+                    info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, status = %response_status, "Received HTTP response from plugin");
+
                     // Read text first for logging in case JSON parsing fails
                     let response_text_for_logging = match response.text().await {
                         Ok(text) => text,
@@ -450,6 +452,7 @@ pub async fn response_handler(
                     if response_status.is_success() {
                         match rmcp::serde_json::from_str::<RunCommandResponse>(&response_text_for_logging) {
                             Ok(run_command_response) => {
+                                info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, "Sending successful decoded response to internal channel");
                                 if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
                                     info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, "Sending successful decoded response to internal channel");
                                     if tx.send(Ok(run_command_response.response)).is_err() {
@@ -462,7 +465,10 @@ pub async fn response_handler(
                                 }
                             }
                             Err(e) => {
-                                error!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, error = ?e, status = %response_status_for_log, body = %response_text_for_logging, "Failed to decode RunCommandResponse from /proxy endpoint");
+
+                                // Ensure this error log uses response_status
+                                error!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, error = ?e, status = %response_status, body = %response_text_for_logging, "Failed to decode RunCommandResponse from /proxy endpoint");
+
                                 if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
                                     info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, "Sending decoding error to internal channel");
                                     _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed to decode response: {}", e), None)));
@@ -470,9 +476,13 @@ pub async fn response_handler(
                             }
                         }
                     } else {
-                        error!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, status = %response_status_for_log, body = %response_text_for_logging, "Request to /proxy endpoint failed");
+
+                        // Ensure this error log uses response_status
+                        error!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, status = %response_status, body = %response_text_for_logging, "Request to /proxy endpoint failed");
                         if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
-                             _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed with status {}", response_status_for_log), None)));
+                             info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, "Sending HTTP error to internal channel"); // Added info log before sending error
+                             _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed with status {}", response_status), None)));
+
                         }
                     }
                 }
