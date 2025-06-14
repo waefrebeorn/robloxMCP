@@ -75,9 +75,9 @@ class MCPClient:
                 "sampling": {} # Indicates support for sampling, can be empty object
             }
             initialize_params = {
-                "protocolVersion": "2024-11-05", # From user-provided spec
-                "capabilities": client_capabilities,
-                "clientInfo": client_info
+                "protocolVersion": "2025-03-26", # <-- UPDATE THIS
+                "capabilities": client_capabilities, # Ensure these are defined as per your client's needs
+                "clientInfo": client_info # Ensure this is defined
             }
 
             logger.info(f"Sending initialize request with params: {initialize_params}")
@@ -95,8 +95,8 @@ class MCPClient:
             # Process InitializeResult (e.g., check protocolVersion, store serverCapabilities if needed)
             # For now, just log it. Future improvements can make use of server_info, capabilities etc.
             server_protocol_version = init_response.get("result", {}).get("protocolVersion")
-            if server_protocol_version != "2024-11-05": # Or check for compatibility
-                logger.warning(f"Server proposed protocol version {server_protocol_version}, client uses 2024-11-05. Continuing for now.")
+            if server_protocol_version != "2025-03-26": # <-- UPDATE THIS
+                logger.warning(f"Server proposed protocol version {server_protocol_version}, client uses 2025-03-26. Client will attempt to continue, but compatibility issues may arise if versions are too different.")
 
             # Send initialized notification
             initialized_params = {} # notifications/initialized has no specific params in the provided spec
