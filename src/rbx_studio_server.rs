@@ -176,19 +176,36 @@ impl RBXStudioServer {
          let (command_with_wrapper_id, id) = ToolArguments::new_with_id(args_values);
 
          info!(target: "mcp_server::generic_tool_run", request_id = %id, "Queueing command for plugin (args temporarily removed from this log)");
-
          debug!("Queueing command for plugin: {:?}", command_with_wrapper_id.args);
          let (tx, mut rx) = mpsc::unbounded_channel::<Result<String, McpError>>();
          let trigger = {
-             let mut state = self.state.lock().await;
-             state.process_queue.push_back(command_with_wrapper_id);
-             state.output_map.insert(id, tx);
-             state.trigger.clone()
-         };
+            info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Attempting to acquire state lock for queuing");
+            let mut state = self.state.lock().await;
+            info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Acquired state lock for queuing");
+
+            // Capture command_id for logging before command_with_wrapper_id is moved.
+            let command_id_for_log = command_with_wrapper_id.id.map(|u| u.to_string()).unwrap_or_else(|| "None".to_string());
+
+            info!(target: "mcp_server::generic_tool_run", request_id = %id, command_id = %command_id_for_log, "SECTION_LOCK_A: About to push command to process_queue");
+            state.process_queue.push_back(command_with_wrapper_id); // command_with_wrapper_id is moved here
+            info!(target: "mcp_server::generic_tool_run", request_id = %id, command_id = %command_id_for_log, "SECTION_LOCK_A: Pushed to process_queue");
+
+            info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: About to insert into output_map");
+            state.output_map.insert(id, tx); // `id` is the Uuid of the request, `tx` is the mpsc sender
+            info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Inserted into output_map");
+
+            info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: About to clone trigger from state");
+            let cloned_trigger = state.trigger.clone();
+            info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Cloned trigger from state");
+
+            cloned_trigger
+        }; // Lock is released here
+        info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Released state lock after queuing operations");
 
          info!(target: "mcp_server::generic_tool_run", request_id = %id, "Attempting to send trigger");
          let send_result = trigger.send(());
          info!(target: "mcp_server::generic_tool_run", request_id = %id, send_result = ?send_result, "Trigger send attempt completed");
+
 
          send_result.map_err(|e| McpError::internal_error(format!("Unable to trigger send for plugin: {e}"), None))?;
 
