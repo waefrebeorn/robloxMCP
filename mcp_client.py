@@ -185,11 +185,10 @@ class MCPClient:
 
         request_id = str(uuid.uuid4())
 
-        # Convert method to PascalCase for wrapping params
-        pascal_case_method = "".join(word.capitalize() for word in method.split('_'))
-        wrapped_params = {pascal_case_method: params}
 
-        request_payload = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": wrapped_params}
+        new_params = {"name": method, "arguments": params}
+        request_payload = {"jsonrpc": "2.0", "id": request_id, "method": "tools/call", "params": new_params}
+
         future = asyncio.Future()
         self.pending_requests[request_id] = future
 
