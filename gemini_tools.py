@@ -67,7 +67,9 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
                 "Executes a string of Luau code directly within Roblox Studio, typically in a global context. "
                 "Use this for quick tests, simple commands, or actions not tied to a specific script instance. "
                 "The output from `print()` statements in the command will be returned. "
-                "Example: `RunCode(command='print(workspace.Baseplate.Size)')`"
+
+                "Example: `run_code(command='print(workspace.Baseplate.Size)')`"
+
             ),
             parameters=types.Schema(
                 type=types.Type.OBJECT,
@@ -650,7 +652,10 @@ class ToolDispatcher:
             query = args.get("query")
             if not isinstance(query, str) or not query.strip():
                 return False, "Invalid 'query'. It must be a non-empty string."
-        elif tool_name == "RunCode":
+
+        elif tool_name == "run_code":
+
+
             command = args.get("command")
             if not isinstance(command, str) or not command.strip():
                 return False, "Invalid 'command'. It must be a non-empty string."
