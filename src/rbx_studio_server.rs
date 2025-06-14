@@ -184,17 +184,13 @@ impl RBXStudioServer {
 
             // Wrap lock acquisition with a 5-second timeout
             let mut state_guard = match tokio::time::timeout(std::time::Duration::from_secs(5), self.state.lock()).await {
-                Ok(lock_result_outer) => { // Outer Ok: timeout did not occur, lock_result_outer is Result<MutexGuard, PoisonError>
-                    match lock_result_outer { // This is the Result from self.state.lock()
-                        Ok(guard) => { // Inner Ok: lock acquired successfully
-                            info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Acquired state lock for queuing");
-                            guard
-                        }
-                        Err(poisoned_error) => { // Inner Err: Mutex was poisoned
-                            error!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: AppState mutex is poisoned! Error: {}", poisoned_error.to_string());
-                            return Err(McpError::internal_error(format!("Server state is corrupted (mutex poisoned: {})", poisoned_error.to_string()), None));
-                        }
-                    }
+                Ok(Ok(guard)) => { // Outer Ok: timeout did not occur, Inner Ok: lock acquired successfully
+                    info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Acquired state lock for queuing");
+                    guard
+                }
+                Ok(Err(poisoned_error)) => { // Outer Ok: timeout did not occur, Inner Err: Mutex was poisoned
+                    error!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: AppState mutex is poisoned! Error: {}", poisoned_error.to_string());
+                    return Err(McpError::internal_error(format!("Server state is corrupted (mutex poisoned: {})", poisoned_error.to_string()), None));
                 }
                 Err(_timeout_elapsed) => { // Outer Err: Timeout occurred for self.state.lock()
 
