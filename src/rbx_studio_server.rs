@@ -7,7 +7,7 @@ use axum::{extract::State, Json};
 // color_eyre is not directly used, McpError handles errors.
 use rmcp::model::{
 
-    Tool, Annotations, ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult,
+    Tool, ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult,
 };
 use rmcp::schemars;
 
@@ -218,9 +218,14 @@ impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
         let mut base_capabilities = ServerCapabilities::builder().enable_tools().build();
 
-        // The type of tools_map needs to be HashMap<String, rmcp::model::Tool>
-        // and base_capabilities.tools will be Option<HashMap<String, rmcp::model::Tool>>
-        let mut tools_map: HashMap<String, rmcp::model::Tool> = base_capabilities.tools.clone().unwrap_or_default(); // Clone to modify if needed
+
+        // Get the ToolsCapability struct, or a default if None.
+        // .take() is used to move the value out of the Option, leaving None in its place.
+        // This is useful if we are going to reconstruct and put it back.
+        let mut tools_capability_struct = base_capabilities.tools.take().unwrap_or_default();
+
+        // Now, get the HashMap from the 'tools' field of ToolsCapability struct.
+        let mut tools_map: HashMap<String, rmcp::model::Tool> = tools_capability_struct.tools.take().unwrap_or_default();
 
 
         if let Ok(app_state) = self.state.try_lock() {
@@ -270,7 +275,12 @@ impl ServerHandler for RBXStudioServer {
         } else {
             tracing::warn!("Could not lock AppState in get_info to add Luau tools to capabilities. Proceeding with macro-defined tools only.");
         }
-        base_capabilities.tools = Some(tools_map);
+
+        // Put the populated tools_map back into our ToolsCapability struct
+        tools_capability_struct.tools = Some(tools_map);
+
+        // Put the ToolsCapability struct back into base_capabilities
+        base_capabilities.tools = Some(tools_capability_struct);
 
         ServerInfo {
             protocol_version: ProtocolVersion::V_2025_03_26,
