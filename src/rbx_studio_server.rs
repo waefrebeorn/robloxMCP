@@ -5,12 +5,16 @@ use axum::{extract::State, Json};
 use color_eyre::eyre::{Error, OptionExt};
 use rmcp::model::{
     CallToolResult, Content, ErrorData, Implementation, ProtocolVersion, ServerCapabilities,
-    ServerInfo,
+    ServerInfo, ToolDefinition, ToolSchema,
 };
 use rmcp::tool;
 use rmcp::{Error as McpError, ServerHandler};
 use serde::{Deserialize, Serialize};
+use serde_json::Value; // Added for tool_arguments
 use std::collections::{HashMap, VecDeque};
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::oneshot::Receiver;
 use tokio::sync::{mpsc, watch, Mutex};
@@ -32,22 +36,106 @@ pub struct RunCommandResponse {
     id: Uuid,
 }
 
+#[derive(Clone, Debug)]
+pub struct DiscoveredTool {
+    pub file_path: PathBuf,
+    // We can add more fields later, like a description extracted from comments if possible.
+}
+
 pub struct AppState {
     process_queue: VecDeque<ToolArguments>,
     output_map: HashMap<Uuid, mpsc::UnboundedSender<Result<String>>>,
     waiter: watch::Receiver<()>,
     trigger: watch::Sender<()>,
+    discovered_luau_tools: HashMap<String, DiscoveredTool>,
 }
 pub type PackedState = Arc<Mutex<AppState>>;
+
+fn discover_luau_tools(tools_dir_path: &Path) -> HashMap<String, DiscoveredTool> {
+    let mut tools = HashMap::new();
+    tracing::info!("Attempting to discover Luau tools in: {:?}", tools_dir_path);
+
+    if !tools_dir_path.exists() {
+        tracing::warn!("Luau tools directory does not exist: {:?}", tools_dir_path);
+        return tools; // Return empty map if dir doesn't exist
+    }
+    if !tools_dir_path.is_dir() {
+        tracing::error!("Luau tools path is not a directory: {:?}", tools_dir_path);
+        // In case of error, return empty map, error already logged.
+        return tools;
+    }
+
+    match fs::read_dir(tools_dir_path) {
+        Ok(entries) => {
+            for entry in entries {
+                match entry {
+                    Ok(entry) => {
+                        let path = entry.path();
+                        if path.is_file() {
+                            if let Some(extension) = path.extension() {
+                                if extension == "luau" {
+                                    if let Some(stem) = path.file_stem() {
+                                        if let Some(tool_name) = stem.to_str() {
+                                            tracing::info!("Discovered Luau tool: {} at {:?}", tool_name, path);
+                                            tools.insert(
+                                                tool_name.to_string(),
+                                                DiscoveredTool { file_path: path.clone() },
+                                            );
+                                        } else {
+                                            tracing::warn!("Could not convert tool name (file stem) to string for path: {:?}", path);
+                                        }
+                                    } else {
+                                        tracing::warn!("Could not get file stem for path: {:?}", path);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Error reading directory entry in {:?}: {}", tools_dir_path, e);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to read Luau tools directory {:?}: {}", tools_dir_path, e);
+            // Return empty map on error, error already logged.
+        }
+    }
+    if tools.is_empty() {
+        tracing::info!("No Luau tools discovered or directory was empty: {:?}", tools_dir_path);
+    } else {
+        tracing::info!("Successfully discovered {} Luau tools: [{}]", tools.len(), tools.keys().cloned().collect::<Vec<String>>().join(", "));
+    }
+    tools
+}
 
 impl AppState {
     pub fn new() -> Self {
         let (trigger, waiter) = watch::channel(());
+
+        let discovered_luau_tools = match env::current_exe().ok()
+            .and_then(|p| p.parent().map(PathBuf::from)) // .../target/debug or .../target/release
+            .and_then(|p| p.parent().map(PathBuf::from)) // .../target
+            .and_then(|p| p.parent().map(PathBuf::from)) // .../ (project root)
+            .map(|p| p.join("plugin/src/Tools"))
+        {
+            Some(tools_dir) => {
+                tracing::info!("Resolved Luau tools directory to: {:?}", tools_dir);
+                discover_luau_tools(&tools_dir)
+            }
+            None => {
+                tracing::warn!("Could not determine Luau tools directory from executable path. Initializing with empty toolset.");
+                HashMap::new()
+            }
+        };
+
         Self {
             process_queue: VecDeque::new(),
             output_map: HashMap::new(),
             waiter,
             trigger,
+            discovered_luau_tools,
         }
     }
 }
@@ -75,12 +163,40 @@ pub struct RBXStudioServer {
 #[tool(tool_box)]
 impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
+        let mut base_capabilities = ServerCapabilities::builder().enable_tools().build();
+        let mut tools_map = base_capabilities.tools.unwrap_or_default();
+
+        if let Ok(app_state) = self.state.try_lock() {
+            for (tool_name, _discovered_tool) in &app_state.discovered_luau_tools {
+                if !tools_map.contains_key(tool_name) {
+                    tracing::info!("Adding discovered Luau tool to capabilities: {}", tool_name);
+                    tools_map.insert(
+                        tool_name.clone(),
+                        ToolDefinition {
+                            description: Some(format!(
+                                "Executes the Luau tool: {}. (Parameters are generic, actual parameters defined in Luau script)",
+                                tool_name
+                            )),
+                            // Using a generic object schema, assuming Luau script handles its own args.
+                            // Actual parameters would ideally be parsed from comments in the Luau files in the future.
+                            parameters: Some(ToolSchema::object_builder().build()),
+                        },
+                    );
+                } else {
+                    tracing::warn!("Luau tool name conflict with an existing tool: {}. Luau tool not added.", tool_name);
+                }
+            }
+        } else {
+            tracing::warn!("Could not lock AppState in get_info to add Luau tools to capabilities. Proceeding with macro-defined tools only.");
+        }
+        base_capabilities.tools = Some(tools_map);
+
         ServerInfo {
             protocol_version: ProtocolVersion::V_2025_03_26,
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            capabilities: base_capabilities,
             server_info: Implementation::from_build_env(),
             instructions: Some(
-                "User run_command to query data from Roblox Studio place or to change it"
+                "User run_command to query data from Roblox Studio place or to change it. Dynamically discovered Luau tools are also available."
                     .to_string(),
             ),
         }
@@ -89,8 +205,12 @@ impl ServerHandler for RBXStudioServer {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 enum ToolArgumentValues {
-    RunCode { command: String },
+    RunCommand { command: String },
     InsertModel { query: String },
+    ExecuteLuauByName {
+        tool_name: String,      // e.g., "CreateInstance"
+        arguments_json: String, // JSON string of arguments for the Luau script
+    },
 }
 #[tool(tool_box)]
 impl RBXStudioServer {
@@ -99,15 +219,58 @@ impl RBXStudioServer {
     }
 
     #[tool(
+        description = "Executes a specific Luau tool script by its name with given arguments. The Luau script is sourced from the 'plugin/src/Tools' directory."
+    )]
+    async fn execute_discovered_luau_tool(
+        &self,
+        #[tool(param, name = "tool_name")]
+        #[schemars(description = "Name of the Luau tool file (without .luau extension) to execute.")]
+        tool_name: String,
+        #[tool(param, name = "tool_arguments")]
+        #[schemars(description = "A JSON object representing arguments for the Luau tool.")]
+        tool_arguments: Value,
+    ) -> Result<CallToolResult, McpError> {
+        // Lock state to check if the tool exists
+        let app_state = self.state.lock().await;
+        if !app_state.discovered_luau_tools.contains_key(&tool_name) {
+            tracing::error!("Attempted to execute unknown Luau tool: {}", tool_name);
+            return Ok(CallToolResult::error(vec![Content::text(format!(
+                "Luau tool '{}' not found or not discovered.",
+                tool_name
+            ))]));
+        }
+        // Drop the lock as it's no longer needed
+        drop(app_state);
+
+        let arguments_json = match serde_json::to_string(&tool_arguments) {
+            Ok(json_string) => json_string,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to serialize arguments for Luau tool {}: {}. Using empty object.",
+                    tool_name,
+                    e
+                );
+                "{}".to_string()
+            }
+        };
+
+        self.generic_tool_run(ToolArgumentValues::ExecuteLuauByName {
+            tool_name,
+            arguments_json,
+        })
+        .await
+    }
+
+    #[tool(
         description = "Runs a command in Roblox Studio and returns the printed output. Can be used to both make changes and retrieve information"
     )]
-    async fn run_code(
+    async fn run_command(
         &self,
         #[tool(param)]
         #[schemars(description = "code to run")]
         command: String,
     ) -> Result<CallToolResult, McpError> {
-        self.generic_tool_run(ToolArgumentValues::RunCode { command })
+        self.generic_tool_run(ToolArgumentValues::RunCommand { command })
             .await
     }
 

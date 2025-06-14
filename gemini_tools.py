@@ -62,13 +62,13 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
             )
         ),
         types.FunctionDeclaration(
-            name="RunCode",
+            name="RunCode", # Renamed from run_command to RunCode (maps to RunCode.luau)
             description=(
                 "Executes a string of Luau code directly within Roblox Studio, typically in a global context. "
                 "Use this for quick tests, simple commands, or actions not tied to a specific script instance. "
                 "The output from `print()` statements in the command will be returned. "
 
-                "Example: `run_code(command='print(workspace.Baseplate.Size)')`"
+                "Example: `RunCode(command='print(workspace.Baseplate.Size)')`" # Example updated
 
             ),
             parameters=types.Schema(
@@ -653,13 +653,12 @@ class ToolDispatcher:
             if not isinstance(query, str) or not query.strip():
                 return False, "Invalid 'query'. It must be a non-empty string."
 
-        elif tool_name == "run_code":
-
-
+        elif tool_name == "RunCode": # Changed from run_command to RunCode
             command = args.get("command")
-            if not isinstance(command, str) or not command.strip():
-                return False, "Invalid 'command'. It must be a non-empty string."
-        # get_selection has no arguments to validate.
+            if not isinstance(command, str) or not command.strip(): # Keep allowing empty string for now, Luau side might handle
+                return False, "Invalid 'command'. Must be a string."
+        elif tool_name == "get_selection":
+            pass
         # --- Core Instance Manipulation Tools ---
         elif tool_name == "CreateInstance":
             class_name = args.get("class_name")
@@ -971,51 +970,25 @@ class ToolDispatcher:
         is_valid, error_msg = self._validate_args(original_tool_name, original_tool_args)
         if not is_valid:
             ConsoleFormatter.print_tool_error({"validation_error": f"Argument validation failed: {error_msg}"})
-            # II.2. Return a dictionary
+
             return {"name": original_tool_name, "response": {"error": f"Invalid arguments provided by AI: {error_msg}"}}
 
-        if original_tool_name == "RunCode":
-            mcp_tool_name = "run_command"
-            # mcp_tool_args remains original_tool_args which is {"command": "actual Luau code"}
-            logger.info(f"Remapping ToolCall: '{original_tool_name}' -> '{mcp_tool_name}' with args: {mcp_tool_args}")
+        if original_tool_name == "insert_model":
+            mcp_tool_name = "insert_model"
+            mcp_tool_args = original_tool_args
+            logger.info(f"Dispatching ToolCall: '{original_tool_name}' directly to MCP tool '{mcp_tool_name}' with args: {mcp_tool_args}")
+        else:
+            # All other tools (CreateInstance, RunCode, GetSelection, etc.) are routed via execute_discovered_luau_tool
+            mcp_tool_name = "execute_discovered_luau_tool"
+            mcp_tool_args = {
+                "tool_name": original_tool_name,
+                "tool_arguments": original_tool_args # This sends the original args dict as the value for "tool_arguments"
+            }
+            logger.info(f"Dispatching ToolCall: '{original_tool_name}' via MCP tool '{mcp_tool_name}' for Luau script '{original_tool_name}' with tool_arguments: {original_tool_args}")
 
-        elif original_tool_name == "CreateInstance":
-            mcp_tool_name = "run_command"
-
-            class_name = original_tool_args.get("class_name", "Instance")
-            properties = original_tool_args.get("properties", {})
-            instance_name = properties.get("Name", class_name)
-            parent_name = properties.get("Parent", "Workspace")
-
-            # Basic sanitization
-            class_name = class_name.replace("'", "").replace('"', "")
-            instance_name = instance_name.replace("'", "").replace('"', "")
-            parent_name = parent_name.replace("'", "").replace('"', "")
-
-            # Construct Luau command
-            luau_command = f"""
-local inst = Instance.new('{class_name}')
-inst.Name = '{instance_name}'
-local p = Workspace -- Default parent to Workspace
-if game:FindFirstChild('{parent_name}') then -- Check if parent_name is a service like 'Workspace'
-    p = game:GetService('{parent_name}')
-elseif Workspace:FindFirstChild('{parent_name}') then -- Check if parent_name is a child of Workspace
-    p = Workspace:FindFirstChild('{parent_name}')
-else
-    print("Warning: Parent {parent_name} not found as a service or direct child of Workspace. Defaulting to Workspace.")
-end
-inst.Parent = p
-print('ToolDispatcher: Attempting to create ' .. inst:GetFullName())
--- return inst:GetFullName() -- Optional: if the run_command can return values
-"""
-            mcp_tool_args = {"command": luau_command}
-            logger.info(f"Remapping ToolCall: '{original_tool_name}' -> '{mcp_tool_name}' with generated command for class '{class_name}'")
-
-
-        output_content_dict = {} # This will be the value for the 'response' key
+        output_content_dict = {}
         try:
-            # MCPClient.send_request will raise MCPConnectionError if connection is down
-            # Use mcp_tool_name and mcp_tool_args for the actual execution
+
             mcp_response = await self.mcp_client.send_tool_execution_request(mcp_tool_name, mcp_tool_args)
 
             if "result" in mcp_response:

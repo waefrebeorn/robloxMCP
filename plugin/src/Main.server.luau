@@ -37,77 +37,29 @@ local function loadToolFunctions()
     local toolModules = {}
     local toolsFolder = Main.Tools or script.Tools -- Prefer Main.Tools if defined, else script.Tools
 
-    -- Existing tools (assuming they follow the new execute(args) pattern or are adapted)
-    if toolsFolder:FindFirstChild("InsertModel") then
-        toolModules["InsertModel"] = require(toolsFolder.InsertModel)
+    if toolsFolder then
+        for _, toolModuleScript in ipairs(toolsFolder:GetChildren()) do
+            if toolModuleScript:IsA("ModuleScript") then
+                local success, toolFunction = pcall(require, toolModuleScript)
+                if success and type(toolFunction) == "function" then
+                    log("[MCP] Loaded tool: " .. toolModuleScript.Name)
+                    toolModules[toolModuleScript.Name] = toolFunction
+                else
+                    log("[MCP] Error loading tool " .. toolModuleScript.Name .. ": " .. tostring(toolFunction))
+                end
+            end
+        end
+    else
+        log("[MCP] Error: Tools folder not found.")
     end
-    if toolsFolder:FindFirstChild("RunCode") then
-        toolModules["run_code"] = require(toolsFolder.RunCode) -- Gemini uses 'run_code'
-    end
-    if toolsFolder:FindFirstChild("GetSelection") then
-        toolModules["get_selection"] = require(toolsFolder.GetSelection) -- Gemini uses 'get_selection'
-    end
-    -- Note: GetProperties and SetProperties are removed as per previous subtasks
-
-    -- Add new Phase 1 tools
-    toolModules["create_instance"] = require(toolsFolder.CreateInstance)
-    toolModules["set_instance_properties"] = require(toolsFolder.SetInstanceProperties)
-    toolModules["get_instance_properties"] = require(toolsFolder.GetInstanceProperties)
-    toolModules["call_instance_method"] = require(toolsFolder.CallInstanceMethod)
-    toolModules["delete_instance"] = require(toolsFolder.DeleteInstance)
-    toolModules["select_instances"] = require(toolsFolder.SelectInstances)
-    toolModules["run_script"] = require(toolsFolder.RunScript)
-    toolModules["set_lighting_property"] = require(toolsFolder.SetLightingProperty)
-    toolModules["get_lighting_property"] = require(toolsFolder.GetLightingProperty)
-    toolModules["play_sound_id"] = require(toolsFolder.PlaySoundId)
-    toolModules["set_workspace_property"] = require(toolsFolder.SetWorkspaceProperty)
-    toolModules["get_workspace_property"] = require(toolsFolder.GetWorkspaceProperty)
-    toolModules["kick_player"] = require(toolsFolder.KickPlayer)
-    toolModules["create_team"] = require(toolsFolder.CreateTeam)
-
-    -- Add new Phase 2 tools
-    toolModules["tween_properties"] = require(toolsFolder.TweenProperties)
-    toolModules["add_tag"] = require(toolsFolder.AddTag)
-    toolModules["remove_tag"] = require(toolsFolder.RemoveTag)
-    toolModules["get_instances_with_tag"] = require(toolsFolder.GetInstancesWithTag)
-    toolModules["has_tag"] = require(toolsFolder.HasTag)
-    toolModules["compute_path"] = require(toolsFolder.ComputePath)
-    toolModules["create_proximity_prompt"] = require(toolsFolder.CreateProximityPrompt)
-    toolModules["get_product_info"] = require(toolsFolder.GetProductInfo)
-    toolModules["prompt_purchase"] = require(toolsFolder.PromptPurchase)
-    toolModules["add_debris_item"] = require(toolsFolder.AddDebrisItem)
-
-    -- Add new Phase 3 tools (UI & Input)
-    toolModules["create_gui_element"] = require(toolsFolder.CreateGuiElement)
-    toolModules["get_mouse_position"] = require(toolsFolder.GetMousePosition)
-    toolModules["get_mouse_hit_cframe"] = require(toolsFolder.GetMouseHitCFrame)
-    toolModules["is_key_down"] = require(toolsFolder.IsKeyDown)
-    toolModules["is_mouse_button_down"] = require(toolsFolder.IsMouseButtonDown)
-
-    -- Add new Phase 4 tools (DataStores)
-    toolModules["save_data"] = require(toolsFolder.SaveData)
-    toolModules["load_data"] = require(toolsFolder.LoadData)
-    toolModules["increment_data"] = require(toolsFolder.IncrementData)
-    toolModules["remove_data"] = require(toolsFolder.RemoveData)
-
-    -- Add new Phase 5 tools
-    toolModules["teleport_player_to_place"] = require(toolsFolder.TeleportPlayerToPlace)
-    toolModules["get_teleport_data"] = require(toolsFolder.GetTeleportData)
-    toolModules["send_chat_message"] = require(toolsFolder.SendChatMessage)
-    toolModules["filter_text_for_player"] = require(toolsFolder.FilterTextForPlayer)
-    toolModules["create_text_channel"] = require(toolsFolder.CreateTextChannel)
-    -- http_request tool removed
-    toolModules["get_teams"] = require(toolsFolder.GetTeams)
-    toolModules["get_players_in_team"] = require(toolsFolder.GetPlayersInTeam)
-    toolModules["load_asset_by_id"] = require(toolsFolder.LoadAssetById)
-    toolModules["get_children_of_instance"] = require(toolsFolder.GetChildrenOfInstance)
-    toolModules["get_descendants_of_instance"] = require(toolsFolder.GetDescendantsOfInstance)
-    toolModules["find_first_child_matching"] = require(toolsFolder.FindFirstChildMatching)
-
     return toolModules
 end
 
 local toolFunctions = loadToolFunctions()
+-- For debugging, print loaded tools
+for name, _ in pairs(toolFunctions) do
+    log("[MCP] Registered tool function: " .. name)
+end
 
 local function connectWebSocket()
 	local client = MockWebSocketService:CreateClient(URI)
@@ -127,35 +79,35 @@ local function connectWebSocket()
 
 		local decodedSuccess, body = pcall(HttpService.JSONDecode, HttpService, message)
 		if not decodedSuccess or not body or type(body) ~= "table" then
-			log("[MCP] Error: Failed to decode JSON message or invalid format: " .. (body or message) )
-			-- Cannot send ID-specific error if ID cannot be parsed.
+			log("[MCP] Error: Failed to decode JSON message or invalid format: " .. (body or message))
 			return
 		end
 
 		local id = body.id
-		local toolName = body.tool_name -- Assuming the request contains 'tool_name'
-		local toolArgs = body.arguments -- Assuming the request contains 'arguments' for the tool
-
 		if not id or type(id) ~= "string" then
-			log("[MCP] Error: Message ID is missing or not a string.")
+			log("[MCP] Error: Message ID is missing or not a string in body: ", body)
 			return
 		end
 
 		local responseSent = false
-		local function sendResponseOnce(responseContent, isError)
+		local function sendResponseOnce(responseContent, isError, originalToolNameForResponse)
 			if not responseSent then
 				responseSent = true
 				local responseTable = {
-					id = id,
-					result = { -- Adhering to a structure similar to Gemini's ToolResult/FunctionResponse
-                        name = toolName or "unknown_tool",
-                        response = responseContent -- This is the content from the tool (already JSON stringified by ToolHelpers)
+					id = id, -- This is the MCP Transaction ID
+					result = {
+                        name = originalToolNameForResponse, -- This should be what Gemini called
+                        response = responseContent
                     }
 				}
                 if isError then
-                    responseTable.result.response = HttpService:JSONEncode({ -- Ensure error content is also JSON
-                        error = { message = responseContent } -- Simple error structure
-                    })
+                    -- Ensure the error response content is also a JSON string if it's not already
+                    if type(responseContent) ~= "string" then
+                         responseContent = HttpService:JSONEncode({error = {message = tostring(responseContent)}})
+                    end
+                    -- If ToolHelpers.FormatErrorResult already JSON encodes, this might double-encode.
+                    -- For now, assume responseContent for error is a string (potentially JSON string from ToolHelpers).
+                    responseTable.result.response = responseContent
                 end
 
 				local finalResponseJson, encodeErr = pcall(HttpService.JSONEncode, HttpService, responseTable)
@@ -163,51 +115,117 @@ local function connectWebSocket()
 					log("[MCP] Sending response: " .. finalResponseJson)
 					client:Send(finalResponseJson)
 				else
-					log("[MCP] CRITICAL: Failed to encode final response: " .. tostring(encodeErr))
-                    -- Fallback if even the error response can't be formed
-                    client:Send(HttpService:JSONEncode({id=id, result={name=toolName or "unknown_tool", response=HttpService:JSONEncode({error={message="Failed to encode server response."}})}}))
+					log("[MCP] CRITICAL: Failed to encode final response: " .. tostring(encodeErr) .. " for original body: " .. message)
+                    -- Fallback for critical encoding failure
+                    local errorResponse = {
+                        id = id,
+                        result = {
+                            name = originalToolNameForResponse or "unknown_tool",
+                            response = HttpService:JSONEncode({error = {message = "Server failed to encode response."}})
+                        }
+                    }
+                    client:Send(HttpService:JSONEncode(errorResponse))
 				end
 			end
 		end
 
-		if not toolName or type(toolName) ~= "string" then
-			sendResponseOnce("Tool name not provided or invalid.", true)
+		local taskArgs = body.args
+		if not taskArgs or type(taskArgs) ~= "table" then
+			sendResponseOnce("Task arguments (body.args) are missing or not a table.", true, "unknown_task")
 			return
 		end
 
-		local toolFunc = toolFunctions[toolName]
+		local toolNameForExecution -- This is the name of the Luau script, e.g., "CreateInstance", "RunCode"
+		local toolInputArgs = {} -- Arguments to pass to the Luau tool function
+        local originalToolNameToRespondWith -- This is the name Gemini called, e.g. "CreateInstance"
+
+		if taskArgs.ExecuteLuauByName and type(taskArgs.ExecuteLuauByName) == "table" then
+			toolNameForExecution = taskArgs.ExecuteLuauByName.tool_name
+            originalToolNameToRespondWith = toolNameForExecution -- For Luau tools, this is the same.
+			local argumentsJson = taskArgs.ExecuteLuauByName.arguments_json
+
+			if type(toolNameForExecution) ~= "string" or string.len(toolNameForExecution) == 0 then
+				sendResponseOnce("ExecuteLuauByName: 'tool_name' is missing or invalid.", true, toolNameForExecution or "ExecuteLuauByName")
+				return
+			end
+			if type(argumentsJson) ~= "string" then
+				sendResponseOnce("ExecuteLuauByName: 'arguments_json' is missing or not a string.", true, toolNameForExecution)
+				return
+			end
+
+			local decodeSuccess, decodedJsonArgs = pcall(HttpService.JSONDecode, HttpService, argumentsJson)
+			if decodeSuccess then
+				if type(decodedJsonArgs) == "table" then
+					toolInputArgs = decodedJsonArgs
+				else
+					-- If JSON decoded to a non-table (e.g. just a string or number), wrap it if necessary or handle error
+					log("[MCP] Warning: arguments_json for " .. toolNameForExecution .. " decoded to a non-table type: " .. type(decodedJsonArgs) .. ". Using as is or wrapping might be needed.")
+					toolInputArgs = decodedJsonArgs -- Assuming tool can handle it or it's a simple value call
+				end
+			else
+				log("[MCP] Error: Failed to JSONDecode arguments_json for tool " .. toolNameForExecution .. ": " .. tostring(decodedJsonArgs)) -- decodedJsonArgs is error msg here
+				sendResponseOnce("ExecuteLuauByName: Failed to decode 'arguments_json': " .. tostring(decodedJsonArgs), true, toolNameForExecution)
+				return
+			end
+			log("[MCP] Task Type: ExecuteLuauByName for tool: " .. toolNameForExecution)
+
+		elseif taskArgs.RunCommand and type(taskArgs.RunCommand) == "table" then
+			-- This case is for the Rust `run_command` tool, which we map to `RunCode.luau`
+			toolNameForExecution = "RunCode"
+            originalToolNameToRespondWith = "run_command" -- Gemini called "run_command" (or the Python agent mapped it)
+			toolInputArgs = { command = taskArgs.RunCommand.command }
+			if type(toolInputArgs.command) ~= "string" then
+				sendResponseOnce("RunCommand: 'command' is missing or not a string.", true, originalToolNameToRespondWith)
+				return
+			end
+			log("[MCP] Task Type: RunCommand, mapped to Luau tool: " .. toolNameForExecution)
+
+		elseif taskArgs.InsertModel and type(taskArgs.InsertModel) == "table" then
+			-- This case is for the Rust `insert_model` tool, which we map to `InsertModel.luau`
+			toolNameForExecution = "InsertModel"
+            originalToolNameToRespondWith = "insert_model" -- Gemini called "insert_model"
+			toolInputArgs = { query = taskArgs.InsertModel.query }
+			if type(toolInputArgs.query) ~= "string" then
+				sendResponseOnce("InsertModel: 'query' is missing or not a string.", true, originalToolNameToRespondWith)
+				return
+			end
+			log("[MCP] Task Type: InsertModel, mapped to Luau tool: " .. toolNameForExecution)
+		else
+			log("[MCP] Error: Unrecognized task structure in body.args: ", taskArgs)
+			sendResponseOnce("Unrecognized task structure in body.args.", true, "unknown_task")
+			return
+		end
+
+		if not toolNameForExecution then
+			sendResponseOnce("Could not determine tool name for execution from task arguments.", true, originalToolNameToRespondWith or "unknown_tool")
+			return
+		end
+
+        local toolFunc = toolFunctions[toolNameForExecution]
 		if not toolFunc then
-			sendResponseOnce("Tool not found: " .. toolName, true)
+			sendResponseOnce("Tool function not found in toolFunctions map: " .. toolNameForExecution, true, originalToolNameToRespondWith)
 			return
 		end
 
-		local recording = ChangeHistoryService:TryBeginRecording("StudioMCP - " .. toolName)
-
-		local success, result = pcall(toolFunc, toolArgs or {}) -- Pass empty table if no args
+		local recording = ChangeHistoryService:TryBeginRecording("StudioMCP - " .. toolNameForExecution)
+		local success, result = pcall(toolFunc, toolInputArgs or {})
 
 		if success then
-            -- result should be { content = "json_string", isError = boolean } from ToolHelpers
-            if type(result) == "table" and result.content then
-                if result.isError then
-                    sendResponseOnce(result.content, true) -- Error content is already JSON from ToolHelpers.FormatErrorResult
-                else
-                    sendResponseOnce(result.content, false) -- Success content is already JSON from ToolHelpers.FormatSuccessResult
-                end
-            else
-                -- Should not happen if tools use ToolHelpers correctly
-                log("[MCP] Error: Tool returned unexpected result format: " .. tostring(result))
-                sendResponseOnce("Tool " .. toolName .. " returned an unexpected result format.", true)
-            end
+			if type(result) == "table" and result.content then
+				sendResponseOnce(result.content, result.isError, originalToolNameToRespondWith)
+			else
+				log("[MCP] Error: Tool " .. toolNameForExecution .. " returned unexpected result format: " .. tostring(result))
+				sendResponseOnce("Tool " .. toolNameForExecution .. " returned an unexpected result format.", true, originalToolNameToRespondWith)
+			end
 		else
-			-- Error from pcall itself (error within toolFunc before it formats its own error, or error in require)
-			log("[MCP] Error executing tool " .. toolName .. ": " .. tostring(result))
-			sendResponseOnce("Internal error executing tool " .. toolName .. ": " .. tostring(result), true)
+			log("[MCP] Error executing tool " .. toolNameForExecution .. ": " .. tostring(result))
+			sendResponseOnce("Internal error executing tool " .. toolNameForExecution .. ": " .. tostring(result), true, originalToolNameToRespondWith)
 		end
 
 		if recording then
 			ChangeHistoryService:FinishRecording(recording, Enum.FinishRecordingOperation.Commit)
 		end
-		log("[MCP] Handled request for tool: " .. toolName)
+		log("[MCP] Handled request for original tool: " .. (originalToolNameToRespondWith or "unknown") .. ", executed as Luau: " .. toolNameForExecution)
 	end)
 
 	return client
