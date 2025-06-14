@@ -1,5 +1,6 @@
 @echo OFF
 SETLOCAL ENABLEDELAYEDEXPANSION
+SET "SCRIPT_EXIT_CODE=0"
 
 REM === Configuration ===
 SET "VENV_DIR=venv"
@@ -7,15 +8,24 @@ SET "AGENT_SCRIPT=main.py"
 
 REM === Main Logic ===
 CALL :ActivateVenv
-IF !ERRORLEVEL! NEQ 0 GOTO :eof
+IF !ERRORLEVEL! NEQ 0 (
+    ECHO ERROR: Failed to activate virtual environment.
+    SET "SCRIPT_EXIT_CODE=!ERRORLEVEL!"
+    GOTO :HandleExit
+)
 
 CALL :RunAgent
-IF !ERRORLEVEL! NEQ 0 GOTO :eof
+IF !ERRORLEVEL! NEQ 0 (
+    ECHO INFO: Agent script exited with a non-zero status.
+    SET "SCRIPT_EXIT_CODE=!ERRORLEVEL!"
+    GOTO :HandleExit
+)
 
-REM === Completion ===
+REM If we reach here, all main operations were successful
+SET "SCRIPT_EXIT_CODE=0"
 ECHO.
-ECHO Agent execution finished or was interrupted.
-GOTO :eof
+ECHO Agent execution completed successfully.
+GOTO :HandleExit
 
 REM === Subroutines ===
 :ActivateVenv
@@ -27,6 +37,10 @@ REM === Subroutines ===
         EXIT /B 1
     )
     CALL "!VENV_DIR!\Scripts\activate.bat"
+    IF !ERRORLEVEL! NEQ 0 (
+        ECHO ERROR: Failed to execute activate.bat script.
+        EXIT /B 1
+    )
     ECHO Virtual environment activated.
 EXIT /B 0
 
@@ -39,19 +53,23 @@ EXIT /B 0
     )
     python "!AGENT_SCRIPT!"
 
-    REM Capturing the error level from the python script itself
     SET "PYTHON_ERRORLEVEL=!ERRORLEVEL!"
     IF !PYTHON_ERRORLEVEL! NEQ 0 (
         ECHO WARNING: The agent script exited with error code !PYTHON_ERRORLEVEL!.
     ) ELSE (
         ECHO Agent script completed.
     )
-    REM Propagate the python script's error level
     EXIT /B !PYTHON_ERRORLEVEL!
 
 REM === Final Exit Point ===
-:eof
-ENDLOCAL
-ECHO.
-PAUSE
-EXIT /B %ERRORLEVEL%
+:HandleExit
+ENDLOCAL & (
+    ECHO.
+    IF %SCRIPT_EXIT_CODE% NEQ 0 (
+        ECHO Agent execution finished with errors (Code: %SCRIPT_EXIT_CODE%).
+    ) ELSE (
+        ECHO Agent execution finished successfully.
+    )
+    PAUSE
+    EXIT /B %SCRIPT_EXIT_CODE%
+)

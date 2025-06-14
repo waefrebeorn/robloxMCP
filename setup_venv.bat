@@ -1,5 +1,6 @@
 @echo OFF
 SETLOCAL ENABLEDELAYEDEXPANSION
+SET "SCRIPT_EXIT_CODE=0"
 
 REM === Configuration ===
 SET "VENV_DIR=venv"
@@ -7,16 +8,28 @@ SET "REQUIREMENTS_FILE=requirements.txt"
 
 REM === Validation ===
 CALL :CheckPython
-IF !ERRORLEVEL! NEQ 0 EXIT /B !ERRORLEVEL!
+IF !ERRORLEVEL! NEQ 0 (
+    ECHO ERROR: Python check failed. Script will terminate.
+    SET "SCRIPT_EXIT_CODE=!ERRORLEVEL!"
+    GOTO :HandleExit
+)
 
 REM === Main Logic ===
 CALL :CreateVenv
-IF !ERRORLEVEL! NEQ 0 EXIT /B !ERRORLEVEL!
+IF !ERRORLEVEL! NEQ 0 (
+    ECHO ERROR: Virtual environment creation failed. Script will terminate.
+    SET "SCRIPT_EXIT_CODE=!ERRORLEVEL!"
+    GOTO :HandleExit
+)
 
 CALL :InstallDependencies
-IF !ERRORLEVEL! NEQ 0 EXIT /B !ERRORLEVEL!
+IF !ERRORLEVEL! NEQ 0 (
+    ECHO ERROR: Failed to install dependencies. Script will terminate.
+    SET "SCRIPT_EXIT_CODE=!ERRORLEVEL!"
+    GOTO :HandleExit
+)
 
-REM === Completion ===
+REM === Completion (if all successful) ===
 ECHO.
 ECHO =====================================================================
 ECHO Setup complete!
@@ -24,7 +37,9 @@ ECHO Virtual environment '!VENV_DIR!' is ready and dependencies are installed.
 ECHO To activate the virtual environment in your current shell, run:
 ECHO .\!VENV_DIR!\Scripts\activate.bat
 ECHO =====================================================================
-GOTO :eof
+SET "SCRIPT_EXIT_CODE=0" REM Explicitly set for success path
+GOTO :HandleExit
+
 
 REM === Subroutines ===
 :CheckPython
@@ -70,6 +85,10 @@ EXIT /B 0
         EXIT /B 1
     )
     CALL "!VENV_DIR!\Scripts\activate.bat"
+    IF !ERRORLEVEL! NEQ 0 (
+        ECHO ERROR: Failed to call the activate script. Venv might be corrupted or not found.
+        EXIT /B 1
+    )
 
     ECHO Installing dependencies from '!REQUIREMENTS_FILE!'...
     IF NOT EXIST "!REQUIREMENTS_FILE!" (
@@ -86,8 +105,14 @@ EXIT /B 0
 EXIT /B 0
 
 REM === Final Exit Point ===
-:eof
-ENDLOCAL
-ECHO.
-PAUSE
-EXIT /B %ERRORLEVEL%
+:HandleExit
+ENDLOCAL & (
+    ECHO.
+    IF %SCRIPT_EXIT_CODE% NEQ 0 (
+        ECHO Script finished with errors. Error Code: %SCRIPT_EXIT_CODE%
+    ) ELSE (
+        ECHO Script finished successfully.
+    )
+    PAUSE
+    EXIT /B %SCRIPT_EXIT_CODE%
+)
