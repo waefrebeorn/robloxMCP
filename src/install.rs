@@ -1,5 +1,4 @@
 use color_eyre::eyre::{eyre, Result, WrapErr};
-use color_eyre::Help;
 use roblox_install::RobloxStudio;
 use serde_json::{json, Value};
 use std::fs::File;
@@ -7,7 +6,6 @@ use std::io::BufReader;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use std::vec;
 use std::{env, fs, io};
 
 // Original get_message, renamed:
