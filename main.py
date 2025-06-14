@@ -79,7 +79,9 @@ async def main_loop():
 
     # III.2. Initialize client and model resource name
     # Set the transport to 'async' for asyncio compatibility
+
     client = genai.Client(api_key=GEMINI_API_KEY)
+
     model_resource_name = f"models/{GEMINI_MODEL_NAME}"
 
     # III.2. Replace GenerativeModel and start_chat
