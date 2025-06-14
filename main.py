@@ -93,7 +93,7 @@ async def main_loop():
         "You cannot see the screen or the project explorer, so rely on the tool outputs for information."
     )
     # Create chat session using client.aio.chats.create
-    chat_session = await client.chats.create( # III.2. Rename chat to chat_session
+    chat_session = client.aio.chats.create( # III.2. Rename chat to chat_session
         model=model_resource_name,
         history=[
             types.Content(role="user", parts=[types.Part(text=system_instruction_text)]),
