@@ -94,11 +94,12 @@ GOTO :DeleteRustupAndFinish
 :BuildSection
     ECHO.
     ECHO Cargo is available. Proceeding to build the Rust MCP Server...
-    cargo build --release
+    ECHO Enabling 'gemini_python_broker' feature for this build.
+    cargo build --release --features gemini_python_broker
     IF !ERRORLEVEL! NEQ 0 (
         ECHO.
         ECHO =====================================================================
-        ECHO ERROR: Failed to build Rust MCP Server.
+        ECHO ERROR: Failed to build Rust MCP Server (with 'gemini_python_broker' feature).
         ECHO Cargo reported an error (Code: !ERRORLEVEL!). Please review any messages above.
         ECHO =====================================================================
         SET "SCRIPT_EXIT_CODE=!ERRORLEVEL!" & REM Use the actual cargo error code
@@ -108,7 +109,7 @@ GOTO :DeleteRustupAndFinish
     ECHO.
     ECHO =====================================================================
     ECHO Rust MCP Server built successfully!
-    ECHO Executable should be in target\release\bx-studio-mcp.exe
+    ECHO Executable should be in target\release\rbx-studio-mcp.exe
     ECHO =====================================================================
     SET "SCRIPT_EXIT_CODE=0" & REM Explicitly set to 0 on successful build
     GOTO :Finish

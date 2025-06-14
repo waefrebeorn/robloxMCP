@@ -3,7 +3,7 @@ SETLOCAL ENABLEDELAYEDEXPANSION
 SET "SCRIPT_EXIT_CODE=0"
 
 REM === Configuration ===
-SET "SERVER_EXE_PATH=targeteleasebx-studio-mcp.exe"
+SET "SERVER_EXE_PATH=target\release\rbx-studio-mcp.exe"
 
 REM === Main Logic ===
 ECHO Starting Rust MCP Server...
