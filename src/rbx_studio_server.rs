@@ -178,6 +178,7 @@ impl RBXStudioServer {
 
     async fn generic_tool_run(&self, args_values: ToolArgumentValues) -> Result<CallToolResult, McpError> {
          let (command_with_wrapper_id, id) = ToolArguments::new_with_id(args_values);
+         info!(target: "mcp_server::generic_tool_run", request_id = %id, command_args = ?command_with_wrapper_id.args, "Queueing command for plugin");
          debug!("Queueing command for plugin: {:?}", command_with_wrapper_id.args);
          let (tx, mut rx) = mpsc::unbounded_channel::<Result<String, McpError>>();
          let trigger = {
@@ -187,9 +188,16 @@ impl RBXStudioServer {
              state.trigger.clone()
          };
          trigger.send(()).map_err(|e| McpError::internal_error(format!("Unable to trigger send for plugin: {e}"), None))?;
+         info!(target: "mcp_server::generic_tool_run", request_id = %id, "Trigger sent for queued command");
 
+         info!(target: "mcp_server::generic_tool_run", request_id = %id, "Waiting for plugin response from channel");
          let result_from_plugin_result = rx.recv().await
              .ok_or_else(|| McpError::internal_error("Plugin response channel closed unexpectedly.", None))?;
+
+         match &result_from_plugin_result {
+            Ok(res_str) => info!(target: "mcp_server::generic_tool_run", request_id = %id, response_len = res_str.len(), "Received successful response from plugin channel"),
+            Err(e) => warn!(target: "mcp_server::generic_tool_run", request_id = %id, error = ?e, "Received error from plugin channel"),
+         }
 
          {
              let mut state = self.state.lock().await;
@@ -282,10 +290,14 @@ impl RBXStudioServer {
         #[tool(param)] #[schemars(description = "Name of the Luau tool file (without .luau extension) to execute.")] tool_name: String,
         #[tool(param)] #[schemars(description = "A JSON string representing arguments for the Luau tool.")] tool_arguments_str: String,
     ) -> Result<CallToolResult, McpError> {
+        info!(target: "mcp_server::execute_luau", tool_name = %tool_name, args_json = %tool_arguments_str, "Executing Luau tool by name");
         let app_state = self.state.lock().await;
         if !app_state.discovered_luau_tools.contains_key(&tool_name) {
             warn!("Attempted to execute unknown Luau tool: {}", tool_name);
             return Ok(CallToolResult::error(vec![Content::text(format!("Luau tool '{}' not found by server.", tool_name))]));
+        }
+        if let Some(discovered_tool_info) = app_state.discovered_luau_tools.get(&tool_name) {
+            info!(target: "mcp_server::execute_luau", tool_name = %tool_name, script_path = ?discovered_tool_info.file_path, "Found Luau script path");
         }
 
         self.generic_tool_run(ToolArgumentValues::ExecuteLuauByName {
@@ -414,17 +426,21 @@ pub async fn response_handler(
 
         if let Some(ref task_with_id) = task_to_proxy {
             let task_id = task_with_id.id.expect("Task in queue should have an ID for proxy");
+            info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, args = ?task_with_id.args, "Popped task from process_queue");
             debug!("Dud proxy: Sending task {:?} (ID: {}) to /proxy endpoint", task_with_id.args, task_id);
 
+            let request_url = format!("http://127.0.0.1:{}/proxy", STUDIO_PLUGIN_PORT);
+            info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, url = %request_url, payload_args = ?task_with_id.args, "Sending HTTP POST to plugin");
             let res = client
-                .post(format!("http://127.0.0.1:{}/proxy", STUDIO_PLUGIN_PORT))
+                .post(request_url)
                 .json(&task_with_id)
                 .send()
                 .await;
 
             match res {
                 Ok(response) => {
-                    let response_status = response.status();
+                    let response_status_for_log = response.status();
+                    info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, status = %response_status_for_log, "Received HTTP response from plugin");
                     // Read text first for logging in case JSON parsing fails
                     let response_text_for_logging = match response.text().await {
                         Ok(text) => text,
@@ -435,8 +451,9 @@ pub async fn response_handler(
                         match rmcp::serde_json::from_str::<RunCommandResponse>(&response_text_for_logging) {
                             Ok(run_command_response) => {
                                 if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
+                                    info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, "Sending successful decoded response to internal channel");
                                     if tx.send(Ok(run_command_response.response)).is_err() {
-                                        error!("Dud proxy: Failed to send proxied response to internal channel for id: {}", task_id);
+                                        error!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, "Failed to send proxied response to internal channel for id (channel closed or full)");
                                     } else {
                                         debug!("Dud proxy: Successfully forwarded response for task ID: {}", task_id);
                                     }
@@ -445,22 +462,24 @@ pub async fn response_handler(
                                 }
                             }
                             Err(e) => {
-                                error!("Dud proxy: Failed to decode RunCommandResponse from /proxy endpoint: {}. Status: {}. Body: {:?}", e, response_status, response_text_for_logging);
+                                error!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, error = ?e, status = %response_status_for_log, body = %response_text_for_logging, "Failed to decode RunCommandResponse from /proxy endpoint");
                                 if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
+                                    info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, "Sending decoding error to internal channel");
                                     _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed to decode response: {}", e), None)));
                                 }
                             }
                         }
                     } else {
-                        error!("Dud proxy: Request to /proxy endpoint failed with status: {}. Body: {:?}", response_status, response_text_for_logging);
+                        error!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, status = %response_status_for_log, body = %response_text_for_logging, "Request to /proxy endpoint failed");
                         if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
-                             _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed with status {}", response_status), None)));
+                             _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed with status {}", response_status_for_log), None)));
                         }
                     }
                 }
                 Err(e) => {
-                    error!("Dud proxy: Failed to send request to /proxy endpoint: {}", e);
+                    error!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, error = ?e, "Failed to send HTTP request to /proxy endpoint");
                     if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
+                       info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, "Sending HTTP request error to internal channel");
                        _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed to send request: {}",e ), None)));
                     }
                 }
