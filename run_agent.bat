@@ -52,7 +52,7 @@ EXIT /B 0
         EXIT /B 1
     )
     python "!AGENT_SCRIPT!"
-
+pause
     SET "PYTHON_ERRORLEVEL=!ERRORLEVEL!"
     IF !PYTHON_ERRORLEVEL! NEQ 0 (
         ECHO WARNING: The agent script exited with error code !PYTHON_ERRORLEVEL!.
