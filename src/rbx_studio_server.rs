@@ -7,7 +7,7 @@ use axum::{extract::State, Json};
 // color_eyre is not directly used, McpError handles errors.
 use rmcp::model::{
 
-    Tool, ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult, JsonObject,
+    Tool, Annotations, ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult,
 };
 use rmcp::schemars;
 
@@ -15,7 +15,9 @@ use rmcp::tool;
 use rmcp::{Error as McpError, ServerHandler};
 
 use std::collections::{HashMap, VecDeque};
-use serde_json::Value;
+
+// use serde_json::Value; // Likely not needed if serde_json::Map and json! macro are used
+
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::env;
@@ -239,20 +241,26 @@ impl ServerHandler for RBXStudioServer {
 
                     // Convert SchemaObject to serde_json::Map<String, Value>
                     let schema_value = serde_json::to_value(generic_object_schema).unwrap_or_else(|_| serde_json::json!({ "type": "object" }));
-                    let input_schema_map: rmcp::model::JsonObject = match schema_value {
+
+                    // Ensure input_schema_map is typed as serde_json::Map<String, serde_json::Value>
+                    let input_schema_map: serde_json::Map<String, serde_json::Value> = match schema_value {
+
                         serde_json::Value::Object(map) => map,
                         _ => serde_json::Map::new(), // Fallback
                     };
 
                     tools_map.insert(
                         tool_name.clone(),
-                        Tool { // NEW TYPE: rmcp::model::Tool
-                            name: tool_name.clone().into(), // Cow<'static, str>
-                            description: format!(
+
+                        Tool {
+                            name: tool_name.clone().into(),
+                            description: Some(format!( // Changed to Some(...)
                                 "Executes the Luau tool: {}. (Parameters are generic, actual parameters defined in Luau script)",
                                 tool_name
-                            ).into(), // Cow<'static, str>
-                            input_schema: Arc::new(input_schema_map), // Arc<serde_json::Map<String, Value>> which is Arc<JsonObject>
+                            ).into()),
+                            input_schema: Arc::new(input_schema_map),
+                            annotations: None, // Added field
+
                         },
                     );
                 } else {
