@@ -62,12 +62,14 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
             )
         ),
         types.FunctionDeclaration(
-            name="run_code",
+            name="RunCode",
             description=(
                 "Executes a string of Luau code directly within Roblox Studio, typically in a global context. "
                 "Use this for quick tests, simple commands, or actions not tied to a specific script instance. "
                 "The output from `print()` statements in the command will be returned. "
+
                 "Example: `run_code(command='print(workspace.Baseplate.Size)')`"
+
             ),
             parameters=types.Schema(
                 type=types.Type.OBJECT,
@@ -85,7 +87,7 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
 
         # --- Core Instance Manipulation Tools (Phase 1) ---
         types.FunctionDeclaration(
-            name="create_instance",
+            name="CreateInstance",
             description="Creates any Roblox Instance (e.g., Part, SpotLight, Sound, Script) with initial properties. For Parent, use its string path. For Vector3, use {'x':0,'y':0,'z':0}. For Color3 (0-1 range), use {'r':0,'g':0,'b':0}. For CFrame (position & orientation in degrees), use {'position': vec3_dict, 'orientation': vec3_dict_degrees}. For Enums, use string like 'Enum.Material.Plastic'. For ColorSequence properties (e.g., on ParticleEmitters), provide as `{'start_color':color3_dict, 'end_color':color3_dict}` or full `{'keys': [{'time':t, 'value':color3_dict}, ...]}`. For NumberSequence (e.g., ParticleEmitter.Transparency), use `{'start_value':num, 'end_value':num}` or full `{'keys': [{'time':t, 'value':num}, ...]}`.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
@@ -650,13 +652,16 @@ class ToolDispatcher:
             query = args.get("query")
             if not isinstance(query, str) or not query.strip():
                 return False, "Invalid 'query'. It must be a non-empty string."
+
         elif tool_name == "run_code":
+
+
             command = args.get("command")
             if not isinstance(command, str) or not command.strip():
                 return False, "Invalid 'command'. It must be a non-empty string."
         # get_selection has no arguments to validate.
         # --- Core Instance Manipulation Tools ---
-        elif tool_name == "create_instance":
+        elif tool_name == "CreateInstance":
             class_name = args.get("class_name")
             properties = args.get("properties")
             if not isinstance(class_name, str) or not class_name.strip():
