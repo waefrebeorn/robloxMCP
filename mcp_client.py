@@ -63,6 +63,56 @@ class MCPClient:
             await self._cleanup_process_resources()
             return False
 
+    async def _perform_initialization_handshake(self) -> None:
+        try:
+            logger.info("Performing MCP initialization handshake...")
+            # Define client capabilities and info
+            client_info = {"name": "RobloxStudioAgentPython", "version": "0.1.0"} # Consider making version dynamic later
+            # Based on MCP spec, ClientCapabilities can be simple for now.
+            # Example: roots and sampling are objects if present.
+            client_capabilities = {
+                "roots": {}, # Indicates support for roots, can be empty object
+                "sampling": {} # Indicates support for sampling, can be empty object
+            }
+            initialize_params = {
+                "protocolVersion": "2024-11-05", # From user-provided spec
+                "capabilities": client_capabilities,
+                "clientInfo": client_info
+            }
+
+            logger.info(f"Sending initialize request with params: {initialize_params}")
+            init_response = await self.send_protocol_request("initialize", initialize_params, timeout=10.0) # Use a reasonable timeout
+            logger.info(f"Received initialize response: {init_response}")
+
+            if "error" in init_response:
+                error_details = init_response.get("error", {})
+                msg = f"MCP Initialization failed: {error_details.get('message', 'Unknown error')}"
+                logger.error(msg)
+                raise MCPConnectionError(msg)
+
+            # Process InitializeResult (e.g., check protocolVersion, store serverCapabilities if needed)
+            # For now, just log it. Future improvements can make use of server_info, capabilities etc.
+            server_protocol_version = init_response.get("result", {}).get("protocolVersion")
+            if server_protocol_version != "2024-11-05": # Or check for compatibility
+                logger.warning(f"Server proposed protocol version {server_protocol_version}, client uses 2024-11-05. Continuing for now.")
+
+            # Send initialized notification
+            initialized_params = {} # notifications/initialized has no specific params in the provided spec
+            await self.send_notification("notifications/initialized", initialized_params)
+            logger.info("MCP initialization handshake completed successfully.")
+
+        except MCPConnectionError as e:
+            # Re-raise to be handled by the calling context (e.g., start() or reconnect())
+            logger.error(f"MCP handshake failed due to connection error: {e}")
+            raise
+        except asyncio.TimeoutError: # Specifically for the initialize request timeout
+            logger.error("MCP initialize request timed out.")
+            raise MCPConnectionError("MCP initialize request timed out.")
+        except Exception as e:
+            logger.error(f"Unexpected error during MCP handshake: {e}", exc_info=True)
+            # Wrap generic exceptions in MCPConnectionError to signal handshake failure
+            raise MCPConnectionError(f"Unexpected error during MCP handshake: {e}")
+
     async def start(self) -> None:
         """Launches the MCP server process, with retries for initial start."""
         if not self.server_path.exists():
@@ -71,12 +121,18 @@ class MCPClient:
         for attempt in range(self.max_initial_start_attempts):
             logger.info(f"MCP server startup attempt {attempt + 1}/{self.max_initial_start_attempts}...")
             if await self._launch_server_process():
-                logger.info("MCP server started successfully.")
-                return
+                try:
+                    await self._perform_initialization_handshake()
+                    logger.info("MCP server started and initialized successfully.")
+                    return
+                except MCPConnectionError as e: # Handshake specific error
+                    logger.error(f"MCP initialization failed after start: {e}. Will attempt to stop server.")
+                    await self.stop() # Clean up the launched process if handshake fails
+                    # Continue to the next startup attempt if any are left
             if attempt < self.max_initial_start_attempts - 1:
                 await asyncio.sleep(2 + attempt)
-        logger.critical(f"Failed to start MCP server after {self.max_initial_start_attempts} attempts.")
-        raise MCPConnectionError(f"Failed to start MCP server after {self.max_initial_start_attempts} attempts.")
+        logger.critical(f"Failed to start and initialize MCP server after {self.max_initial_start_attempts} attempts.")
+        raise MCPConnectionError(f"Failed to start and initialize MCP server after {self.max_initial_start_attempts} attempts.")
 
     async def _cleanup_process_resources(self):
         """Cleans up resources associated with the server process."""
@@ -116,8 +172,14 @@ class MCPClient:
         for attempt in range(self.reconnect_attempts):
             logger.info(f"Reconnect attempt {attempt + 1}/{self.reconnect_attempts}...")
             if await self._launch_server_process(): # This will set connection_lost to False on success
-                logger.info("MCP server reconnected successfully.")
-                return True # connection_lost is already False
+                try:
+                    await self._perform_initialization_handshake()
+                    logger.info("MCP server reconnected and initialized successfully.")
+                    return True
+                except MCPConnectionError as e:
+                    logger.error(f"MCP initialization failed after reconnect: {e}. Will attempt to stop server.")
+                    await self.stop()
+                    # Fall through to next reconnect attempt or failure
             if attempt < self.reconnect_attempts - 1:
                 await asyncio.sleep(3 + attempt * 2)
 
@@ -175,7 +237,7 @@ class MCPClient:
         except json.JSONDecodeError: logger.warning(f"Skipping malformed JSON from MCP server: '{json_str}'")
         except Exception as e: logger.error(f"Unexpected error processing MCP message: {e} - Line: '{json_str}'", exc_info=True)
 
-    async def send_request(self, method: str, params: dict, timeout: float = 60.0) -> dict:
+    async def send_protocol_request(self, method: str, params: dict, timeout: float = 60.0) -> dict:
         if not self.is_alive() or not self.process or not self.process.stdin:
             self.connection_lost = True
             err_msg = "MCP server process is not running or stdin is unavailable."
@@ -214,5 +276,100 @@ class MCPClient:
             err_msg = f"Unexpected error sending request: {e}"
             logger.error(f"Unexpected error sending request {request_id}: {e}", exc_info=True)
             self.connection_lost = True
+            self._clear_pending_requests(MCPConnectionError(err_msg))
+            raise MCPConnectionError(err_msg)
+
+    async def send_tool_execution_request(self, tool_name: str, tool_args: dict, timeout: float = 60.0) -> dict:
+        if not self.is_alive() or not self.process or not self.process.stdin:
+            self.connection_lost = True
+            err_msg = f"MCP server process is not running or stdin is unavailable for tool execution request '{tool_name}'."
+            logger.error(err_msg)
+            self._clear_pending_requests(MCPConnectionError(f"Connection lost before sending tool request: {err_msg}"))
+            raise MCPConnectionError(err_msg)
+
+        request_id = str(uuid.uuid4())
+
+        # Specific formatting for "tools/call"
+        wrapped_params = {
+            "name": tool_name,
+            "arguments": tool_args
+        }
+        request_payload = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "tools/call", # Hardcoded method for tool execution
+            "params": wrapped_params
+        }
+
+        future = asyncio.Future()
+        self.pending_requests[request_id] = future
+
+        try:
+            json_message = json.dumps(request_payload) + "\n"
+            self.process.stdin.write(json_message.encode('utf-8'))
+            await self.process.stdin.drain()
+            logger.info(f"-> Sent MCP tool execution request (ID: {request_id}, Tool: {tool_name})")
+            return await asyncio.wait_for(future, timeout=timeout)
+        except BrokenPipeError as e:
+            err_msg = f"Connection lost (BrokenPipeError) sending tool request {tool_name} (ID: {request_id}): {e}"
+            logger.error(err_msg)
+            self.connection_lost = True
+            self._clear_pending_requests(MCPConnectionError(err_msg))
+            raise MCPConnectionError(err_msg)
+        except RuntimeError as e: # Can be raised if stdin is closed
+            err_msg = f"Connection lost (RuntimeError) sending tool request {tool_name} (ID: {request_id}): {e}"
+            logger.error(err_msg)
+            self.connection_lost = True
+            self._clear_pending_requests(MCPConnectionError(err_msg))
+            raise MCPConnectionError(err_msg)
+        except asyncio.TimeoutError:
+            logger.error(f"Tool execution request {tool_name} (ID: {request_id}) timed out after {timeout}s.")
+            if request_id in self.pending_requests: # Remove future if it's still there
+                del self.pending_requests[request_id]
+            raise # Re-raise TimeoutError to be caught by caller if necessary
+        except Exception as e:
+            err_msg = f"Unexpected error sending tool request {tool_name} (ID: {request_id}): {e}"
+            logger.error(err_msg, exc_info=True)
+            self.connection_lost = True # Assume connection is compromised
+            self._clear_pending_requests(MCPConnectionError(err_msg))
+            raise MCPConnectionError(err_msg)
+
+    async def send_notification(self, method: str, params: dict) -> None:
+        if not self.is_alive() or not self.process or not self.process.stdin:
+            self.connection_lost = True
+            err_msg = "MCP server process is not running or stdin is unavailable for notification."
+            logger.error(f"Attempted to send notification but {err_msg.lower()}")
+            # Do not clear pending_requests here as this is a separate path
+            raise MCPConnectionError(err_msg)
+
+        notification_payload = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params
+        }
+        # Note: No "id" field for notifications
+
+        try:
+            json_message = json.dumps(notification_payload) + "\n"
+            self.process.stdin.write(json_message.encode('utf-8'))
+            await self.process.stdin.drain()
+            logger.info(f"-> Sent MCP notification (Method: {method})")
+        except BrokenPipeError as e:
+            err_msg = f"Connection lost (BrokenPipeError) while sending notification {method}: {e}"
+            logger.error(err_msg)
+            self.connection_lost = True
+            # Clear pending requests as the connection is broken for all operations
+            self._clear_pending_requests(MCPConnectionError(err_msg))
+            raise MCPConnectionError(err_msg)
+        except RuntimeError as e: # Can be raised if stdin is closed
+            err_msg = f"Connection lost (RuntimeError) while sending notification {method}: {e}"
+            logger.error(err_msg)
+            self.connection_lost = True
+            self._clear_pending_requests(MCPConnectionError(err_msg))
+            raise MCPConnectionError(err_msg)
+        except Exception as e:
+            err_msg = f"Unexpected error sending notification {method}: {e}"
+            logger.error(err_msg, exc_info=True)
+            self.connection_lost = True # Assume connection is compromised
             self._clear_pending_requests(MCPConnectionError(err_msg))
             raise MCPConnectionError(err_msg)
