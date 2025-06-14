@@ -1,11 +1,12 @@
-// Necessary imports - EXCLUDING ToolDefinition, ToolSchema, and serde_json::Value unless used elsewhere
-use crate::error::Result; // Assuming this is used
+
+// Necessary imports
+use crate::error::Result;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{extract::State, Json};
-// use color_eyre::eyre::{Error, OptionExt}; // This might be unused if ErrorData is self-contained
+// color_eyre is not directly used, McpError handles errors.
 use rmcp::model::{
-    CallToolResult, Content, ErrorData, Implementation, ProtocolVersion, ServerCapabilities,
+    CallToolResult, Content, /*ErrorData,*/ Implementation, ProtocolVersion, ServerCapabilities, // ErrorData removed
 
     ServerInfo,
     // ToolDefinition, ToolSchema removed
@@ -14,18 +15,19 @@ use rmcp::model::{
 use rmcp::tool;
 use rmcp::{Error as McpError, ServerHandler};
 
-// use serde::{Deserialize, Serialize}; // Already brought in by rmcp re-exports? Check if direct use is needed. rmcp re-exports serde.
 use std::collections::{HashMap, VecDeque};
-use std::path::{Path, PathBuf}; // For tool discovery
-use std::fs; // For tool discovery
-use std::env; // For tool discovery
+use std::path::{Path, PathBuf};
+use std::fs;
+use std::env;
 
 use std::sync::Arc;
 use tokio::sync::oneshot::Receiver; // If dud_proxy_loop uses it
 use tokio::sync::{mpsc, watch, Mutex};
 use tokio::time::Duration;
 use uuid::Uuid;
-use tracing::{debug, error, info, warn}; // Explicitly use tracing for all logs
+
+use tracing::{debug, error, info, warn};
+
 
 pub const STUDIO_PLUGIN_PORT: u16 = 44755;
 const LONG_POLL_DURATION: Duration = Duration::from_secs(15);
@@ -39,6 +41,17 @@ pub struct DiscoveredTool {
 // discover_luau_tools function
 pub fn discover_luau_tools(tools_dir_path: &Path) -> HashMap<String, DiscoveredTool> {
     let mut tools = HashMap::new();
+
+    info!("Attempting to discover Luau tools in: {:?}", tools_dir_path);
+    if !tools_dir_path.exists() {
+        warn!("Luau tools directory does not exist: {:?}", tools_dir_path);
+        return tools;
+    }
+    if !tools_dir_path.is_dir() {
+        error!("Luau tools path is not a directory: {:?}", tools_dir_path);
+        return tools;
+    }
+
     match fs::read_dir(tools_dir_path) {
         Ok(entries) => {
             for entry in entries.filter_map(Result::ok) {
@@ -47,6 +60,10 @@ pub fn discover_luau_tools(tools_dir_path: &Path) -> HashMap<String, DiscoveredT
                     if let Some(tool_name) = path.file_stem().and_then(|s| s.to_str()).map(String::from) {
                         info!("Discovered Luau tool: {} at {:?}", tool_name, path);
                         tools.insert(tool_name, DiscoveredTool { file_path: path });
+
+                    } else {
+                        warn!("Could not convert tool name (file stem) to string for path: {:?}", path);
+
                     }
                 }
             }
@@ -55,9 +72,14 @@ pub fn discover_luau_tools(tools_dir_path: &Path) -> HashMap<String, DiscoveredT
             error!("Failed to read Luau tools directory {:?}: {}", tools_dir_path, e);
         }
     }
+
+    if tools.is_empty() {
+        info!("No Luau tools discovered or directory was empty: {:?}", tools_dir_path);
+    } else {
+        info!("Successfully discovered {} Luau tools: [{}]", tools.len(), tools.keys().cloned().collect::<Vec<String>>().join(", "));
+    }
     tools
 }
-
 
 // AppState struct and ::new()
 
@@ -133,14 +155,20 @@ impl AppState {
     pub fn new() -> Self {
         let (trigger, waiter) = watch::channel(());
 
-        let base_path = env::current_exe().ok().and_then(|p| p.parent().and_then(|p| p.parent()).and_then(|p| p.parent()))
+        // Corrected path finding logic for AppState::new()
+        let base_path = env::current_exe().ok()
+            .and_then(|p| p.parent().map(PathBuf::from)) // target/debug or target/release
+            .and_then(|p| p.parent().map(PathBuf::from)) // target
+            .and_then(|p| p.parent().map(PathBuf::from)) // project root
             .unwrap_or_else(|| PathBuf::from(".")); // Default to current dir if path fails
-        let tools_dir = base_path.join("plugin/src/Tools");
 
-        info!("Attempting to discover Luau tools in: {:?}", tools_dir);
-        let discovered_tools = discover_luau_tools(&tools_dir);
+        // Corrected fallback path for consistency
+        let tools_dir_pathbuf = base_path.join("plugin/src/Tools");
+
+        info!("Attempting to discover Luau tools in: {:?}", tools_dir_pathbuf);
+        let discovered_tools = discover_luau_tools(&tools_dir_pathbuf); // Pass by reference
         if discovered_tools.is_empty() {
-            warn!("No Luau tools discovered in {:?}. Ensure path is correct and .luau files exist.", tools_dir);
+            warn!("No Luau tools discovered in {:?}. Ensure path is correct and .luau files exist.", tools_dir_pathbuf);
         }
 
 
@@ -189,7 +217,8 @@ impl ToolArguments {
 // RunCommandResponse struct
 #[derive(rmcp::serde::Deserialize, rmcp::serde::Serialize, Clone, Debug)]
 pub struct RunCommandResponse {
-    response: String, // This is the stringified result from the Luau tool
+    response: String,
+
     id: Uuid,
 }
 
@@ -230,8 +259,8 @@ impl RBXStudioServer {
                 Ok(CallToolResult::success(vec![Content::text(res_str)]))
             }
             Err(mcp_err) => {
-                // If the plugin sent an McpError (e.g. tool execution failed within Luau and formatted as McpError string)
-                // For now, we'll just take its message. Ideally, plugin sends structured error.
+
+
                 error!("Received error from plugin for id {}: {:?}", id, mcp_err);
                 Ok(CallToolResult::error(vec![Content::text(mcp_err.to_string())]))
             }
@@ -239,7 +268,8 @@ impl RBXStudioServer {
     }
 }
 
-// #[tool(tool_box)] impl ServerHandler for RBXStudioServer
+
+
 #[tool(tool_box)]
 impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
@@ -283,7 +313,7 @@ impl ServerHandler for RBXStudioServer {
     }
 }
 
-// #[tool(tool_box)] impl RBXStudioServer (for tool methods)
+
 #[tool(tool_box)]
 impl RBXStudioServer {
     #[tool(description = "Runs a raw Luau command string in Roblox Studio.")]
@@ -331,7 +361,9 @@ pub async fn response_handler(
      debug!("Received reply from studio plugin: {:?}", payload);
      let mut app_state = state.lock().await;
      if let Some(tx) = app_state.output_map.remove(&payload.id) {
-         if let Err(_e) = tx.send(Ok(payload.response)) {
+
+         if let Err(_e) = tx.send(Ok(payload.response)) { // Plugin sends string, which could be success JSON or error JSON
+
              error!("Failed to send plugin response to internal channel for id: {}", payload.id);
          }
      } else {
@@ -352,7 +384,8 @@ pub async fn response_handler(
              };
              if waiter.changed().await.is_err() {
                  error!("Waiter channel closed, MCP server might be shutting down.");
-                 return Err(McpError::internal_error("Server shutting down, poll aborted.", None));
+
+                 return Err(McpError::internal_error("Server shutting down, poll aborted.".to_string(), None));
              }
          }
      }).await;
@@ -361,7 +394,7 @@ pub async fn response_handler(
          Ok(Ok(json_response)) => Ok(json_response.into_response()),
          Ok(Err(mcp_err)) => {
              warn!("Request handler loop error: {:?}", mcp_err);
-             Ok((StatusCode::INTERNAL_SERVER_ERROR, format!("Server error: {}", mcp_err.message())).into_response())
+             Ok((StatusCode::INTERNAL_SERVER_ERROR, format!("Server error: {}", mcp_err.message)).into_response())
          }
          Err(_timeout_err) => {
              Ok((StatusCode::NO_CONTENT).into_response())
@@ -377,7 +410,7 @@ pub async fn response_handler(
          error!("Proxy command received with no ID: {:?}", command_with_id.args);
          StatusCode::BAD_REQUEST
      })?;
-     debug!("Received request to proxy: {:?}", command_with_id.args);
+     debug!("Received request to proxy: {:?} for ID: {}", command_with_id.args, id);
      let (tx, mut rx) = mpsc::unbounded_channel();
      {
          let mut app_state = state.lock().await;
@@ -386,13 +419,16 @@ pub async fn response_handler(
          _ = app_state.trigger.send(());
      }
 
+
      match tokio::time::timeout(LONG_POLL_DURATION + Duration::from_secs(5), rx.recv()).await {
          Ok(Some(Ok(response_str))) => {
              Ok(Json(RunCommandResponse { response: response_str, id }).into_response())
          }
          Ok(Some(Err(mcp_err))) => {
              error!("Error proxied from tool execution for id {}: {:?}", id, mcp_err);
-             Ok((StatusCode::INTERNAL_SERVER_ERROR, format!("Proxied error: {}", mcp_err.message())).into_response())
+
+             Ok((StatusCode::INTERNAL_SERVER_ERROR, format!("Proxied error: {}", mcp_err.message)).into_response())
+
          }
          Ok(None) => {
              error!("Proxy: Response channel closed for id {}", id);
@@ -411,75 +447,89 @@ pub async fn response_handler(
      info!("Dud proxy loop started. Polling for tasks to send to actual HTTP plugin endpoint.");
 
      loop {
-         tokio::select! {
-             _ = &mut exit_rx => {
-                 info!("Dud proxy loop received exit signal.");
-                 break;
-             }
-             wait_result = state.lock().await.waiter.clone().changed() => {
-                 if wait_result.is_err() {
-                     error!("Dud proxy: Waiter channel closed. Exiting loop.");
-                     break;
-                 }
-             }
-         }
 
-         let task_to_proxy = {
-             let mut app_state_locked = state.lock().await;
-             app_state_locked.process_queue.pop_front()
-         };
+         let task_to_proxy = tokio::select! {
+            biased; // Process exit signal with higher priority
+            _ = &mut exit_rx => {
+                info!("Dud proxy loop received exit signal.");
+                None // Will break the loop
+            }
+            // Wait for a new task to be available, or for the exit signal
+            res = async {
+                let mut waiter = state.lock().await.waiter.clone();
+                waiter.changed().await.map_err(|e| {
+                    error!("Dud proxy: Waiter channel closed. Error: {:?}", e);
+                    e
+                })
+            } => {
+                if res.is_err() {
+                    None // Break the loop if channel closed
+                } else {
+                    let mut app_state_locked = state.lock().await;
+                    app_state_locked.process_queue.pop_front()
+                }
+            }
+        };
 
-         if let Some(task_with_id) = task_to_proxy {
-             let task_id = task_with_id.id.expect("Task in queue should have an ID for proxy");
-             debug!("Dud proxy: Sending task {:?} (ID: {}) to /proxy endpoint", task_with_id.args, task_id);
+        if let Some(task_with_id) = task_to_proxy {
+            let task_id = task_with_id.id.expect("Task in queue should have an ID for proxy");
+            debug!("Dud proxy: Sending task {:?} (ID: {}) to /proxy endpoint", task_with_id.args, task_id);
 
-             let res = client
-                 .post(format!("http://127.0.0.1:{}/proxy", STUDIO_PLUGIN_PORT))
-                 .json(&task_with_id)
-                 .send()
-                 .await;
+            let res = client
+                .post(format!("http://127.0.0.1:{}/proxy", STUDIO_PLUGIN_PORT))
+                .json(&task_with_id)
+                .send()
+                .await;
 
-             match res {
-                 Ok(response) => {
-                     let response_status = response.status();
-                     if response_status.is_success() {
-                         match response.json::<RunCommandResponse>().await {
-                             Ok(run_command_response) => {
-                                 if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
-                                     if tx.send(Ok(run_command_response.response)).is_err() {
-                                         error!("Dud proxy: Failed to send proxied response to internal channel for id: {}", task_id);
-                                     } else {
-                                         debug!("Dud proxy: Successfully forwarded response for task ID: {}", task_id);
-                                     }
-                                 } else {
-                                     warn!("Dud proxy: No sender found in output_map for proxied task ID: {}", task_id);
-                                 }
-                             }
-                             Err(e) => {
-                                 let body_text = response.text().await.unwrap_or_default();
-                                 error!("Dud proxy: Failed to decode RunCommandResponse from /proxy endpoint: {}. Status: {}. Body: {:?}", e, response_status, body_text);
-                                 if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
-                                     _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed to decode response: {}", e), None)));
-                                 }
-                             }
-                         }
-                     } else {
-                         let body_text = response.text().await.unwrap_or_default();
-                         error!("Dud proxy: Request to /proxy endpoint failed with status: {}. Body: {:?}", response_status, body_text);
-                         if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
-                              _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed with status {}", response_status), None)));
-                         }
-                     }
-                 }
-                 Err(e) => {
-                     error!("Dud proxy: Failed to send request to /proxy endpoint: {}", e);
-                     if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
-                        _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed to send request: {}",e ), None)));
-                     }
-                 }
-             }
-         }
-         tokio::time::sleep(Duration::from_millis(100)).await;
+            match res {
+                Ok(response) => {
+                    let response_status = response.status();
+                    // Read text first for logging in case JSON parsing fails
+                    let response_text_for_logging = match response.text().await {
+                        Ok(text) => text,
+                        Err(_) => "[Could not read response text]".to_string(),
+                    };
+
+                    if response_status.is_success() {
+                        match rmcp::serde_json::from_str::<RunCommandResponse>(&response_text_for_logging) {
+                            Ok(run_command_response) => {
+                                if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
+                                    if tx.send(Ok(run_command_response.response)).is_err() {
+                                        error!("Dud proxy: Failed to send proxied response to internal channel for id: {}", task_id);
+                                    } else {
+                                        debug!("Dud proxy: Successfully forwarded response for task ID: {}", task_id);
+                                    }
+                                } else {
+                                    warn!("Dud proxy: No sender found in output_map for proxied task ID: {}", task_id);
+                                }
+                            }
+                            Err(e) => {
+                                error!("Dud proxy: Failed to decode RunCommandResponse from /proxy endpoint: {}. Status: {}. Body: {:?}", e, response_status, response_text_for_logging);
+                                if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
+                                    _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed to decode response: {}", e), None)));
+                                }
+                            }
+                        }
+                    } else {
+                        error!("Dud proxy: Request to /proxy endpoint failed with status: {}. Body: {:?}", response_status, response_text_for_logging);
+                        if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
+                             _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed with status {}", response_status), None)));
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Dud proxy: Failed to send request to /proxy endpoint: {}", e);
+                    if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
+                       _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed to send request: {}",e ), None)));
+                    }
+                }
+            }
+        } else if exit_rx.try_recv().is_ok() || exit_rx.is_closed() { // If task is None, check if it was due to exit signal
+             info!("Dud proxy loop: No task and exit signal or closed. Exiting.");
+             break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await; // Shorter sleep, select! handles waiting
+
      }
      info!("Dud proxy loop finished.");
  }
