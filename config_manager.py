@@ -91,6 +91,8 @@ def load_or_create_config(r_console=None) -> dict: # Optionally pass rich consol
                          "[red]Config Error[/red]", style="red")
             return DEFAULT_CONFIG.copy()
 
+config = load_or_create_config()
+
 if __name__ == '__main__':
     # Example of how to use it, assuming rich console is available for this test
     from rich.console import Console as RichConsoleForTest
