@@ -8,9 +8,12 @@ use axum::{extract::State, Json};
 use rmcp::model::{
     CallToolResult, Content, /*ErrorData,*/ Implementation, ProtocolVersion, ServerCapabilities, // ErrorData removed
 
-    ServerInfo, ToolDefinition, ToolSchema,
+
+    ServerInfo,
+
 
 };
+use rmcp::{ToolDefinition, ToolSchema};
 use rmcp::tool;
 use rmcp::{Error as McpError, ServerHandler};
 
@@ -411,7 +414,7 @@ pub async fn response_handler(
             }
         };
 
-        if let Some(task_with_id) = task_to_proxy {
+        if let Some(ref task_with_id) = task_to_proxy {
             let task_id = task_with_id.id.expect("Task in queue should have an ID for proxy");
             debug!("Dud proxy: Sending task {:?} (ID: {}) to /proxy endpoint", task_with_id.args, task_id);
 
