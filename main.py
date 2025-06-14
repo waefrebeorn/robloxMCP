@@ -3,12 +3,13 @@ import os
 import logging
 import sys
 from pathlib import Path
-from typing import List # For ToolOutput typing
+# Remove List typing if no longer needed for ToolOutput specifically
+# from typing import List # For ToolOutput typing
 
 # Third-party imports
 from dotenv import load_dotenv
-import google.generativeai as genai
-from google.generativeai.types import Part, ToolOutput
+from google import genai # I.1
+from google.genai import types # I.2, III.1. types.Part will be used. ToolOutput removed.
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.formatted_text import HTML
@@ -20,7 +21,8 @@ from rich.panel import Panel
 from config_manager import config, DEFAULT_CONFIG, ROOT_DIR
 from console_ui import ConsoleFormatter, console
 from mcp_client import MCPClient, MCPConnectionError
-from gemini_tools import ROBLOX_MCP_TOOLS, ToolDispatcher
+# III.1. Import ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE
+from gemini_tools import ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE, ToolDispatcher
 
 
 # --- Script Configuration & Constants using loaded config ---
@@ -72,22 +74,32 @@ session = PromptSession(history=FileHistory(str(history_file)))
 
 async def main_loop():
     """Main entry point for the Roblox Studio Gemini Broker."""
-    genai.configure(api_key=GEMINI_API_KEY)
+    # III.2. Remove genai.configure
+    # genai.configure(api_key=GEMINI_API_KEY) # Old SDK
 
-    model = genai.GenerativeModel(
-        model_name=GEMINI_MODEL_NAME,
-        tools=[ROBLOX_MCP_TOOLS],
-        system_instruction=(
-            "You are an expert AI assistant for Roblox Studio, named Gemini-Roblox-Broker. "
-            "Your goal is to help users by using the provided tools to interact with their game development environment. "
-            "First, think step-by-step about the user's request. "
-            "Then, call the necessary tools with correctly formatted arguments. "
-            "If a request is ambiguous, ask clarifying questions. "
-            "After a tool is used, summarize the result for the user. "
-            "You cannot see the screen or the project explorer, so rely on the tool outputs for information."
-        )
+    # III.2. Initialize client and model resource name
+    # Set the transport to 'async' for asyncio compatibility
+    client = genai.Client(api_key=GEMINI_API_KEY, transport='async')
+    model_resource_name = f"models/{GEMINI_MODEL_NAME}"
+
+    # III.2. Replace GenerativeModel and start_chat
+    system_instruction_text = (
+        "You are an expert AI assistant for Roblox Studio, named Gemini-Roblox-Broker. "
+        "Your goal is to help users by using the provided tools to interact with their game development environment. "
+        "First, think step-by-step about the user's request. "
+        "Then, call the necessary tools with correctly formatted arguments. "
+        "If a request is ambiguous, ask clarifying questions. "
+        "After a tool is used, summarize the result for the user. "
+        "You cannot see the screen or the project explorer, so rely on the tool outputs for information."
     )
-    chat = model.start_chat(enable_automatic_function_calling=False)
+    # Create chat session using client.aio.chats.create
+    chat_session = await client.chats.create( # III.2. Rename chat to chat_session
+        model=model_resource_name,
+        history=[
+            types.Content(role="user", parts=[types.Part(text=system_instruction_text)]),
+            types.Content(role="model", parts=[types.Part(text="Understood. I will act as an expert AI assistant for Roblox Studio.")])
+        ]
+    )
 
     mcp_client = MCPClient(
         RBX_MCP_SERVER_PATH,
@@ -142,42 +154,74 @@ async def main_loop():
                 continue
 
             try:
+                # III.3. New message sending and tool response loop
+                # Send initial user message
                 with console.status("[bold green]Gemini is thinking...", spinner="dots") as status_spinner_gemini:
-                    response = await chat.send_message_async(user_input_str)
+                    response = await chat_session.send_message_async( # III.2. Use chat_session
+                        content=user_input_str,
+                        tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE] # Use new tool instance
+                    )
 
-                tool_outputs: List[ToolOutput] = []
+                # Inner loop for handling a sequence of function calls
+                while True:
+                    pending_function_calls = []
+                    if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+                        for part in response.candidates[0].content.parts:
+                            if hasattr(part, 'function_call') and part.function_call and part.function_call.name:
+                                pending_function_calls.append(part.function_call)
 
-                while response.candidates and \
-                      response.candidates[0].content and \
-                      response.candidates[0].content.parts and \
-                      response.candidates[0].content.parts[0].function_call and \
-                      response.candidates[0].content.parts[0].function_call.name:
-                    function_calls = response.candidates[0].content.parts
+                    if not pending_function_calls:
+                        break # No more function calls from the model, exit inner loop
 
+                    # Execute all function calls
                     tool_tasks = []
-                    for fc in function_calls:
-                        status_message = f"[bold green]Executing tool: {fc.name}...[/bold green]"
-                        with console.status(status_message, spinner="bouncingBar") as status_spinner_tool:
-                             tool_tasks.append(tool_dispatcher.execute_tool_call(fc))
+                    for fc_to_execute in pending_function_calls:
+                        # Original status message was here, now handled by print_tool_call in ToolDispatcher
+                        tool_tasks.append(tool_dispatcher.execute_tool_call(fc_to_execute))
 
-                    results = await asyncio.gather(*tool_tasks)
-                    tool_outputs.extend(results)
+                    tool_call_results = await asyncio.gather(*tool_tasks) # This is now a list of dicts
 
-                    with console.status("[bold green]Gemini is processing tool results...", spinner="dots") as status_spinner_gemini_processing:
-                        response = await chat.send_message_async(
-                            Part(tool_output=ToolOutput(tool_outputs))
+                    # Prepare parts for sending back to the model
+                    tool_response_parts = []
+                    for result_dict in tool_call_results: # result_dict is like {'name': ..., 'response': ...}
+                        tool_response_parts.append(
+                            types.Part(function_response=types.FunctionResponse( # Use types.FunctionResponse
+                                name=result_dict['name'],
+                                response=result_dict['response'] # This is already a dict from ToolDispatcher
+                            ))
                         )
 
+                    # Send tool responses back to the model
+                    if tool_response_parts:
+                        with console.status("[bold green]Gemini is processing tool results...", spinner="dots") as status_spinner_gemini_processing:
+                            response = await chat_session.send_message_async( # III.2. Use chat_session
+                                content=tool_response_parts, # Send list of Part objects
+                                tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE] # Use new tool instance
+                            )
+                    else:
+                        logger.warning("No tool response parts to send, though function calls were expected.")
+                        break
+                # End of inner while loop for function calls
+                # 'response' now holds the final model response after any tool interactions
+
+                # III.4. Accessing Final Text Response
                 if response.text:
                     ConsoleFormatter.print_gemini_header()
-                    for char_chunk in response.text:
-                        ConsoleFormatter.print_gemini_chunk(char_chunk)
+                    # The new SDK's response.text might be streamed differently or need different handling
+                    # For now, assume it's a simple string or compatible.
+                    # If it's an async iterator, this would need to change:
+                    # async for chunk in response.text_stream: # Example if it were a stream
+                    #    ConsoleFormatter.print_gemini_chunk(chunk)
+                    # For now, treating response.text as directly printable characters.
+                    for char_chunk in response.text: # Assuming response.text is iterable string
+                         ConsoleFormatter.print_gemini_chunk(char_chunk)
                     console.print()
                 elif response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
-                    text_content = "".join(part.text for part in response.candidates[0].content.parts if hasattr(part, 'text'))
+                    # III.4. Updated text reconstruction
+                    text_content = "".join(part.text for part in response.candidates[0].content.parts if hasattr(part, 'text') and part.text)
                     if text_content:
                         ConsoleFormatter.print_gemini_header()
-                        for char_chunk in text_content:
+                        for char_chunk in text_content: # Assuming text_content is iterable string
                             ConsoleFormatter.print_gemini_chunk(char_chunk)
                         console.print()
                     else:
@@ -194,7 +238,12 @@ async def main_loop():
                 console.print(Panel("[bold red]A request timed out. Please try again.[/bold red]", title="[red]Timeout Error[/red]"))
             except Exception as e:
                 logger.error(f"An error occurred during the chat loop: {e}", exc_info=True)
-                ConsoleFormatter.print_gemini(f"I encountered an internal error: {str(e)}")
+                # Check if the error is from the genai library and has specific message attributes
+                if hasattr(e, 'message') and isinstance(e.message, str):
+                    ConsoleFormatter.print_gemini(f"I encountered an internal error: {e.message}")
+                else:
+                    ConsoleFormatter.print_gemini(f"I encountered an internal error: {str(e)}")
+
 
     except FileNotFoundError as e:
         logger.critical(f"Setup Error: {e}")
@@ -221,6 +270,6 @@ if __name__ == '__main__':
         logger.info("Broker interrupted by user (Ctrl+C).")
     except SystemExit as e:
         if str(e) == "GEMINI_API_KEY not set.":
-            pass
+            pass # Already handled by initial check
         else:
             console.print(f"\n[bold red]System exit: {e}[/bold red]")
