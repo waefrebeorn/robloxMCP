@@ -81,7 +81,9 @@ class MCPClient:
             }
 
             logger.info(f"Sending initialize request with params: {initialize_params}")
-            init_response = await self.send_request("initialize", initialize_params, timeout=10.0) # Use a reasonable timeout
+
+            init_response = await self.send_protocol_request("initialize", initialize_params, timeout=10.0) # Use a reasonable timeout
+
             logger.info(f"Received initialize response: {init_response}")
 
             if "error" in init_response:
@@ -237,7 +239,7 @@ class MCPClient:
         except json.JSONDecodeError: logger.warning(f"Skipping malformed JSON from MCP server: '{json_str}'")
         except Exception as e: logger.error(f"Unexpected error processing MCP message: {e} - Line: '{json_str}'", exc_info=True)
 
-    async def send_request(self, method: str, params: dict, timeout: float = 60.0) -> dict:
+    async def send_protocol_request(self, method: str, params: dict, timeout: float = 60.0) -> dict:
         if not self.is_alive() or not self.process or not self.process.stdin:
             self.connection_lost = True
             err_msg = "MCP server process is not running or stdin is unavailable."
@@ -282,6 +284,63 @@ class MCPClient:
             self.connection_lost = True
             self._clear_pending_requests(MCPConnectionError(err_msg))
             raise MCPConnectionError(err_msg)
+
+
+    async def send_tool_execution_request(self, tool_name: str, tool_args: dict, timeout: float = 60.0) -> dict:
+        if not self.is_alive() or not self.process or not self.process.stdin:
+            self.connection_lost = True
+            err_msg = f"MCP server process is not running or stdin is unavailable for tool execution request '{tool_name}'."
+            logger.error(err_msg)
+            self._clear_pending_requests(MCPConnectionError(f"Connection lost before sending tool request: {err_msg}"))
+            raise MCPConnectionError(err_msg)
+
+        request_id = str(uuid.uuid4())
+
+        # Specific formatting for "tools/call"
+        wrapped_params = {
+            "name": tool_name,
+            "arguments": tool_args
+        }
+        request_payload = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "tools/call", # Hardcoded method for tool execution
+            "params": wrapped_params
+        }
+
+        future = asyncio.Future()
+        self.pending_requests[request_id] = future
+
+        try:
+            json_message = json.dumps(request_payload) + "\n"
+            self.process.stdin.write(json_message.encode('utf-8'))
+            await self.process.stdin.drain()
+            logger.info(f"-> Sent MCP tool execution request (ID: {request_id}, Tool: {tool_name})")
+            return await asyncio.wait_for(future, timeout=timeout)
+        except BrokenPipeError as e:
+            err_msg = f"Connection lost (BrokenPipeError) sending tool request {tool_name} (ID: {request_id}): {e}"
+            logger.error(err_msg)
+            self.connection_lost = True
+            self._clear_pending_requests(MCPConnectionError(err_msg))
+            raise MCPConnectionError(err_msg)
+        except RuntimeError as e: # Can be raised if stdin is closed
+            err_msg = f"Connection lost (RuntimeError) sending tool request {tool_name} (ID: {request_id}): {e}"
+            logger.error(err_msg)
+            self.connection_lost = True
+            self._clear_pending_requests(MCPConnectionError(err_msg))
+            raise MCPConnectionError(err_msg)
+        except asyncio.TimeoutError:
+            logger.error(f"Tool execution request {tool_name} (ID: {request_id}) timed out after {timeout}s.")
+            if request_id in self.pending_requests: # Remove future if it's still there
+                del self.pending_requests[request_id]
+            raise # Re-raise TimeoutError to be caught by caller if necessary
+        except Exception as e:
+            err_msg = f"Unexpected error sending tool request {tool_name} (ID: {request_id}): {e}"
+            logger.error(err_msg, exc_info=True)
+            self.connection_lost = True # Assume connection is compromised
+            self._clear_pending_requests(MCPConnectionError(err_msg))
+            raise MCPConnectionError(err_msg)
+
 
     async def send_notification(self, method: str, params: dict) -> None:
         if not self.is_alive() or not self.process or not self.process.stdin:
