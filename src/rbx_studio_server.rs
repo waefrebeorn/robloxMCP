@@ -174,11 +174,13 @@ impl RBXStudioServer {
 
     async fn generic_tool_run(&self, args_values: ToolArgumentValues) -> Result<CallToolResult, McpError> {
          let (command_with_wrapper_id, id) = ToolArguments::new_with_id(args_values);
+
          info!(target: "mcp_server::generic_tool_run", request_id = %id, "Queueing command for plugin (args temporarily removed from this log)");
          debug!("Queueing command for plugin: {:?}", command_with_wrapper_id.args);
          let (tx, mut rx) = mpsc::unbounded_channel::<Result<String, McpError>>();
          let trigger = {
             info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Attempting to acquire state lock for queuing");
+
 
             // Wrap lock acquisition with a 5-second timeout
             let mut state_guard = match tokio::time::timeout(std::time::Duration::from_secs(5), self.state.lock()).await {
@@ -216,6 +218,7 @@ impl RBXStudioServer {
          info!(target: "mcp_server::generic_tool_run", request_id = %id, "Attempting to send trigger");
          let send_result = trigger.send(());
          info!(target: "mcp_server::generic_tool_run", request_id = %id, send_result = ?send_result, "Trigger send attempt completed");
+
 
          send_result.map_err(|e| McpError::internal_error(format!("Unable to trigger send for plugin: {e}"), None))?;
 
