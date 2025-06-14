@@ -7,7 +7,7 @@ use axum::{extract::State, Json};
 // color_eyre is not directly used, McpError handles errors.
 use rmcp::model::{
 
-    Tool, ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult,
+    ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult, ToolsCapability,
 };
 use rmcp::schemars;
 
@@ -217,66 +217,30 @@ impl RBXStudioServer {
 impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
 
-        let base_capabilities = ServerCapabilities::builder().enable_tools().build();
+        let mut base_capabilities = ServerCapabilities::builder().enable_tools().build();
+        if let Some(tools_caps) = base_capabilities.tools.as_mut() {
+            tools_caps.list_changed = Some(true); // Explicitly set list_changed
+        } else {
+            // This case should ideally not happen if enable_tools() guarantees Some(ToolsCapability::default())
+            base_capabilities.tools = Some(ToolsCapability { list_changed: Some(true) });
+        }
 
-        // Initialize an empty tools_map for Luau tools (it won't be added to base_capabilities.tools)
-        let mut tools_map: HashMap<String, rmcp::model::Tool> = HashMap::new();
 
+        // Luau tool discovery and processing is simplified to just logging.
+        // No `tools_map` or `rmcp::model::Tool` construction needed here anymore.
         if let Ok(app_state) = self.state.try_lock() {
-            for (tool_name, _discovered_tool) in &app_state.discovered_luau_tools {
-                // if !tools_map.contains_key(tool_name) { // This check might be against a map from base_capabilities if we were merging. For now, it's a fresh map.
 
-
-                    // Create a schema for a generic object (accepts any properties)
-                    let mut generic_object_schema = rmcp::schemars::schema::SchemaObject::default();
-                    generic_object_schema.instance_type = Some(rmcp::schemars::schema::InstanceType::Object.into());
-                    // Setting additional_properties to true (or a default schema) allows any properties.
-                    // If additional_properties is None (default for SchemaObject::default()), it's often interpreted as true unless a specific object validation says otherwise.
-                    // For an explicit "any properties allowed" object:
-                    generic_object_schema.object = Some(Box::new(rmcp::schemars::schema::ObjectValidation {
-                        additional_properties: Some(Box::new(rmcp::schemars::schema::Schema::Bool(true))), // Allows any additional properties
-                        ..Default::default()
-                    }));
-
-                    // Convert SchemaObject to serde_json::Map<String, Value>
-                    let schema_value = serde_json::to_value(generic_object_schema).unwrap_or_else(|_| serde_json::json!({ "type": "object" }));
-
-                    // Ensure input_schema_map is typed as serde_json::Map<String, serde_json::Value>
-                    let input_schema_map: serde_json::Map<String, serde_json::Value> = match schema_value {
-
-                        serde_json::Value::Object(map) => map,
-                        _ => serde_json::Map::new(), // Fallback
-                    };
-
-
-                    // Construct the rmcp::model::Tool for the Luau tool
-                    let _luau_tool_definition = rmcp::model::Tool { // Assign to _ to acknowledge it's not used further
-                        name: tool_name.clone().into(),
-                        description: Some(format!(
-                            "Executes the Luau tool: {}. (Parameters are generic, actual parameters defined in Luau script)",
-                            tool_name
-                        ).into()),
-                        input_schema: Arc::new(input_schema_map),
-                        annotations: None,
-                    };
-                    // tools_map.insert(tool_name.clone(), luau_tool_definition); // Add to our local map
-                    // However, since this tools_map is not being merged back into capabilities.tools,
-                    // this insertion and the map itself become somewhat redundant if not used for other logging/tracking.
-                    // For now, let's keep constructing it to verify structure, but comment out the insertion.
-                    // Or, for the purpose of this fix, we can simply log that we found it.
-                    tracing::info!("Discovered Luau tool (not added to capabilities.tools due to API limitations): {}", tool_name);
-                // } else {
-                //     tracing::warn!("Luau tool name conflict with an existing tool: {}. Luau tool not added.", tool_name);
-                // }
+            for (tool_name, _) in &app_state.discovered_luau_tools { // Changed _discovered_tool to _
+                tracing::info!("Discovered Luau tool (not added to capabilities.tools due to API limitations): {}", tool_name);
 
             }
         } else {
             tracing::warn!("Could not lock AppState in get_info to add Luau tools to capabilities. Proceeding with macro-defined tools only.");
         }
 
-
         // base_capabilities.tools will remain as initialized by ServerCapabilities::builder().enable_tools().build();
-        // Luau tools collected in the local `tools_map` are not merged back.
+        // and potentially modified by setting list_changed.
+        // Luau tools are not merged back.
 
 
         ServerInfo {
@@ -286,7 +250,7 @@ impl ServerHandler for RBXStudioServer {
             instructions: Some(
                 "Use 'execute_discovered_luau_tool' to run Luau scripts by name (e.g., CreateInstance, RunCode). Also available: run_command (direct Luau string), insert_model.".to_string()
             ),
-            capabilities: ServerCapabilities::default(),
+            capabilities: base_capabilities, // Return the modified base_capabilities
         }
     }
 }
