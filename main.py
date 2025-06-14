@@ -160,8 +160,10 @@ async def main_loop():
                 # Send initial user message
                 with console.status("[bold green]Gemini is thinking...", spinner="dots") as status_spinner_gemini:
                     response = await chat_session.send_message( # III.2. Use chat_session
+
                         message=user_input_str,
                         config=types.GenerateContentConfig(tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE]) # Use new tool instance
+
                     )
 
                 # Inner loop for handling a sequence of function calls
@@ -197,8 +199,10 @@ async def main_loop():
                     if tool_response_parts:
                         with console.status("[bold green]Gemini is processing tool results...", spinner="dots") as status_spinner_gemini_processing:
                             response = await chat_session.send_message( # III.2. Use chat_session
+
                                 message=tool_response_parts, # Send list of Part objects
                                 config=types.GenerateContentConfig(tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE]) # Use new tool instance
+
                             )
                     else:
                         logger.warning("No tool response parts to send, though function calls were expected.")
