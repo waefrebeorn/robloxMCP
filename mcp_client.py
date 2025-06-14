@@ -81,7 +81,9 @@ class MCPClient:
             }
 
             logger.info(f"Sending initialize request with params: {initialize_params}")
+
             init_response = await self.send_protocol_request("initialize", initialize_params, timeout=10.0) # Use a reasonable timeout
+
             logger.info(f"Received initialize response: {init_response}")
 
             if "error" in init_response:
@@ -246,7 +248,11 @@ class MCPClient:
             raise MCPConnectionError(err_msg)
 
         request_id = str(uuid.uuid4())
-        request_payload = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
+
+
+        new_params = {"name": method, "arguments": params}
+        request_payload = {"jsonrpc": "2.0", "id": request_id, "method": "tools/call", "params": new_params}
+
         future = asyncio.Future()
         self.pending_requests[request_id] = future
 
@@ -278,6 +284,7 @@ class MCPClient:
             self.connection_lost = True
             self._clear_pending_requests(MCPConnectionError(err_msg))
             raise MCPConnectionError(err_msg)
+
 
     async def send_tool_execution_request(self, tool_name: str, tool_args: dict, timeout: float = 60.0) -> dict:
         if not self.is_alive() or not self.process or not self.process.stdin:
@@ -333,6 +340,7 @@ class MCPClient:
             self.connection_lost = True # Assume connection is compromised
             self._clear_pending_requests(MCPConnectionError(err_msg))
             raise MCPConnectionError(err_msg)
+
 
     async def send_notification(self, method: str, params: dict) -> None:
         if not self.is_alive() or not self.process or not self.process.stdin:
