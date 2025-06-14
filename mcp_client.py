@@ -185,8 +185,10 @@ class MCPClient:
 
         request_id = str(uuid.uuid4())
 
+
         new_params = {"name": method, "arguments": params}
         request_payload = {"jsonrpc": "2.0", "id": request_id, "method": "tools/call", "params": new_params}
+
         future = asyncio.Future()
         self.pending_requests[request_id] = future
 
