@@ -1,5 +1,6 @@
 import json
 import logging
+import asyncio
 from typing import Any, Dict, List # Added List for ROBLOX_MCP_TOOLS type hint if needed
 from google import genai # I.1
 from google.genai import types # I.2
@@ -139,7 +140,7 @@ class ToolDispatcher:
         output_content_dict = {} # This will be the value for the 'response' key
         try:
             # MCPClient.send_request will raise MCPConnectionError if connection is down
-            mcp_response = await self.mcp_client.send_request(tool_name, tool_args)
+            mcp_response = await self.mcp_client.send_tool_execution_request(tool_name, tool_args)
 
             if "result" in mcp_response:
                 output_content_dict = {"status": "success", "output": mcp_response["result"]}
