@@ -140,7 +140,7 @@ async def main_loop():
 
             user_input_str = ""
             try:
-                prompt_text = HTML('<ansiblue bold>You: </ansiblue>')
+                prompt_text = HTML('<ansiblue><b>You: </b></ansiblue>')
                 user_input_str = await asyncio.to_thread(session.prompt, prompt_text, reserve_space_for_menu=0)
             except KeyboardInterrupt:
                 console.print("\n[bold yellow]Exiting broker...[/bold yellow]")
@@ -159,9 +159,9 @@ async def main_loop():
                 # III.3. New message sending and tool response loop
                 # Send initial user message
                 with console.status("[bold green]Gemini is thinking...", spinner="dots") as status_spinner_gemini:
-                    response = await chat_session.send_message_async( # III.2. Use chat_session
-                        content=user_input_str,
-                        tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE] # Use new tool instance
+                    response = await chat_session.send_message( # III.2. Use chat_session
+                        message=user_input_str,
+                        config=types.GenerateContentConfig(tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE]) # Use new tool instance
                     )
 
                 # Inner loop for handling a sequence of function calls
@@ -196,9 +196,9 @@ async def main_loop():
                     # Send tool responses back to the model
                     if tool_response_parts:
                         with console.status("[bold green]Gemini is processing tool results...", spinner="dots") as status_spinner_gemini_processing:
-                            response = await chat_session.send_message_async( # III.2. Use chat_session
-                                content=tool_response_parts, # Send list of Part objects
-                                tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE] # Use new tool instance
+                            response = await chat_session.send_message( # III.2. Use chat_session
+                                message=tool_response_parts, # Send list of Part objects
+                                config=types.GenerateContentConfig(tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE]) # Use new tool instance
                             )
                     else:
                         logger.warning("No tool response parts to send, though function calls were expected.")
