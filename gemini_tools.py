@@ -960,23 +960,63 @@ class ToolDispatcher:
     # II.2. Update execute_tool_call
     async def execute_tool_call(self, function_call: types.FunctionCall) -> Dict[str, Any]: # II.2. Input type hint and return type
         """Executes a single tool call and returns a dictionary for the new SDK."""
-        tool_name = function_call.name
-        # The new SDK's FunctionCall.args is already a dict-like object (Struct)
-        # Forcing it to dict for broader compatibility if internal methods expect plain dicts.
-        tool_args = dict(function_call.args)
+        original_tool_name = function_call.name
+        original_tool_args = dict(function_call.args)
 
-        ConsoleFormatter.print_tool_call(tool_name, tool_args)
+        mcp_tool_name = original_tool_name
+        mcp_tool_args = original_tool_args
 
-        is_valid, error_msg = self._validate_args(tool_name, tool_args)
+        ConsoleFormatter.print_tool_call(original_tool_name, original_tool_args)
+
+        is_valid, error_msg = self._validate_args(original_tool_name, original_tool_args)
         if not is_valid:
             ConsoleFormatter.print_tool_error({"validation_error": f"Argument validation failed: {error_msg}"})
             # II.2. Return a dictionary
-            return {"name": tool_name, "response": {"error": f"Invalid arguments provided by AI: {error_msg}"}}
+            return {"name": original_tool_name, "response": {"error": f"Invalid arguments provided by AI: {error_msg}"}}
+
+        if original_tool_name == "RunCode":
+            mcp_tool_name = "run_command"
+            # mcp_tool_args remains original_tool_args which is {"command": "actual Luau code"}
+            logger.info(f"Remapping ToolCall: '{original_tool_name}' -> '{mcp_tool_name}' with args: {mcp_tool_args}")
+
+        elif original_tool_name == "CreateInstance":
+            mcp_tool_name = "run_command"
+
+            class_name = original_tool_args.get("class_name", "Instance")
+            properties = original_tool_args.get("properties", {})
+            instance_name = properties.get("Name", class_name)
+            parent_name = properties.get("Parent", "Workspace")
+
+            # Basic sanitization
+            class_name = class_name.replace("'", "").replace('"', "")
+            instance_name = instance_name.replace("'", "").replace('"', "")
+            parent_name = parent_name.replace("'", "").replace('"', "")
+
+            # Construct Luau command
+            luau_command = f"""
+local inst = Instance.new('{class_name}')
+inst.Name = '{instance_name}'
+local p = Workspace -- Default parent to Workspace
+if game:FindFirstChild('{parent_name}') then -- Check if parent_name is a service like 'Workspace'
+    p = game:GetService('{parent_name}')
+elseif Workspace:FindFirstChild('{parent_name}') then -- Check if parent_name is a child of Workspace
+    p = Workspace:FindFirstChild('{parent_name}')
+else
+    print("Warning: Parent {parent_name} not found as a service or direct child of Workspace. Defaulting to Workspace.")
+end
+inst.Parent = p
+print('ToolDispatcher: Attempting to create ' .. inst:GetFullName())
+-- return inst:GetFullName() -- Optional: if the run_command can return values
+"""
+            mcp_tool_args = {"command": luau_command}
+            logger.info(f"Remapping ToolCall: '{original_tool_name}' -> '{mcp_tool_name}' with generated command for class '{class_name}'")
+
 
         output_content_dict = {} # This will be the value for the 'response' key
         try:
             # MCPClient.send_request will raise MCPConnectionError if connection is down
-            mcp_response = await self.mcp_client.send_tool_execution_request(tool_name, tool_args)
+            # Use mcp_tool_name and mcp_tool_args for the actual execution
+            mcp_response = await self.mcp_client.send_tool_execution_request(mcp_tool_name, mcp_tool_args)
 
             if "result" in mcp_response:
                 output_content_dict = {"status": "success", "output": mcp_response["result"]}
@@ -989,17 +1029,17 @@ class ToolDispatcher:
                 output_content_dict = {"status": "unknown_response", "raw": mcp_response}
                 ConsoleFormatter.print_tool_error(output_content_dict)
         except MCPConnectionError as e: # Raised by mcp_client.send_request
-            logger.error(f"MCP Connection Error during tool '{tool_name}': {e}")
+            logger.error(f"MCP Connection Error during tool '{original_tool_name}' (mcp: '{mcp_tool_name}'): {e}")
             output_content_dict = {"status": "error", "details": f"MCP Connection Error: {e}"}
             ConsoleFormatter.print_tool_error(output_content_dict) # Show error in console
         except asyncio.TimeoutError: # From mcp_client.send_request (if it re-raises it)
-            logger.error(f"Tool call '{tool_name}' timed out.")
+            logger.error(f"Tool call '{original_tool_name}' (mcp: '{mcp_tool_name}') timed out.")
             output_content_dict = {"status": "error", "details": "Request to Roblox Studio timed out."}
             ConsoleFormatter.print_tool_error(output_content_dict)
         except Exception as e: # Other unexpected errors
-            logger.error(f"Unhandled error executing tool '{tool_name}': {e}", exc_info=True)
+            logger.error(f"Unhandled error executing tool '{original_tool_name}' (mcp: '{mcp_tool_name}'): {e}", exc_info=True)
             output_content_dict = {"status": "error", "details": f"An internal broker error occurred: {e}"}
             ConsoleFormatter.print_tool_error(output_content_dict)
 
-        # II.2. Return a dictionary
-        return {"name": tool_name, "response": output_content_dict}
+        # II.2. Return a dictionary using the original tool name
+        return {"name": original_tool_name, "response": output_content_dict}
