@@ -6,18 +6,14 @@ use axum::response::IntoResponse;
 use axum::{extract::State, Json};
 // color_eyre is not directly used, McpError handles errors.
 use rmcp::model::{
-
     ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult, ToolsCapability,
 };
 use rmcp::schemars;
-
 use rmcp::tool;
 use rmcp::{Error as McpError, ServerHandler};
 
 use std::collections::{HashMap, VecDeque};
-
 // use serde_json::Value; // Likely not needed if serde_json::Map and json! macro are used
-
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::env;
@@ -187,9 +183,14 @@ impl RBXStudioServer {
              state.output_map.insert(id, tx);
              state.trigger.clone()
          };
-         trigger.send(()).map_err(|e| McpError::internal_error(format!("Unable to trigger send for plugin: {e}"), None))?;
-         info!(target: "mcp_server::generic_tool_run", request_id = %id, "Trigger sent for queued command");
 
+         info!(target: "mcp_server::generic_tool_run", request_id = %id, "Attempting to send trigger");
+         let send_result = trigger.send(());
+         info!(target: "mcp_server::generic_tool_run", request_id = %id, send_result = ?send_result, "Trigger send attempt completed");
+
+         send_result.map_err(|e| McpError::internal_error(format!("Unable to trigger send for plugin: {e}"), None))?;
+
+         info!(target: "mcp_server::generic_tool_run", request_id = %id, "Trigger successfully sent (no error returned by map_err)"); // Changed log message for clarity
          info!(target: "mcp_server::generic_tool_run", request_id = %id, "Waiting for plugin response from channel");
          let result_from_plugin_result = rx.recv().await
              .ok_or_else(|| McpError::internal_error("Plugin response channel closed unexpectedly.", None))?;
@@ -224,7 +225,6 @@ impl RBXStudioServer {
 #[tool(tool_box)]
 impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
-
         let mut base_capabilities = ServerCapabilities::builder().enable_tools().build();
         if let Some(tools_caps) = base_capabilities.tools.as_mut() {
             tools_caps.list_changed = Some(true); // Explicitly set list_changed
@@ -236,10 +236,8 @@ impl ServerHandler for RBXStudioServer {
         // Luau tool discovery and processing is simplified to just logging.
         // No `tools_map` or `rmcp::model::Tool` construction needed here anymore.
         if let Ok(app_state) = self.state.try_lock() {
-
             for (tool_name, _) in &app_state.discovered_luau_tools { // Changed _discovered_tool to _
                 tracing::info!("Discovered Luau tool (not added to capabilities.tools due to API limitations): {}", tool_name);
-
             }
         } else {
             tracing::warn!("Could not lock AppState in get_info to add Luau tools to capabilities. Proceeding with macro-defined tools only.");
@@ -248,7 +246,6 @@ impl ServerHandler for RBXStudioServer {
         // base_capabilities.tools will remain as initialized by ServerCapabilities::builder().enable_tools().build();
         // and potentially modified by setting list_changed.
         // Luau tools are not merged back.
-
 
         ServerInfo {
             protocol_version: ProtocolVersion::V_2025_03_26,
@@ -439,10 +436,8 @@ pub async fn response_handler(
 
             match res {
                 Ok(response) => {
-
                     let response_status = response.status(); // Consistent name
                     info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, status = %response_status, "Received HTTP response from plugin");
-
                     // Read text first for logging in case JSON parsing fails
                     let response_text_for_logging = match response.text().await {
                         Ok(text) => text,
@@ -454,7 +449,6 @@ pub async fn response_handler(
                             Ok(run_command_response) => {
                                 info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, "Sending successful decoded response to internal channel");
                                 if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
-                                    info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, "Sending successful decoded response to internal channel");
                                     if tx.send(Ok(run_command_response.response)).is_err() {
                                         error!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, "Failed to send proxied response to internal channel for id (channel closed or full)");
                                     } else {
@@ -465,10 +459,8 @@ pub async fn response_handler(
                                 }
                             }
                             Err(e) => {
-
                                 // Ensure this error log uses response_status
                                 error!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, error = ?e, status = %response_status, body = %response_text_for_logging, "Failed to decode RunCommandResponse from /proxy endpoint");
-
                                 if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
                                     info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, "Sending decoding error to internal channel");
                                     _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed to decode response: {}", e), None)));
@@ -476,13 +468,11 @@ pub async fn response_handler(
                             }
                         }
                     } else {
-
                         // Ensure this error log uses response_status
                         error!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, status = %response_status, body = %response_text_for_logging, "Request to /proxy endpoint failed");
                         if let Some(tx) = state.lock().await.output_map.remove(&task_id) {
                              info!(target: "mcp_server::dud_proxy_loop", task_id = %task_id, "Sending HTTP error to internal channel"); // Added info log before sending error
                              _ = tx.send(Err(McpError::internal_error(format!("Dud proxy failed with status {}", response_status), None)));
-
                         }
                     }
                 }
