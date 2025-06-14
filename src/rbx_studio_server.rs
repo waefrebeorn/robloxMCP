@@ -5,13 +5,18 @@ use axum::{extract::State, Json};
 use color_eyre::eyre::{Error, OptionExt};
 use rmcp::model::{
     CallToolResult, Content, ErrorData, Implementation, ProtocolVersion, ServerCapabilities,
-    ServerInfo, ToolDefinition, ToolSchema,
+
+    ServerInfo,
+    // ToolDefinition, ToolSchema removed
+
 };
 use rmcp::tool;
 use rmcp::{Error as McpError, ServerHandler};
 use serde::{Deserialize, Serialize};
-use serde_json::Value; // Added for tool_arguments
-use std::collections::{HashMap, VecDeque};
+
+// serde_json::Value removed for now as a diagnostic step
+use std::collections::{HashMap, VecDeque}; // HashMap might be unused now in this file's scope
+
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -193,12 +198,18 @@ impl ServerHandler for RBXStudioServer {
 
         ServerInfo {
             protocol_version: ProtocolVersion::V_2025_03_26,
-            capabilities: base_capabilities,
+
             server_info: Implementation::from_build_env(),
             instructions: Some(
-                "User run_command to query data from Roblox Studio place or to change it. Dynamically discovered Luau tools are also available."
-                    .to_string(),
+                "Use 'execute_discovered_luau_tool' to run Luau scripts by name (e.g., CreateInstance, RunCode). Also available: run_command (direct Luau string), insert_model.".to_string()
+
             ),
+            // Let `#[tool(tool_box)]` and `Default::default()` populate capabilities.
+            // The `capabilities.tools` field will be derived from `ServerCapabilities::default()`
+            // and then populated by the `tool_box` macro with tools defined in Rust
+            // (i.e., run_command, insert_model, execute_discovered_luau_tool).
+            capabilities: ServerCapabilities::default(),
+            // Other ServerInfo fields like `custom_capabilities` are not used, so rely on default.
         }
     }
 }
@@ -223,12 +234,14 @@ impl RBXStudioServer {
     )]
     async fn execute_discovered_luau_tool(
         &self,
-        #[tool(param, name = "tool_name")]
+
+        #[tool(param)]
         #[schemars(description = "Name of the Luau tool file (without .luau extension) to execute.")]
         tool_name: String,
-        #[tool(param, name = "tool_arguments")]
-        #[schemars(description = "A JSON object representing arguments for the Luau tool.")]
-        tool_arguments: Value,
+        #[tool(param)]
+        #[schemars(description = "A JSON string representing arguments for the Luau tool.")] // Updated description
+        tool_arguments_str: String, // Changed from tool_arguments: Value to tool_arguments_str: String
+
     ) -> Result<CallToolResult, McpError> {
         // Lock state to check if the tool exists
         let app_state = self.state.lock().await;
@@ -242,17 +255,11 @@ impl RBXStudioServer {
         // Drop the lock as it's no longer needed
         drop(app_state);
 
-        let arguments_json = match serde_json::to_string(&tool_arguments) {
-            Ok(json_string) => json_string,
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to serialize arguments for Luau tool {}: {}. Using empty object.",
-                    tool_name,
-                    e
-                );
-                "{}".to_string()
-            }
-        };
+        // Now tool_arguments_str is already a String, no need to serialize.
+        // Basic validation could be added here to ensure it's a valid JSON string if necessary,
+        // but for now, we'll pass it directly.
+        let arguments_json = tool_arguments_str;
+
 
         self.generic_tool_run(ToolArgumentValues::ExecuteLuauByName {
             tool_name,
