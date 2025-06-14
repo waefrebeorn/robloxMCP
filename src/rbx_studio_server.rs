@@ -6,15 +6,20 @@ use axum::{extract::State, Json};
 // use color_eyre::eyre::{Error, OptionExt}; // This might be unused if ErrorData is self-contained
 use rmcp::model::{
     CallToolResult, Content, ErrorData, Implementation, ProtocolVersion, ServerCapabilities,
+
     ServerInfo,
+    // ToolDefinition, ToolSchema removed
+
 };
 use rmcp::tool;
 use rmcp::{Error as McpError, ServerHandler};
+
 // use serde::{Deserialize, Serialize}; // Already brought in by rmcp re-exports? Check if direct use is needed. rmcp re-exports serde.
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf}; // For tool discovery
 use std::fs; // For tool discovery
 use std::env; // For tool discovery
+
 use std::sync::Arc;
 use tokio::sync::oneshot::Receiver; // If dud_proxy_loop uses it
 use tokio::sync::{mpsc, watch, Mutex};
@@ -53,7 +58,9 @@ pub fn discover_luau_tools(tools_dir_path: &Path) -> HashMap<String, DiscoveredT
     tools
 }
 
+
 // AppState struct and ::new()
+
 pub struct AppState {
     process_queue: VecDeque<ToolArguments>,
     output_map: HashMap<Uuid, mpsc::UnboundedSender<Result<String, McpError>>>,
@@ -63,9 +70,69 @@ pub struct AppState {
 }
 pub type PackedState = Arc<Mutex<AppState>>;
 
+fn discover_luau_tools(tools_dir_path: &Path) -> HashMap<String, DiscoveredTool> {
+    let mut tools = HashMap::new();
+    tracing::info!("Attempting to discover Luau tools in: {:?}", tools_dir_path);
+
+    if !tools_dir_path.exists() {
+        tracing::warn!("Luau tools directory does not exist: {:?}", tools_dir_path);
+        return tools; // Return empty map if dir doesn't exist
+    }
+    if !tools_dir_path.is_dir() {
+        tracing::error!("Luau tools path is not a directory: {:?}", tools_dir_path);
+        // In case of error, return empty map, error already logged.
+        return tools;
+    }
+
+    match fs::read_dir(tools_dir_path) {
+        Ok(entries) => {
+            for entry in entries {
+                match entry {
+                    Ok(entry) => {
+                        let path = entry.path();
+                        if path.is_file() {
+                            if let Some(extension) = path.extension() {
+                                if extension == "luau" {
+                                    if let Some(stem) = path.file_stem() {
+                                        if let Some(tool_name) = stem.to_str() {
+                                            tracing::info!("Discovered Luau tool: {} at {:?}", tool_name, path);
+                                            tools.insert(
+                                                tool_name.to_string(),
+                                                DiscoveredTool { file_path: path.clone() },
+                                            );
+                                        } else {
+                                            tracing::warn!("Could not convert tool name (file stem) to string for path: {:?}", path);
+                                        }
+                                    } else {
+                                        tracing::warn!("Could not get file stem for path: {:?}", path);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Error reading directory entry in {:?}: {}", tools_dir_path, e);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to read Luau tools directory {:?}: {}", tools_dir_path, e);
+            // Return empty map on error, error already logged.
+        }
+    }
+    if tools.is_empty() {
+        tracing::info!("No Luau tools discovered or directory was empty: {:?}", tools_dir_path);
+    } else {
+        tracing::info!("Successfully discovered {} Luau tools: [{}]", tools.len(), tools.keys().cloned().collect::<Vec<String>>().join(", "));
+    }
+    tools
+}
+
 impl AppState {
     pub fn new() -> Self {
         let (trigger, waiter) = watch::channel(());
+
         let base_path = env::current_exe().ok().and_then(|p| p.parent().and_then(|p| p.parent()).and_then(|p| p.parent()))
             .unwrap_or_else(|| PathBuf::from(".")); // Default to current dir if path fails
         let tools_dir = base_path.join("plugin/src/Tools");
@@ -76,12 +143,15 @@ impl AppState {
             warn!("No Luau tools discovered in {:?}. Ensure path is correct and .luau files exist.", tools_dir);
         }
 
+
         Self {
             process_queue: VecDeque::new(),
             output_map: HashMap::new(),
             waiter,
             trigger,
+
             discovered_luau_tools: discovered_tools,
+
         }
     }
 }
@@ -173,8 +243,37 @@ impl RBXStudioServer {
 #[tool(tool_box)]
 impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
+        let mut base_capabilities = ServerCapabilities::builder().enable_tools().build();
+        let mut tools_map = base_capabilities.tools.unwrap_or_default();
+
+        if let Ok(app_state) = self.state.try_lock() {
+            for (tool_name, _discovered_tool) in &app_state.discovered_luau_tools {
+                if !tools_map.contains_key(tool_name) {
+                    tracing::info!("Adding discovered Luau tool to capabilities: {}", tool_name);
+                    tools_map.insert(
+                        tool_name.clone(),
+                        ToolDefinition {
+                            description: Some(format!(
+                                "Executes the Luau tool: {}. (Parameters are generic, actual parameters defined in Luau script)",
+                                tool_name
+                            )),
+                            // Using a generic object schema, assuming Luau script handles its own args.
+                            // Actual parameters would ideally be parsed from comments in the Luau files in the future.
+                            parameters: Some(ToolSchema::object_builder().build()),
+                        },
+                    );
+                } else {
+                    tracing::warn!("Luau tool name conflict with an existing tool: {}. Luau tool not added.", tool_name);
+                }
+            }
+        } else {
+            tracing::warn!("Could not lock AppState in get_info to add Luau tools to capabilities. Proceeding with macro-defined tools only.");
+        }
+        base_capabilities.tools = Some(tools_map);
+
         ServerInfo {
             protocol_version: ProtocolVersion::V_2025_03_26,
+
             server_info: Implementation::from_build_env(),
             instructions: Some(
                 "Use 'execute_discovered_luau_tool' to run Luau scripts by name (e.g., CreateInstance, RunCode). Also available: run_command (direct Luau string), insert_model.".to_string()
@@ -188,11 +287,14 @@ impl ServerHandler for RBXStudioServer {
 #[tool(tool_box)]
 impl RBXStudioServer {
     #[tool(description = "Runs a raw Luau command string in Roblox Studio.")]
+
     async fn run_command(
         &self,
         #[tool(param)] #[schemars(description = "The Luau code to execute.")] command: String,
     ) -> Result<CallToolResult, McpError> {
+
         self.generic_tool_run(ToolArgumentValues::RunCommand { command }).await
+
     }
 
     #[tool(description = "Inserts a model from the Roblox marketplace into the workspace.")]

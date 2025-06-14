@@ -970,6 +970,7 @@ class ToolDispatcher:
         is_valid, error_msg = self._validate_args(original_tool_name, original_tool_args)
         if not is_valid:
             ConsoleFormatter.print_tool_error({"validation_error": f"Argument validation failed: {error_msg}"})
+
             return {"name": original_tool_name, "response": {"error": f"Invalid arguments provided by AI: {error_msg}"}}
 
         if original_tool_name == "insert_model":
@@ -987,6 +988,7 @@ class ToolDispatcher:
 
         output_content_dict = {}
         try:
+
             mcp_response = await self.mcp_client.send_tool_execution_request(mcp_tool_name, mcp_tool_args)
 
             if "result" in mcp_response:
