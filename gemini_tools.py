@@ -62,13 +62,13 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
             )
         ),
         types.FunctionDeclaration(
-            name="RunCode",
+            name="RunCode", # Renamed from run_command to RunCode (maps to RunCode.luau)
             description=(
                 "Executes a string of Luau code directly within Roblox Studio, typically in a global context. "
                 "Use this for quick tests, simple commands, or actions not tied to a specific script instance. "
                 "The output from `print()` statements in the command will be returned. "
 
-                "Example: `run_code(command='print(workspace.Baseplate.Size)')`"
+                "Example: `RunCode(command='print(workspace.Baseplate.Size)')`" # Example updated
 
             ),
             parameters=types.Schema(
@@ -653,13 +653,12 @@ class ToolDispatcher:
             if not isinstance(query, str) or not query.strip():
                 return False, "Invalid 'query'. It must be a non-empty string."
 
-        elif tool_name == "run_code":
-
-
+        elif tool_name == "RunCode": # Changed from run_command to RunCode
             command = args.get("command")
-            if not isinstance(command, str) or not command.strip():
-                return False, "Invalid 'command'. It must be a non-empty string."
-        # get_selection has no arguments to validate.
+            if not isinstance(command, str) or not command.strip(): # Keep allowing empty string for now, Luau side might handle
+                return False, "Invalid 'command'. Must be a string."
+        elif tool_name == "get_selection":
+            pass
         # --- Core Instance Manipulation Tools ---
         elif tool_name == "CreateInstance":
             class_name = args.get("class_name")
@@ -960,23 +959,35 @@ class ToolDispatcher:
     # II.2. Update execute_tool_call
     async def execute_tool_call(self, function_call: types.FunctionCall) -> Dict[str, Any]: # II.2. Input type hint and return type
         """Executes a single tool call and returns a dictionary for the new SDK."""
-        tool_name = function_call.name
-        # The new SDK's FunctionCall.args is already a dict-like object (Struct)
-        # Forcing it to dict for broader compatibility if internal methods expect plain dicts.
-        tool_args = dict(function_call.args)
+        original_tool_name = function_call.name
+        original_tool_args = dict(function_call.args)
 
-        ConsoleFormatter.print_tool_call(tool_name, tool_args)
+        mcp_tool_name = original_tool_name
+        mcp_tool_args = original_tool_args
 
-        is_valid, error_msg = self._validate_args(tool_name, tool_args)
+        ConsoleFormatter.print_tool_call(original_tool_name, original_tool_args)
+
+        is_valid, error_msg = self._validate_args(original_tool_name, original_tool_args)
         if not is_valid:
             ConsoleFormatter.print_tool_error({"validation_error": f"Argument validation failed: {error_msg}"})
-            # II.2. Return a dictionary
-            return {"name": tool_name, "response": {"error": f"Invalid arguments provided by AI: {error_msg}"}}
+            return {"name": original_tool_name, "response": {"error": f"Invalid arguments provided by AI: {error_msg}"}}
 
-        output_content_dict = {} # This will be the value for the 'response' key
+        if original_tool_name == "insert_model":
+            mcp_tool_name = "insert_model"
+            mcp_tool_args = original_tool_args
+            logger.info(f"Dispatching ToolCall: '{original_tool_name}' directly to MCP tool '{mcp_tool_name}' with args: {mcp_tool_args}")
+        else:
+            # All other tools (CreateInstance, RunCode, GetSelection, etc.) are routed via execute_discovered_luau_tool
+            mcp_tool_name = "execute_discovered_luau_tool"
+            mcp_tool_args = {
+                "tool_name": original_tool_name,
+                "tool_arguments": original_tool_args # This sends the original args dict as the value for "tool_arguments"
+            }
+            logger.info(f"Dispatching ToolCall: '{original_tool_name}' via MCP tool '{mcp_tool_name}' for Luau script '{original_tool_name}' with tool_arguments: {original_tool_args}")
+
+        output_content_dict = {}
         try:
-            # MCPClient.send_request will raise MCPConnectionError if connection is down
-            mcp_response = await self.mcp_client.send_tool_execution_request(tool_name, tool_args)
+            mcp_response = await self.mcp_client.send_tool_execution_request(mcp_tool_name, mcp_tool_args)
 
             if "result" in mcp_response:
                 output_content_dict = {"status": "success", "output": mcp_response["result"]}
@@ -989,17 +1000,17 @@ class ToolDispatcher:
                 output_content_dict = {"status": "unknown_response", "raw": mcp_response}
                 ConsoleFormatter.print_tool_error(output_content_dict)
         except MCPConnectionError as e: # Raised by mcp_client.send_request
-            logger.error(f"MCP Connection Error during tool '{tool_name}': {e}")
+            logger.error(f"MCP Connection Error during tool '{original_tool_name}' (mcp: '{mcp_tool_name}'): {e}")
             output_content_dict = {"status": "error", "details": f"MCP Connection Error: {e}"}
             ConsoleFormatter.print_tool_error(output_content_dict) # Show error in console
         except asyncio.TimeoutError: # From mcp_client.send_request (if it re-raises it)
-            logger.error(f"Tool call '{tool_name}' timed out.")
+            logger.error(f"Tool call '{original_tool_name}' (mcp: '{mcp_tool_name}') timed out.")
             output_content_dict = {"status": "error", "details": "Request to Roblox Studio timed out."}
             ConsoleFormatter.print_tool_error(output_content_dict)
         except Exception as e: # Other unexpected errors
-            logger.error(f"Unhandled error executing tool '{tool_name}': {e}", exc_info=True)
+            logger.error(f"Unhandled error executing tool '{original_tool_name}' (mcp: '{mcp_tool_name}'): {e}", exc_info=True)
             output_content_dict = {"status": "error", "details": f"An internal broker error occurred: {e}"}
             ConsoleFormatter.print_tool_error(output_content_dict)
 
-        # II.2. Return a dictionary
-        return {"name": tool_name, "response": output_content_dict}
+        # II.2. Return a dictionary using the original tool name
+        return {"name": original_tool_name, "response": output_content_dict}
