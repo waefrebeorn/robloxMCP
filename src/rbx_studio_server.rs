@@ -174,7 +174,9 @@ impl RBXStudioServer {
 
     async fn generic_tool_run(&self, args_values: ToolArgumentValues) -> Result<CallToolResult, McpError> {
          let (command_with_wrapper_id, id) = ToolArguments::new_with_id(args_values);
+
          info!(target: "mcp_server::generic_tool_run", request_id = %id, "Queueing command for plugin (args temporarily removed from this log)");
+
          debug!("Queueing command for plugin: {:?}", command_with_wrapper_id.args);
          let (tx, mut rx) = mpsc::unbounded_channel::<Result<String, McpError>>();
          let trigger = {
