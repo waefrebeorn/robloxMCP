@@ -6,14 +6,18 @@ use axum::response::IntoResponse;
 use axum::{extract::State, Json};
 // color_eyre is not directly used, McpError handles errors.
 use rmcp::model::{
+
     Tool, ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult,
 };
 use rmcp::schemars;
+
 use rmcp::tool;
 use rmcp::{Error as McpError, ServerHandler};
 
 use std::collections::{HashMap, VecDeque};
+
 // use serde_json::Value; // Likely not needed if serde_json::Map and json! macro are used
+
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::env;
@@ -212,6 +216,7 @@ impl RBXStudioServer {
 #[tool(tool_box)]
 impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
+
         let base_capabilities = ServerCapabilities::builder().enable_tools().build();
 
         // Initialize an empty tools_map for Luau tools (it won't be added to base_capabilities.tools)
@@ -220,6 +225,7 @@ impl ServerHandler for RBXStudioServer {
         if let Ok(app_state) = self.state.try_lock() {
             for (tool_name, _discovered_tool) in &app_state.discovered_luau_tools {
                 // if !tools_map.contains_key(tool_name) { // This check might be against a map from base_capabilities if we were merging. For now, it's a fresh map.
+
 
                     // Create a schema for a generic object (accepts any properties)
                     let mut generic_object_schema = rmcp::schemars::schema::SchemaObject::default();
@@ -234,11 +240,14 @@ impl ServerHandler for RBXStudioServer {
 
                     // Convert SchemaObject to serde_json::Map<String, Value>
                     let schema_value = serde_json::to_value(generic_object_schema).unwrap_or_else(|_| serde_json::json!({ "type": "object" }));
+
                     // Ensure input_schema_map is typed as serde_json::Map<String, serde_json::Value>
                     let input_schema_map: serde_json::Map<String, serde_json::Value> = match schema_value {
+
                         serde_json::Value::Object(map) => map,
                         _ => serde_json::Map::new(), // Fallback
                     };
+
 
                     // Construct the rmcp::model::Tool for the Luau tool
                     let _luau_tool_definition = rmcp::model::Tool { // Assign to _ to acknowledge it's not used further
@@ -259,13 +268,16 @@ impl ServerHandler for RBXStudioServer {
                 // } else {
                 //     tracing::warn!("Luau tool name conflict with an existing tool: {}. Luau tool not added.", tool_name);
                 // }
+
             }
         } else {
             tracing::warn!("Could not lock AppState in get_info to add Luau tools to capabilities. Proceeding with macro-defined tools only.");
         }
 
+
         // base_capabilities.tools will remain as initialized by ServerCapabilities::builder().enable_tools().build();
         // Luau tools collected in the local `tools_map` are not merged back.
+
 
         ServerInfo {
             protocol_version: ProtocolVersion::V_2025_03_26,
