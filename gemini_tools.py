@@ -62,19 +62,19 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
             )
         ),
         types.FunctionDeclaration(
-            name="run_code",
+            name="RunCode",
             description=(
                 "Executes a string of Luau code directly within Roblox Studio, typically in a global context. "
                 "Use this for quick tests, simple commands, or actions not tied to a specific script instance. "
-                "The output from `print()` statements in the code will be returned. "
-                "Example: `run_code(code='print(workspace.Baseplate.Size)')`"
+                "The output from `print()` statements in the command will be returned. "
+                "Example: `RunCode(command='print(workspace.Baseplate.Size)')`"
             ),
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "code": types.Schema(type=types.Type.STRING, description="The Luau code to execute. Must be valid Luau syntax.")
+                    "command": types.Schema(type=types.Type.STRING, description="The Luau command to execute. Must be valid Luau syntax.")
                 },
-                required=["code"]
+                required=["command"]
             )
         ),
         types.FunctionDeclaration(
@@ -85,7 +85,7 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
 
         # --- Core Instance Manipulation Tools (Phase 1) ---
         types.FunctionDeclaration(
-            name="create_instance",
+            name="CreateInstance",
             description="Creates any Roblox Instance (e.g., Part, SpotLight, Sound, Script) with initial properties. For Parent, use its string path. For Vector3, use {'x':0,'y':0,'z':0}. For Color3 (0-1 range), use {'r':0,'g':0,'b':0}. For CFrame (position & orientation in degrees), use {'position': vec3_dict, 'orientation': vec3_dict_degrees}. For Enums, use string like 'Enum.Material.Plastic'. For ColorSequence properties (e.g., on ParticleEmitters), provide as `{'start_color':color3_dict, 'end_color':color3_dict}` or full `{'keys': [{'time':t, 'value':color3_dict}, ...]}`. For NumberSequence (e.g., ParticleEmitter.Transparency), use `{'start_value':num, 'end_value':num}` or full `{'keys': [{'time':t, 'value':num}, ...]}`.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
@@ -140,7 +140,7 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
                     "method_name": types.Schema(type=types.Type.STRING, description="Name of the method to call (e.g., 'MoveTo', 'Destroy', 'SetNetworkOwner')."),
                     "arguments": types.Schema(
                         type=types.Type.ARRAY,
-                        items=types.Schema(type=types.Type.ANY), # Luau side handles type validation of individual args
+                        items=types.Schema(), # Luau side handles type validation of individual args
                         description="List of arguments for the method. Use defined dict/string formats for complex types. Empty list if no arguments. E.g., [{'x':10,'y':0,'z':5}] for MoveTo, or [nil] for SetNetworkOwner(nil)."
                     )
                 },
@@ -196,7 +196,7 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
                 type=types.Type.OBJECT,
                 properties={
                     "property_name": types.Schema(type=types.Type.STRING, description="Name of the Lighting service property (e.g., 'Ambient', 'Brightness', 'ClockTime', 'Technology')."),
-                    "value": types.Schema(type=types.Type.ANY, description="New value for the property. Use dicts for Color3/Vector3, string for Enums.")
+                    "value": types.Schema(type=types.Type.STRING, description="New value for the property. Use dicts for Color3/Vector3, string for Enums. Value will be parsed by Luau.")
                 },
                 required=["property_name", "value"]
             )
@@ -235,7 +235,7 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
                 type=types.Type.OBJECT,
                 properties={
                     "property_name": types.Schema(type=types.Type.STRING, description="Name of the Workspace service property (e.g., 'Gravity', 'FilteringEnabled')."),
-                    "value": types.Schema(type=types.Type.ANY, description="New value for the property. Use dicts for Vector3, string for Enums.")
+                    "value": types.Schema(type=types.Type.STRING, description="New value for the property. Use dicts for Vector3, string for Enums. Value will be parsed by Luau.")
                 },
                 required=["property_name", "value"]
             )
@@ -467,7 +467,7 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
                 properties={
                     "store_name": types.Schema(type=types.Type.STRING, description="Name of the DataStore."),
                     "key": types.Schema(type=types.Type.STRING, description="The key to save data under."),
-                    "data": types.Schema(type=types.Type.ANY, description="Data to save (JSON object/array, string, number, or boolean). Complex Lua tables will be JSON encoded by the client; provide as valid JSON structure.")
+                    "data": types.Schema(type=types.Type.STRING, description="Data to save (JSON object/array, string, number, or boolean). Complex Lua tables will be JSON encoded by the client; provide as valid JSON structure. Value will be parsed by Luau.")
                 },
                 required=["store_name", "key", "data"]
             )
@@ -650,13 +650,13 @@ class ToolDispatcher:
             query = args.get("query")
             if not isinstance(query, str) or not query.strip():
                 return False, "Invalid 'query'. It must be a non-empty string."
-        elif tool_name == "run_code":
-            code = args.get("code")
-            if not isinstance(code, str) or not code.strip():
-                return False, "Invalid 'code'. It must be a non-empty string."
+        elif tool_name == "RunCode":
+            command = args.get("command")
+            if not isinstance(command, str) or not command.strip():
+                return False, "Invalid 'command'. It must be a non-empty string."
         # get_selection has no arguments to validate.
         # --- Core Instance Manipulation Tools ---
-        elif tool_name == "create_instance":
+        elif tool_name == "CreateInstance":
             class_name = args.get("class_name")
             properties = args.get("properties")
             if not isinstance(class_name, str) or not class_name.strip():
