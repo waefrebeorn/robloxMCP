@@ -180,26 +180,39 @@ impl RBXStudioServer {
          let (tx, mut rx) = mpsc::unbounded_channel::<Result<String, McpError>>();
          let trigger = {
             info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Attempting to acquire state lock for queuing");
-            let mut state = self.state.lock().await;
-            info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Acquired state lock for queuing");
 
-            // Capture command_id for logging before command_with_wrapper_id is moved.
-            let command_id_for_log = command_with_wrapper_id.id.map(|u| u.to_string()).unwrap_or_else(|| "None".to_string());
 
-            info!(target: "mcp_server::generic_tool_run", request_id = %id, command_id = %command_id_for_log, "SECTION_LOCK_A: About to push command to process_queue");
-            state.process_queue.push_back(command_with_wrapper_id); // command_with_wrapper_id is moved here
-            info!(target: "mcp_server::generic_tool_run", request_id = %id, command_id = %command_id_for_log, "SECTION_LOCK_A: Pushed to process_queue");
+            // Wrap lock acquisition with a 5-second timeout
+            let mut state_guard = match tokio::time::timeout(std::time::Duration::from_secs(5), self.state.lock()).await {
+                Ok(Ok(guard)) => { // Lock acquired successfully
+                    info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Acquired state lock for queuing");
+                    guard
+                }
+                Ok(Err(poisoned_error)) => { // Mutex was poisoned
+                    error!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: AppState mutex is poisoned! Error: {}", poisoned_error.to_string());
+                    return Err(McpError::internal_error(format!("Server state is corrupted (mutex poisoned: {})", poisoned_error.to_string()), None));
+                }
+                Err(_timeout_elapsed) => { // Timeout occurred
+                    error!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Timeout acquiring AppState lock after 5 seconds!");
+                    return Err(McpError::internal_error("Server busy or deadlocked (timeout acquiring state lock).", None));
+                }
+            };
+
+            // Use state_guard instead of state for subsequent operations within this block
+            info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: About to push command (mcp_id: {}) to process_queue", id);
+            state_guard.process_queue.push_back(command_with_wrapper_id); // command_with_wrapper_id is moved here
+            info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Pushed to process_queue");
 
             info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: About to insert into output_map");
-            state.output_map.insert(id, tx); // `id` is the Uuid of the request, `tx` is the mpsc sender
+            state_guard.output_map.insert(id, tx); // `id` is the Uuid of the request, `tx` is the mpsc sender
             info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Inserted into output_map");
 
             info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: About to clone trigger from state");
-            let cloned_trigger = state.trigger.clone();
+            let cloned_trigger = state_guard.trigger.clone();
             info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Cloned trigger from state");
 
             cloned_trigger
-        }; // Lock is released here
+        }; // state_guard (MutexGuard) is dropped here, lock released.
         info!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: Released state lock after queuing operations");
 
          info!(target: "mcp_server::generic_tool_run", request_id = %id, "Attempting to send trigger");
