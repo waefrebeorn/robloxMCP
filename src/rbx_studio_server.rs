@@ -6,14 +6,18 @@ use axum::response::IntoResponse;
 use axum::{extract::State, Json};
 // color_eyre is not directly used, McpError handles errors.
 use rmcp::model::{
+
     Tool, Annotations, ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult,
 };
 use rmcp::schemars;
+
 use rmcp::tool;
 use rmcp::{Error as McpError, ServerHandler};
 
 use std::collections::{HashMap, VecDeque};
+
 // use serde_json::Value; // Likely not needed if serde_json::Map and json! macro are used
+
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::env;
@@ -213,9 +217,11 @@ impl RBXStudioServer {
 impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
         let mut base_capabilities = ServerCapabilities::builder().enable_tools().build();
+
         // The type of tools_map needs to be HashMap<String, rmcp::model::Tool>
         // and base_capabilities.tools will be Option<HashMap<String, rmcp::model::Tool>>
         let mut tools_map: HashMap<String, rmcp::model::Tool> = base_capabilities.tools.clone().unwrap_or_default(); // Clone to modify if needed
+
 
         if let Ok(app_state) = self.state.try_lock() {
             for (tool_name, _discovered_tool) in &app_state.discovered_luau_tools {
@@ -235,14 +241,17 @@ impl ServerHandler for RBXStudioServer {
 
                     // Convert SchemaObject to serde_json::Map<String, Value>
                     let schema_value = serde_json::to_value(generic_object_schema).unwrap_or_else(|_| serde_json::json!({ "type": "object" }));
+
                     // Ensure input_schema_map is typed as serde_json::Map<String, serde_json::Value>
                     let input_schema_map: serde_json::Map<String, serde_json::Value> = match schema_value {
+
                         serde_json::Value::Object(map) => map,
                         _ => serde_json::Map::new(), // Fallback
                     };
 
                     tools_map.insert(
                         tool_name.clone(),
+
                         Tool {
                             name: tool_name.clone().into(),
                             description: Some(format!( // Changed to Some(...)
@@ -251,6 +260,7 @@ impl ServerHandler for RBXStudioServer {
                             ).into()),
                             input_schema: Arc::new(input_schema_map),
                             annotations: None, // Added field
+
                         },
                     );
                 } else {
