@@ -216,22 +216,16 @@ impl RBXStudioServer {
 #[tool(tool_box)]
 impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
-        let mut base_capabilities = ServerCapabilities::builder().enable_tools().build();
 
+        let base_capabilities = ServerCapabilities::builder().enable_tools().build();
 
-        // Get the ToolsCapability struct, or a default if None.
-        // .take() is used to move the value out of the Option, leaving None in its place.
-        // This is useful if we are going to reconstruct and put it back.
-        let mut tools_capability_struct = base_capabilities.tools.take().unwrap_or_default();
-
-        // Now, get the HashMap from the 'tools' field of ToolsCapability struct.
-        let mut tools_map: HashMap<String, rmcp::model::Tool> = tools_capability_struct.tools.take().unwrap_or_default();
-
+        // Initialize an empty tools_map for Luau tools (it won't be added to base_capabilities.tools)
+        let mut tools_map: HashMap<String, rmcp::model::Tool> = HashMap::new();
 
         if let Ok(app_state) = self.state.try_lock() {
             for (tool_name, _discovered_tool) in &app_state.discovered_luau_tools {
-                if !tools_map.contains_key(tool_name) {
-                    tracing::info!("Adding discovered Luau tool to capabilities: {}", tool_name);
+                // if !tools_map.contains_key(tool_name) { // This check might be against a map from base_capabilities if we were merging. For now, it's a fresh map.
+
 
                     // Create a schema for a generic object (accepts any properties)
                     let mut generic_object_schema = rmcp::schemars::schema::SchemaObject::default();
@@ -254,33 +248,36 @@ impl ServerHandler for RBXStudioServer {
                         _ => serde_json::Map::new(), // Fallback
                     };
 
-                    tools_map.insert(
-                        tool_name.clone(),
 
-                        Tool {
-                            name: tool_name.clone().into(),
-                            description: Some(format!( // Changed to Some(...)
-                                "Executes the Luau tool: {}. (Parameters are generic, actual parameters defined in Luau script)",
-                                tool_name
-                            ).into()),
-                            input_schema: Arc::new(input_schema_map),
-                            annotations: None, // Added field
+                    // Construct the rmcp::model::Tool for the Luau tool
+                    let _luau_tool_definition = rmcp::model::Tool { // Assign to _ to acknowledge it's not used further
+                        name: tool_name.clone().into(),
+                        description: Some(format!(
+                            "Executes the Luau tool: {}. (Parameters are generic, actual parameters defined in Luau script)",
+                            tool_name
+                        ).into()),
+                        input_schema: Arc::new(input_schema_map),
+                        annotations: None,
+                    };
+                    // tools_map.insert(tool_name.clone(), luau_tool_definition); // Add to our local map
+                    // However, since this tools_map is not being merged back into capabilities.tools,
+                    // this insertion and the map itself become somewhat redundant if not used for other logging/tracking.
+                    // For now, let's keep constructing it to verify structure, but comment out the insertion.
+                    // Or, for the purpose of this fix, we can simply log that we found it.
+                    tracing::info!("Discovered Luau tool (not added to capabilities.tools due to API limitations): {}", tool_name);
+                // } else {
+                //     tracing::warn!("Luau tool name conflict with an existing tool: {}. Luau tool not added.", tool_name);
+                // }
 
-                        },
-                    );
-                } else {
-                    tracing::warn!("Luau tool name conflict with an existing tool: {}. Luau tool not added.", tool_name);
-                }
             }
         } else {
             tracing::warn!("Could not lock AppState in get_info to add Luau tools to capabilities. Proceeding with macro-defined tools only.");
         }
 
-        // Put the populated tools_map back into our ToolsCapability struct
-        tools_capability_struct.tools = Some(tools_map);
 
-        // Put the ToolsCapability struct back into base_capabilities
-        base_capabilities.tools = Some(tools_capability_struct);
+        // base_capabilities.tools will remain as initialized by ServerCapabilities::builder().enable_tools().build();
+        // Luau tools collected in the local `tools_map` are not merged back.
+
 
         ServerInfo {
             protocol_version: ProtocolVersion::V_2025_03_26,
