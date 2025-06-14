@@ -184,6 +184,7 @@ impl RBXStudioServer {
 
             // Wrap lock acquisition with a 5-second timeout
             let mut state_guard = match tokio::time::timeout(std::time::Duration::from_secs(5), self.state.lock()).await {
+
                 Ok(Ok(guard_result)) => { // guard_result is now assumed to be Result<MutexGuard, SomeError>
                     match guard_result {
                         Ok(actual_guard) => { // actual_guard should be MutexGuard
@@ -195,6 +196,7 @@ impl RBXStudioServer {
                             return Err(McpError::internal_error(format!("Inner error layer while acquiring lock: {}", inner_lock_error.to_string()), None));
                         }
                     }
+
                 }
                 Ok(Err(poisoned_error)) => { // Mutex was poisoned
                     error!(target: "mcp_server::generic_tool_run", request_id = %id, "SECTION_LOCK_A: AppState mutex is poisoned! Error: {}", poisoned_error.to_string());
