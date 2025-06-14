@@ -6,14 +6,18 @@ use axum::response::IntoResponse;
 use axum::{extract::State, Json};
 // color_eyre is not directly used, McpError handles errors.
 use rmcp::model::{
+
     ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult, ToolsCapability,
 };
 use rmcp::schemars;
+
 use rmcp::tool;
 use rmcp::{Error as McpError, ServerHandler};
 
 use std::collections::{HashMap, VecDeque};
+
 // use serde_json::Value; // Likely not needed if serde_json::Map and json! macro are used
+
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::env;
@@ -212,6 +216,7 @@ impl RBXStudioServer {
 #[tool(tool_box)]
 impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
+
         let mut base_capabilities = ServerCapabilities::builder().enable_tools().build();
         if let Some(tools_caps) = base_capabilities.tools.as_mut() {
             tools_caps.list_changed = Some(true); // Explicitly set list_changed
@@ -220,11 +225,14 @@ impl ServerHandler for RBXStudioServer {
             base_capabilities.tools = Some(ToolsCapability { list_changed: Some(true) });
         }
 
+
         // Luau tool discovery and processing is simplified to just logging.
         // No `tools_map` or `rmcp::model::Tool` construction needed here anymore.
         if let Ok(app_state) = self.state.try_lock() {
+
             for (tool_name, _) in &app_state.discovered_luau_tools { // Changed _discovered_tool to _
                 tracing::info!("Discovered Luau tool (not added to capabilities.tools due to API limitations): {}", tool_name);
+
             }
         } else {
             tracing::warn!("Could not lock AppState in get_info to add Luau tools to capabilities. Proceeding with macro-defined tools only.");
@@ -233,6 +241,7 @@ impl ServerHandler for RBXStudioServer {
         // base_capabilities.tools will remain as initialized by ServerCapabilities::builder().enable_tools().build();
         // and potentially modified by setting list_changed.
         // Luau tools are not merged back.
+
 
         ServerInfo {
             protocol_version: ProtocolVersion::V_2025_03_26,
