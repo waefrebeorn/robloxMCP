@@ -6,18 +6,16 @@ use axum::response::IntoResponse;
 use axum::{extract::State, Json};
 // color_eyre is not directly used, McpError handles errors.
 use rmcp::model::{
-    CallToolResult, Content, /*ErrorData,*/ Implementation, ProtocolVersion, ServerCapabilities, // ErrorData removed
 
-
-    ServerInfo,
-
-
+    Tool, ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult, JsonObject,
 };
-use rmcp::{ToolDefinition, ToolSchema};
+use rmcp::schemars;
+
 use rmcp::tool;
 use rmcp::{Error as McpError, ServerHandler};
 
 use std::collections::{HashMap, VecDeque};
+use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::env;
@@ -217,22 +215,44 @@ impl RBXStudioServer {
 impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
         let mut base_capabilities = ServerCapabilities::builder().enable_tools().build();
-        let mut tools_map: HashMap<String, ToolDefinition> = base_capabilities.tools.unwrap_or_default();
+
+        // The type of tools_map needs to be HashMap<String, rmcp::model::Tool>
+        // and base_capabilities.tools will be Option<HashMap<String, rmcp::model::Tool>>
+        let mut tools_map: HashMap<String, rmcp::model::Tool> = base_capabilities.tools.clone().unwrap_or_default(); // Clone to modify if needed
+
 
         if let Ok(app_state) = self.state.try_lock() {
             for (tool_name, _discovered_tool) in &app_state.discovered_luau_tools {
                 if !tools_map.contains_key(tool_name) {
                     tracing::info!("Adding discovered Luau tool to capabilities: {}", tool_name);
+
+                    // Create a schema for a generic object (accepts any properties)
+                    let mut generic_object_schema = rmcp::schemars::schema::SchemaObject::default();
+                    generic_object_schema.instance_type = Some(rmcp::schemars::schema::InstanceType::Object.into());
+                    // Setting additional_properties to true (or a default schema) allows any properties.
+                    // If additional_properties is None (default for SchemaObject::default()), it's often interpreted as true unless a specific object validation says otherwise.
+                    // For an explicit "any properties allowed" object:
+                    generic_object_schema.object = Some(Box::new(rmcp::schemars::schema::ObjectValidation {
+                        additional_properties: Some(Box::new(rmcp::schemars::schema::Schema::Bool(true))), // Allows any additional properties
+                        ..Default::default()
+                    }));
+
+                    // Convert SchemaObject to serde_json::Map<String, Value>
+                    let schema_value = serde_json::to_value(generic_object_schema).unwrap_or_else(|_| serde_json::json!({ "type": "object" }));
+                    let input_schema_map: rmcp::model::JsonObject = match schema_value {
+                        serde_json::Value::Object(map) => map,
+                        _ => serde_json::Map::new(), // Fallback
+                    };
+
                     tools_map.insert(
                         tool_name.clone(),
-                        ToolDefinition {
-                            description: Some(format!(
+                        Tool { // NEW TYPE: rmcp::model::Tool
+                            name: tool_name.clone().into(), // Cow<'static, str>
+                            description: format!(
                                 "Executes the Luau tool: {}. (Parameters are generic, actual parameters defined in Luau script)",
                                 tool_name
-                            )),
-                            // Using a generic object schema, assuming Luau script handles its own args.
-                            // Actual parameters would ideally be parsed from comments in the Luau files in the future.
-                            parameters: Some(ToolSchema::object_builder().build()),
+                            ).into(), // Cow<'static, str>
+                            input_schema: Arc::new(input_schema_map), // Arc<serde_json::Map<String, Value>> which is Arc<JsonObject>
                         },
                     );
                 } else {
