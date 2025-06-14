@@ -225,7 +225,6 @@ impl ServerHandler for RBXStudioServer {
             base_capabilities.tools = Some(ToolsCapability { list_changed: Some(true) });
         }
 
-
         // Luau tool discovery and processing is simplified to just logging.
         // No `tools_map` or `rmcp::model::Tool` construction needed here anymore.
         if let Ok(app_state) = self.state.try_lock() {
