@@ -140,7 +140,7 @@ async def main_loop():
 
             user_input_str = ""
             try:
-                prompt_text = HTML('<ansiblue bold>You: </ansiblue>')
+                prompt_text = HTML('<ansiblue><b>You: </b></ansiblue>')
                 user_input_str = await asyncio.to_thread(session.prompt, prompt_text, reserve_space_for_menu=0)
             except KeyboardInterrupt:
                 console.print("\n[bold yellow]Exiting broker...[/bold yellow]")
