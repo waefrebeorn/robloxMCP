@@ -980,11 +980,15 @@ class ToolDispatcher:
         else:
             # All other tools (CreateInstance, RunCode, GetSelection, etc.) are routed via execute_discovered_luau_tool
             mcp_tool_name = "execute_discovered_luau_tool"
+            # Serialize original_tool_args into a JSON string
+            tool_arguments_json_str = json.dumps(original_tool_args)
             mcp_tool_args = {
                 "tool_name": original_tool_name,
-                "tool_arguments": original_tool_args # This sends the original args dict as the value for "tool_arguments"
+                "tool_arguments_str": tool_arguments_json_str # Correct field name and value type
             }
-            logger.info(f"Dispatching ToolCall: '{original_tool_name}' via MCP tool '{mcp_tool_name}' for Luau script '{original_tool_name}' with tool_arguments: {original_tool_args}")
+            # Update logger message to reflect the change if desired, or keep as is if original_tool_args is fine for logging.
+            # For clarity in logs, let's log what's actually being prepared for MCP:
+            logger.info(f"Dispatching ToolCall: '{original_tool_name}' via MCP tool '{mcp_tool_name}' for Luau script '{original_tool_name}'. Luau script args (as JSON string): {tool_arguments_json_str}")
 
         output_content_dict = {}
         try:

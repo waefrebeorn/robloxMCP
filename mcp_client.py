@@ -200,7 +200,9 @@ class MCPClient:
                     logger.warning("MCP stdout EOF. Server process likely terminated.")
                     self.connection_lost = True; break
                 line = line_bytes.decode('utf-8').strip()
-                if line: self._process_incoming_message(line)
+                if line: # Ensure line is not empty before logging/processing
+                    logger.info(f"[MCP_SERVER_RAW_STDOUT]: {line}") # Added log line
+                    self._process_incoming_message(line)
             except asyncio.TimeoutError:
                 if not (self.process and self.process.returncode is None):
                     logger.warning("MCP stdout readline timed out and process is no longer running.")
