@@ -162,8 +162,8 @@ async def main_loop():
                     response = await chat_session.send_message( # III.2. Use chat_session
 
                         message=user_input_str,
+                        config=types.GenerateContentConfig(tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE]) # Use new tool instance
 
-                        tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE] # Use new tool instance
                     )
 
                 # Inner loop for handling a sequence of function calls
@@ -201,8 +201,8 @@ async def main_loop():
                             response = await chat_session.send_message( # III.2. Use chat_session
 
                                 message=tool_response_parts, # Send list of Part objects
+                                config=types.GenerateContentConfig(tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE]) # Use new tool instance
 
-                                tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE] # Use new tool instance
                             )
                     else:
                         logger.warning("No tool response parts to send, though function calls were expected.")
