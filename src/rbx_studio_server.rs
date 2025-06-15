@@ -322,7 +322,7 @@ impl RBXStudioServer {
                 }
 
 
-                Err(McpError::new(rmcp::model::ErrorCode::Internal, format!("Tool execution timed out after {}s.", TOOL_EXECUTION_TIMEOUT.as_secs()), None))
+                Err(McpError::new(rmcp::model::ErrorCode::Error, format!("Tool execution timed out after {}s.", TOOL_EXECUTION_TIMEOUT.as_secs()), None))
 
 
             }
