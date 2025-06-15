@@ -1,5 +1,6 @@
 
--- Simplified RunCode.luau - Test 1: Isolate deepClone
+-- Simplified RunCode.luau - Test 1a: Isolate deepClone (identical to Test 1)
+
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local HttpService = game:GetService("HttpService")
@@ -94,13 +95,13 @@ local function toStrTable(t: { any }): { string }
 	return strTable
 end
 
-
 -- Main function from previous step
-
 local function handleRunCode(args)
     if type(args.command) ~= "string" then
         return ToolHelpers.FormatErrorResult("Error: RunCode command argument is missing or not a string.")
     end
+
+
 
     local command = args.command
     local output_parts = {}
@@ -150,6 +151,7 @@ local function handleRunCode(args)
         for i = 2, #results do
             table.insert(returned_values_from_command, results[i])
         end
+
 
         if not run_success then
             an_error_occurred_in_command = true
