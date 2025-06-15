@@ -1,6 +1,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local MockWebSocketService = require(Main.MockWebSocketService)
 local Types = require(Main.Types)
+local ToolHelpers = require(Main.ToolHelpers) -- Add this line
 
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local HttpService = game:GetService("HttpService")
@@ -34,32 +35,66 @@ end
 
 -- New: Load tools into a dictionary for named dispatch
 local function loadToolFunctions()
+    print("[MCP Diagnostics] Attempting to load tool functions...")
     local toolModules = {}
-    local toolsFolder = Main.Tools or script.Tools -- Prefer Main.Tools if defined, else script.Tools
+
+    print("[MCP Diagnostics] Main (script:FindFirstAncestor(\"MCPStudioPlugin\")) is: " .. tostring(Main))
+    if Main then
+        print("[MCP Diagnostics] Main.Tools is: " .. tostring(Main.Tools))
+    else
+        print("[MCP Diagnostics] Main is nil, cannot access Main.Tools.")
+    end
+    if script:FindFirstChild("Tools") then
+        print("[MCP Diagnostics] script.Tools is: " .. tostring(script.Tools) .. " (" .. script.Tools:GetFullName() .. ")")
+    else
+        print("[MCP Diagnostics] script.Tools is: nil (not found as a child of script)")
+    end
+
+    local toolsFolder = Main and Main.Tools or script.Tools -- Check Main before Main.Tools
+    print("[MCP Diagnostics] Determined toolsFolder: " .. tostring(toolsFolder) .. (toolsFolder and (" (" .. toolsFolder:GetFullName() .. ")") or ""))
 
     if toolsFolder then
-        for _, toolModuleScript in ipairs(toolsFolder:GetChildren()) do
+        print("[MCP Diagnostics] Tools folder found. Iterating children...")
+        local children = toolsFolder:GetChildren()
+        print("[MCP Diagnostics] Number of children in toolsFolder: " .. tostring(#children))
+        for i, toolModuleScript in ipairs(children) do
+            print("[MCP Diagnostics] Processing child #" .. i .. ": " .. toolModuleScript.Name .. ", ClassName: " .. toolModuleScript.ClassName)
             if toolModuleScript:IsA("ModuleScript") then
-                local success, toolFunction = pcall(require, toolModuleScript)
-                if success and type(toolFunction) == "function" then
-                    log("[MCP] Loaded tool: " .. toolModuleScript.Name)
-                    toolModules[toolModuleScript.Name] = toolFunction
+                print("[MCP Diagnostics] Attempting to require ModuleScript: " .. toolModuleScript.Name)
+                local success, toolFunctionOrError = pcall(require, toolModuleScript)
+                if success and type(toolFunctionOrError) == "function" then
+                    print("[MCP Diagnostics] Successfully loaded tool: " .. toolModuleScript.Name)
+                    toolModules[toolModuleScript.Name] = toolFunctionOrError
+                elseif success then
+                    print("[MCP Diagnostics] Error loading tool " .. toolModuleScript.Name .. ": require succeeded but returned type " .. type(toolFunctionOrError) .. " instead of function.")
                 else
-                    log("[MCP] Error loading tool " .. toolModuleScript.Name .. ": " .. tostring(toolFunction))
+                    print("[MCP Diagnostics] Error loading tool " .. toolModuleScript.Name .. " (pcall failed): " .. tostring(toolFunctionOrError))
                 end
+            else
+                print("[MCP Diagnostics] Child " .. toolModuleScript.Name .. " is not a ModuleScript. Skipping.")
             end
         end
     else
-        log("[MCP] Error: Tools folder not found.")
+        print("[MCP Diagnostics] Error: Tools folder not found or resolved to nil.")
     end
+
+    local loadedToolNames = {}
+    for name, _ in pairs(toolModules) do
+        table.insert(loadedToolNames, name)
+    end
+    print("[MCP Diagnostics] Finished loading tools. Loaded tool names: {" .. table.concat(loadedToolNames, ", ") .. "}")
+
     return toolModules
 end
 
 local toolFunctions = loadToolFunctions()
 -- For debugging, print loaded tools
-for name, _ in pairs(toolFunctions) do
-    log("[MCP] Registered tool function: " .. name)
-end
+-- for name, _ in pairs(toolFunctions) do
+-- log("[MCP] Registered tool function: " .. name) -- Keep this commented or use print for consistency
+-- end
+-- for name, _ in pairs(toolFunctions) do
+-- log("[MCP] Registered tool function: " .. name) -- Keep this commented or use print for consistency
+-- end
 
 local function connectWebSocket()
 	local client = MockWebSocketService:CreateClient(URI)
@@ -96,14 +131,53 @@ local function connectWebSocket()
 
 				-- responseCallToolResultTable is the Lua table like {content={{type="text",...}}, isError=...}
 				-- This is what needs to be JSON encoded and sent as the 'response' field of the body to /response
+				print("[MCP Diagnostics] sendResponseOnce: Attempting to encode responseCallToolResultTable. Content:")
+				-- Safe deep print of the table
+				local function safeDeepPrint(tbl, indent)
+					indent = indent or 0
+					if type(tbl) ~= "table" then
+						print(string.rep("  ", indent) .. "- " .. tostring(tbl))
+						return
+					end
+					if indent > 4 then -- Prevent excessively deep recursion for huge tables
+						 print(string.rep("  ", indent) .. "- Table (depth limit reached)")
+						return
+					end
+					for k, v in pairs(tbl) do
+						print(string.rep("  ", indent) .. tostring(k) .. ":")
+						safeDeepPrint(v, indent + 1)
+					end
+				end
+				safeDeepPrint(responseCallToolResultTable)
+				print("[MCP Diagnostics] sendResponseOnce: End of responseCallToolResultTable content.")
 
-				local jsonEncodedCallToolResultStr, encodeErr = pcall(HttpService.JSONEncode, HttpService, responseCallToolResultTable)
-				if encodeErr then -- If encoding the CallToolResult-like table itself fails
-					local errorDetail = "Plugin internal error: Failed to JSON encode the tool's result structure: " .. tostring(jsonEncodedCallToolResultStr) -- jsonEncodedCallToolResultStr is error here
-					log("[MCP] CRITICAL: " .. errorDetail)
-					-- Create a valid CallToolResult structure representing this encoding error
+				local successEncode, resultOrError = pcall(HttpService.JSONEncode, HttpService, responseCallToolResultTable)
+				local jsonEncodedCallToolResultStr
+
+				if not successEncode then
+					local errorMessageFromEncode = tostring(resultOrError) -- This is the error from JSONEncode
+					print("[MCP Diagnostics] sendResponseOnce: First JSONEncode pcall FAILED. Error: " .. errorMessageFromEncode)
+
+					local errorDetail = "Plugin internal error: Failed to JSON encode the tool's result structure: " .. errorMessageFromEncode
+					-- log("[MCP] CRITICAL: " .. errorDetail) -- Keep conditional log or change to print
+					print("[MCP CRITICAL] " .. errorDetail) -- Make it unconditional for now
+
 					local errorCtResultTable = ToolHelpers.FormatErrorResult(errorDetail)
-					jsonEncodedCallToolResultStr = HttpService:JSONEncode(errorCtResultTable) -- Re-encode the error CallToolResult
+					print("[MCP Diagnostics] sendResponseOnce: Attempting to encode fallback errorCtResultTable. Content:")
+					safeDeepPrint(errorCtResultTable)
+					print("[MCP Diagnostics] sendResponseOnce: End of fallback errorCtResultTable content.")
+
+					local finalErrorJsonSuccess, finalErrorJsonOrMsg = pcall(HttpService.JSONEncode, HttpService, errorCtResultTable)
+					if finalErrorJsonSuccess then
+						jsonEncodedCallToolResultStr = finalErrorJsonOrMsg
+					else
+						local fallbackEncodeErrorMessage = tostring(finalErrorJsonOrMsg)
+						print("[MCP CRITICAL] Failed to encode even the fallback error message! Fallback Encode Error: " .. fallbackEncodeErrorMessage)
+						jsonEncodedCallToolResultStr = "{\"content\":[{\"type\":\"text\",\"text\":\"Plugin critical error: Failed to construct final JSON response. Fallback encode error: " .. HttpService:JSONEncode(fallbackEncodeErrorMessage) .. "\"}],\"isError\":true}"
+					end
+				else
+					print("[MCP Diagnostics] sendResponseOnce: First JSONEncode pcall SUCCEEDED.")
+					jsonEncodedCallToolResultStr = resultOrError
 				end
 
 				local payloadForRust = { -- This is the body for the POST to the /response endpoint
