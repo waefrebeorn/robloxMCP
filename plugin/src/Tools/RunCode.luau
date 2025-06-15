@@ -1,3 +1,4 @@
+
 -- Simplified RunCode.luau - Step 2 of reintroducing functionality (Table Serialization)
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
@@ -105,6 +106,7 @@ local function handleRunCode(args)
         -- Use the reintroduced toStrTable
         local strResults = toStrTable(packedArgs)
         table.insert(output_parts, tag .. " " .. table.concat(strResults, "\t") .. "\n")
+
     end
 
     local pcall_success, execution_result = pcall(function()
@@ -113,11 +115,13 @@ local function handleRunCode(args)
             an_error_occurred_in_command = true
             addToOutput("[LOADSTRING ERROR]", load_err or "Unknown loadstring error")
             return
+
         end
 
         local chunkfenv = getfenv(func)
         local oldPrint = chunkfenv.print or print
         chunkfenv.print = function(...)
+
             if oldPrint then oldPrint(...) end
             addToOutput("[OUTPUT]", ...)
         end
@@ -152,11 +156,14 @@ local function handleRunCode(args)
         end
     end)
 
+
     local final_output_str = table.concat(output_parts, "")
 
     if not pcall_success then
+
         final_output_str = final_output_str .. "[CRITICAL TOOL ERROR] " .. tostring(execution_result) .. "\n"
         an_error_occurred_in_command = true
+
         return ToolHelpers.FormatErrorResult(final_output_str)
     elseif an_error_occurred_in_command then
         return ToolHelpers.FormatErrorResult(final_output_str)
@@ -164,9 +171,11 @@ local function handleRunCode(args)
         if final_output_str == "" then
             final_output_str = "Command executed successfully with no output or return values."
         end
+
         -- The structure of FormatSuccessResult might need adjustment if it expects specific fields
         -- For now, assuming it can take a generic table with an 'output' field.
         return ToolHelpers.FormatSuccessResult({ output = final_output_str })
+
     end
 end
 
