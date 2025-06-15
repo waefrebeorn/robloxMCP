@@ -4,6 +4,7 @@ local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 -- HttpService remains removed
 
+
 --[[
 
 local function getTableType(arg)
@@ -115,6 +116,14 @@ local function handleRunCode(args)
     end
 
 
+
+-- Main function from previous step
+local function handleRunCode(args)
+    if type(args.command) ~= "string" then
+        return ToolHelpers.FormatErrorResult("Error: RunCode command argument is missing or not a string.")
+    end
+
+
     local command = args.command
     local output_parts = {}
     local an_error_occurred_in_command = false
@@ -131,6 +140,7 @@ local function handleRunCode(args)
         local strResults = toStrTable(packedArgs)
         table.insert(output_parts, tag .. " " .. table.concat(strResults, "\t") .. "\n")
     end
+
 
     local pcall_success, execution_result = pcall(function()
         local func, load_err = loadstring(command)
