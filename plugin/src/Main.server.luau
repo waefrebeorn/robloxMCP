@@ -135,26 +135,53 @@ local function connectWebSocket()
 
 				-- responseCallToolResultTable is the Lua table like {content={{type="text",...}}, isError=...}
 				-- This is what needs to be JSON encoded and sent as the 'response' field of the body to /response
+				print("[MCP Diagnostics] sendResponseOnce: Attempting to encode responseCallToolResultTable. Content:")
+				-- Safe deep print of the table
+				local function safeDeepPrint(tbl, indent)
+					indent = indent or 0
+					if type(tbl) ~= "table" then
+						print(string.rep("  ", indent) .. "- " .. tostring(tbl))
+						return
+					end
+					if indent > 4 then -- Prevent excessively deep recursion for huge tables
+						 print(string.rep("  ", indent) .. "- Table (depth limit reached)")
+						return
+					end
+					for k, v in pairs(tbl) do
+						print(string.rep("  ", indent) .. tostring(k) .. ":")
+						safeDeepPrint(v, indent + 1)
+					end
+				end
+				safeDeepPrint(responseCallToolResultTable)
+				print("[MCP Diagnostics] sendResponseOnce: End of responseCallToolResultTable content.")
 
 				local successEncode, resultOrError = pcall(HttpService.JSONEncode, HttpService, responseCallToolResultTable)
 				local jsonEncodedCallToolResultStr
 
 				if not successEncode then
-					-- resultOrError is the error message from the failed JSONEncode
-					local errorDetail = "Plugin internal error: Failed to JSON encode the tool's result structure: " .. tostring(resultOrError)
-					log("[MCP] CRITICAL: " .. errorDetail)
+					local errorMessageFromEncode = tostring(resultOrError) -- This is the error from JSONEncode
+					print("[MCP Diagnostics] sendResponseOnce: First JSONEncode pcall FAILED. Error: " .. errorMessageFromEncode)
+
+					local errorDetail = "Plugin internal error: Failed to JSON encode the tool's result structure: " .. errorMessageFromEncode
+					-- log("[MCP] CRITICAL: " .. errorDetail) -- Keep conditional log or change to print
+					print("[MCP CRITICAL] " .. errorDetail) -- Make it unconditional for now
+
 					local errorCtResultTable = ToolHelpers.FormatErrorResult(errorDetail)
-					-- Safely encode the new error table (this should ideally not fail if FormatErrorResult is simple)
-					local finalErrorJsonSuccess, finalErrorJson = pcall(HttpService.JSONEncode, HttpService, errorCtResultTable)
+					print("[MCP Diagnostics] sendResponseOnce: Attempting to encode fallback errorCtResultTable. Content:")
+					safeDeepPrint(errorCtResultTable)
+					print("[MCP Diagnostics] sendResponseOnce: End of fallback errorCtResultTable content.")
+
+					local finalErrorJsonSuccess, finalErrorJsonOrMsg = pcall(HttpService.JSONEncode, HttpService, errorCtResultTable)
 					if finalErrorJsonSuccess then
-						jsonEncodedCallToolResultStr = finalErrorJson
+						jsonEncodedCallToolResultStr = finalErrorJsonOrMsg
 					else
-						-- If even encoding the fallback error fails, create a very basic JSON string manually
-						log("[MCP] CRITICAL: Failed to encode even the fallback error message! " .. tostring(finalErrorJson))
-						jsonEncodedCallToolResultStr = "{\"content\":[{\"type\":\"text\",\"text\":\"Plugin critical error: Failed to construct JSON response.\"}],\"isError\":true}"
+						local fallbackEncodeErrorMessage = tostring(finalErrorJsonOrMsg)
+						print("[MCP CRITICAL] Failed to encode even the fallback error message! Fallback Encode Error: " .. fallbackEncodeErrorMessage)
+						jsonEncodedCallToolResultStr = "{\"content\":[{\"type\":\"text\",\"text\":\"Plugin critical error: Failed to construct final JSON response. Fallback encode error: " .. HttpService:JSONEncode(fallbackEncodeErrorMessage) .. "\"}],\"isError\":true}"
 					end
 				else
-					-- resultOrError is the successfully encoded JSON string
+					print("[MCP Diagnostics] sendResponseOnce: First JSONEncode pcall SUCCEEDED.")
+
 					jsonEncodedCallToolResultStr = resultOrError
 				end
 
