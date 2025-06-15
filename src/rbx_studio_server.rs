@@ -299,9 +299,23 @@ impl RBXStudioServer {
         // Apply tool execution timeout waiting for the plugin's response via StateManager.
         match tokio::time::timeout(TOOL_EXECUTION_TIMEOUT, response_rx).await {
             Ok(Ok(Ok(response_string))) => { // Timeout didn't occur, oneshot received, Result is Ok(String)
-                debug!(target: "mcp_server::generic_tool_run", request_id = %request_id, response_len = response_string.len(), "Received successful response from plugin.");
-                Ok(CallToolResult::success(vec![Content::text(response_string)])) // Ensure Content is known
-
+                debug!(target: "mcp_server::generic_tool_run", request_id = %request_id, "Received successful response string from plugin: {}", response_string);
+                // Attempt to deserialize response_string into a CallToolResult
+                match rmcp::serde_json::from_str::<CallToolResult>(&response_string) {
+                    Ok(call_tool_result) => {
+                        info!(target: "mcp_server::generic_tool_run", request_id = %request_id, "Successfully deserialized plugin response into CallToolResult.");
+                        Ok(call_tool_result) // Return the deserialized CallToolResult
+                    }
+                    Err(e) => {
+                        error!(target: "mcp_server::generic_tool_run", request_id = %request_id, error = %e, "Failed to deserialize plugin response string into CallToolResult: {}", response_string);
+                        // Construct an error CallToolResult indicating parsing failure
+                        Err(McpError::new(
+                            rmcp::model::ErrorCode::PARSE_ERROR, // Or INTERNAL_ERROR if more appropriate
+                            format!("Failed to parse plugin response JSON: {}. Raw response: {}", e, response_string),
+                            None
+                        ))
+                    }
+                }
             }
             Ok(Ok(Err(mcp_error_from_plugin))) => { // Timeout didn't occur, oneshot received, Result is Err(McpError)
                 error!(target: "mcp_server::generic_tool_run", request_id = %request_id, error = ?mcp_error_from_plugin, "Received error response from plugin.");
@@ -335,39 +349,89 @@ impl RBXStudioServer {
 #[tool(tool_box)]
 impl ServerHandler for RBXStudioServer {
     fn get_info(&self) -> ServerInfo {
-        let mut base_capabilities = ServerCapabilities::builder().enable_tools().build();
-        if let Some(tools_caps) = base_capabilities.tools.as_mut() {
-            tools_caps.list_changed = Some(true); // Explicitly set list_changed
-        } else {
-            // This case should ideally not happen if enable_tools() guarantees Some(ToolsCapability::default())
-            base_capabilities.tools = Some(ToolsCapability { list_changed: Some(true) });
-        }
+        let mut tools_list = Vec::new();
 
-        // Access discovered_luau_tools from self
-        for (tool_name, _) in self.discovered_luau_tools.iter() {
-            tracing::info!("Discovered Luau tool (from RBXStudioServer state, not added to capabilities.tools due to API limitations): {}", tool_name);
+        // Define execute_discovered_luau_tool
+        let exec_tool_params_props = {
+            let mut props = rmcp::serde_json::Map::new();
+            props.insert("tool_name".to_string(), rmcp::serde_json::json!({"type": "string", "description": "Name of the Luau tool file (without .luau extension) to execute."}));
+            props.insert("tool_arguments_str".to_string(), rmcp::serde_json::json!({"type": "string", "description": "A JSON string representing arguments for the Luau tool."}));
+            props
+        };
+        let exec_tool_params = rmcp::model::Parameters {
+            r#type: "object".to_string(),
+            properties: exec_tool_params_props,
+            required: vec!["tool_name".to_string(), "tool_arguments_str".to_string()],
+        };
+        let exec_tool = rmcp::model::Tool {
+            name: "execute_discovered_luau_tool".to_string(),
+            description: Some(format!(
+                "Executes a specific Luau tool script by its name. Available Luau tools: [{}]",
+                self.discovered_luau_tools.keys().cloned().collect::<Vec<String>>().join(", ")
+            )),
+            inputs: Some(rmcp::model::Schema::Object(exec_tool_params)),
+            outputs: None,
+        };
+        tools_list.push(exec_tool);
 
-        }
+        // Define run_command
+        let run_cmd_params_props = {
+            let mut props = rmcp::serde_json::Map::new();
+            props.insert("command".to_string(), rmcp::serde_json::json!({"type": "string", "description": "The Luau code to execute."}));
+            props
+        };
+        let run_cmd_params = rmcp::model::Parameters {
+            r#type: "object".to_string(),
+            properties: run_cmd_params_props,
+            required: vec!["command".to_string()],
+        };
+        let run_cmd_tool = rmcp::model::Tool {
+            name: "run_command".to_string(),
+            description: Some("Runs a raw Luau command string in Roblox Studio.".to_string()),
+            inputs: Some(rmcp::model::Schema::Object(run_cmd_params)),
+            outputs: None,
+        };
+        tools_list.push(run_cmd_tool);
+
+        // Define insert_model
+        let insert_model_params_props = {
+            let mut props = rmcp::serde_json::Map::new();
+            props.insert("query".to_string(), rmcp::serde_json::json!({"type": "string", "description": "Query to search for the model."}));
+            props
+        };
+        let insert_model_params = rmcp::model::Parameters {
+            r#type: "object".to_string(),
+            properties: insert_model_params_props,
+            required: vec!["query".to_string()],
+        };
+        let insert_model_tool = rmcp::model::Tool {
+            name: "insert_model".to_string(),
+            description: Some("Inserts a model from the Roblox marketplace into the workspace.".to_string()),
+            inputs: Some(rmcp::model::Schema::Object(insert_model_params)),
+            outputs: None,
+        };
+        tools_list.push(insert_model_tool);
+
+        let mut capabilities = ServerCapabilities::default();
+        capabilities.tools = Some(ToolsCapability {
+            tools: tools_list,
+            list_changed: Some(true),
+            // No other tool capabilities like 'definition_provider' are being set here.
+        });
+
         if self.discovered_luau_tools.is_empty() {
-            tracing::warn!("No Luau tools found in RBXStudioServer state during get_info.");
-
+            tracing::warn!("No Luau tools found in RBXStudioServer state during get_info. 'execute_discovered_luau_tool' might not list any specific scripts.");
         }
-
-
-
-
-        // base_capabilities.tools will remain as initialized by ServerCapabilities::builder().enable_tools().build();
-        // and potentially modified by setting list_changed.
-        // Luau tools are not merged back.
 
         ServerInfo {
-            protocol_version: ProtocolVersion::V_2025_03_26,
-
-            server_info: Implementation::from_build_env(),
+            protocol_version: ProtocolVersion::V_2025_03_26, // Ensure ProtocolVersion is in scope
+            server_info: Implementation::from_build_env(),   // Ensure Implementation is in scope
             instructions: Some(
-                "Use 'execute_discovered_luau_tool' to run Luau scripts by name (e.g., CreateInstance, RunCode). Also available: run_command (direct Luau string), insert_model.".to_string()
+                format!("Use 'execute_discovered_luau_tool' to run discovered Luau scripts by name. Discovered Luau tools: [{}]. Also available: run_command (direct Luau string), insert_model.",
+                    self.discovered_luau_tools.keys().cloned().collect::<Vec<String>>().join(", ")
+                )
             ),
-            capabilities: base_capabilities, // Return the modified base_capabilities
+            capabilities,
         }
     }
 }

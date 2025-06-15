@@ -90,48 +90,46 @@ local function connectWebSocket()
 		end
 
 		local responseSent = false
-		local function sendResponseOnce(responseContent, isError, originalToolNameForResponse)
+		local function sendResponseOnce(responseCallToolResultTable, originalToolNameForResponse) -- Removed isError param as it's in the table
 			if not responseSent then
 				responseSent = true
-				local responseTable = {
-					id = id, -- This is the MCP Transaction ID
-					result = {
-                        name = originalToolNameForResponse, -- This should be what Gemini called
-                        response = responseContent
-                    }
-				}
-                if isError then
-                    -- Ensure the error response content is also a JSON string if it's not already
-                    if type(responseContent) ~= "string" then
-                         responseContent = HttpService:JSONEncode({error = {message = tostring(responseContent)}})
-                    end
-                    -- If ToolHelpers.FormatErrorResult already JSON encodes, this might double-encode.
-                    -- For now, assume responseContent for error is a string (potentially JSON string from ToolHelpers).
-                    responseTable.result.response = responseContent
-                end
 
-				local finalResponseJson, encodeErr = pcall(HttpService.JSONEncode, HttpService, responseTable)
-				if not encodeErr then
-					log("[MCP] Sending response: " .. finalResponseJson)
-					client:Send(finalResponseJson)
+				-- responseCallToolResultTable is the Lua table like {content={{type="text",...}}, isError=...}
+				-- This is what needs to be JSON encoded and sent as the 'response' field of the body to /response
+
+				local jsonEncodedCallToolResultStr, encodeErr = pcall(HttpService.JSONEncode, HttpService, responseCallToolResultTable)
+				if encodeErr then -- If encoding the CallToolResult-like table itself fails
+					local errorDetail = "Plugin internal error: Failed to JSON encode the tool's result structure: " .. tostring(jsonEncodedCallToolResultStr) -- jsonEncodedCallToolResultStr is error here
+					log("[MCP] CRITICAL: " .. errorDetail)
+					-- Create a valid CallToolResult structure representing this encoding error
+					local errorCtResultTable = ToolHelpers.FormatErrorResult(errorDetail)
+					jsonEncodedCallToolResultStr = HttpService:JSONEncode(errorCtResultTable) -- Re-encode the error CallToolResult
+				end
+
+				local payloadForRust = { -- This is the body for the POST to the /response endpoint
+					id = id, -- MCP Transaction ID, captured from the incoming message
+					response = jsonEncodedCallToolResultStr -- This is the JSON string of the CallToolResult-like table
+				}
+
+				local finalJsonToSend, finalEncodeErr = pcall(HttpService.JSONEncode, HttpService, payloadForRust)
+
+				if not finalEncodeErr then
+					log("[MCP] Sending response: " .. finalJsonToSend)
+					client:Send(finalJsonToSend)
 				else
-					log("[MCP] CRITICAL: Failed to encode final response: " .. tostring(encodeErr) .. " for original body: " .. message)
-                    -- Fallback for critical encoding failure
-                    local errorResponse = {
-                        id = id,
-                        result = {
-                            name = originalToolNameForResponse or "unknown_tool",
-                            response = HttpService:JSONEncode({error = {message = "Server failed to encode response."}})
-                        }
-                    }
-                    client:Send(HttpService:JSONEncode(errorResponse))
+					log("[MCP] CRITICAL: Failed to encode the final payload for /response: " .. tostring(finalJsonToSend) .. " for original message id: " .. id)
+					-- Fallback for critical double encoding failure (extremely unlikely if first encode worked)
+					local criticalErrorCtResult = ToolHelpers.FormatErrorResult("Plugin critical error: Failed to construct final JSON response.")
+					local criticalErrorJson = HttpService:JSONEncode(criticalErrorCtResult)
+					client:Send(HttpService:JSONEncode({ id = id, response = criticalErrorJson }))
 				end
 			end
 		end
 
 		local taskArgs = body.args
 		if not taskArgs or type(taskArgs) ~= "table" then
-			sendResponseOnce("Task arguments (body.args) are missing or not a table.", true, "unknown_task")
+			local errorResultTable = ToolHelpers.FormatErrorResult("Task arguments (body.args) are missing or not a table.")
+			sendResponseOnce(errorResultTable, "unknown_task")
 			return
 		end
 
@@ -145,11 +143,13 @@ local function connectWebSocket()
 			local argumentsJson = taskArgs.ExecuteLuauByName.arguments_json
 
 			if type(toolNameForExecution) ~= "string" or string.len(toolNameForExecution) == 0 then
-				sendResponseOnce("ExecuteLuauByName: 'tool_name' is missing or invalid.", true, toolNameForExecution or "ExecuteLuauByName")
+				local errorResultTable = ToolHelpers.FormatErrorResult("ExecuteLuauByName: 'tool_name' is missing or invalid.")
+				sendResponseOnce(errorResultTable, toolNameForExecution or "ExecuteLuauByName")
 				return
 			end
 			if type(argumentsJson) ~= "string" then
-				sendResponseOnce("ExecuteLuauByName: 'arguments_json' is missing or not a string.", true, toolNameForExecution)
+				local errorResultTable = ToolHelpers.FormatErrorResult("ExecuteLuauByName: 'arguments_json' is missing or not a string.")
+				sendResponseOnce(errorResultTable, toolNameForExecution)
 				return
 			end
 
@@ -164,7 +164,8 @@ local function connectWebSocket()
 				end
 			else
 				log("[MCP] Error: Failed to JSONDecode arguments_json for tool " .. toolNameForExecution .. ": " .. tostring(decodedJsonArgs)) -- decodedJsonArgs is error msg here
-				sendResponseOnce("ExecuteLuauByName: Failed to decode 'arguments_json': " .. tostring(decodedJsonArgs), true, toolNameForExecution)
+				local errorResultTable = ToolHelpers.FormatErrorResult("ExecuteLuauByName: Failed to decode 'arguments_json': " .. tostring(decodedJsonArgs))
+				sendResponseOnce(errorResultTable, toolNameForExecution)
 				return
 			end
 			log("[MCP] Task Type: ExecuteLuauByName for tool: " .. toolNameForExecution)
@@ -175,7 +176,8 @@ local function connectWebSocket()
             originalToolNameToRespondWith = "run_command" -- Gemini called "run_command" (or the Python agent mapped it)
 			toolInputArgs = { command = taskArgs.RunCommand.command }
 			if type(toolInputArgs.command) ~= "string" then
-				sendResponseOnce("RunCommand: 'command' is missing or not a string.", true, originalToolNameToRespondWith)
+				local errorResultTable = ToolHelpers.FormatErrorResult("RunCommand: 'command' is missing or not a string.")
+				sendResponseOnce(errorResultTable, originalToolNameToRespondWith)
 				return
 			end
 			log("[MCP] Task Type: RunCommand, mapped to Luau tool: " .. toolNameForExecution)
@@ -186,24 +188,28 @@ local function connectWebSocket()
             originalToolNameToRespondWith = "insert_model" -- Gemini called "insert_model"
 			toolInputArgs = { query = taskArgs.InsertModel.query }
 			if type(toolInputArgs.query) ~= "string" then
-				sendResponseOnce("InsertModel: 'query' is missing or not a string.", true, originalToolNameToRespondWith)
+				local errorResultTable = ToolHelpers.FormatErrorResult("InsertModel: 'query' is missing or not a string.")
+				sendResponseOnce(errorResultTable, originalToolNameToRespondWith)
 				return
 			end
 			log("[MCP] Task Type: InsertModel, mapped to Luau tool: " .. toolNameForExecution)
 		else
 			log("[MCP] Error: Unrecognized task structure in body.args: ", taskArgs)
-			sendResponseOnce("Unrecognized task structure in body.args.", true, "unknown_task")
+			local errorResultTable = ToolHelpers.FormatErrorResult("Unrecognized task structure in body.args.")
+			sendResponseOnce(errorResultTable, "unknown_task")
 			return
 		end
 
 		if not toolNameForExecution then
-			sendResponseOnce("Could not determine tool name for execution from task arguments.", true, originalToolNameToRespondWith or "unknown_tool")
+			local errorResultTable = ToolHelpers.FormatErrorResult("Could not determine tool name for execution from task arguments.")
+			sendResponseOnce(errorResultTable, originalToolNameToRespondWith or "unknown_tool")
 			return
 		end
 
         local toolFunc = toolFunctions[toolNameForExecution]
 		if not toolFunc then
-			sendResponseOnce("Tool function not found in toolFunctions map: " .. toolNameForExecution, true, originalToolNameToRespondWith)
+			local errorResultTable = ToolHelpers.FormatErrorResult("Tool function not found in toolFunctions map: " .. toolNameForExecution)
+			sendResponseOnce(errorResultTable, originalToolNameToRespondWith)
 			return
 		end
 
@@ -211,15 +217,17 @@ local function connectWebSocket()
 		local success, result = pcall(toolFunc, toolInputArgs or {})
 
 		if success then
-			if type(result) == "table" and result.content then
-				sendResponseOnce(result.content, result.isError, originalToolNameToRespondWith)
+			if type(result) == "table" and result.content then -- Assuming 'result' is the CallToolResult-like table
+				sendResponseOnce(result, originalToolNameToRespondWith)
 			else
 				log("[MCP] Error: Tool " .. toolNameForExecution .. " returned unexpected result format: " .. tostring(result))
-				sendResponseOnce("Tool " .. toolNameForExecution .. " returned an unexpected result format.", true, originalToolNameToRespondWith)
+				local errorResultTable = ToolHelpers.FormatErrorResult("Tool " .. toolNameForExecution .. " returned an unexpected result format.")
+				sendResponseOnce(errorResultTable, originalToolNameToRespondWith)
 			end
 		else
 			log("[MCP] Error executing tool " .. toolNameForExecution .. ": " .. tostring(result))
-			sendResponseOnce("Internal error executing tool " .. toolNameForExecution .. ": " .. tostring(result), true, originalToolNameToRespondWith)
+			local errorResultTable = ToolHelpers.FormatErrorResult("Internal error executing tool " .. toolNameForExecution .. ": " .. tostring(result))
+			sendResponseOnce(errorResultTable, originalToolNameToRespondWith)
 		end
 
 		if recording then
