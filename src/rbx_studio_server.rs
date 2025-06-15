@@ -192,7 +192,6 @@ impl RBXStudioServer {
     ) -> Result<tokio::sync::MutexGuard<'a, AppState>, McpError> {
         info!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "Attempting to acquire state lock");
 
-
         const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 
         // The 5-second timeout is a relatively long duration for a mutex lock attempt.
@@ -231,7 +230,6 @@ impl RBXStudioServer {
         }
     }
 
-
     // Helper function to queue a command and prepare for its response.
     // This encapsulates the logic of modifying the shared state (process_queue, output_map).
     async fn queue_command_and_get_trigger(
@@ -254,7 +252,6 @@ impl RBXStudioServer {
         // state_guard is dropped here, releasing the lock.
     }
 
-
     async fn generic_tool_run(&self, args_values: ToolArgumentValues) -> Result<CallToolResult, McpError> {
          let (tool_arguments_with_id, request_id) = ToolArguments::new_with_id(args_values); // Renamed command_with_wrapper_id and id
 
@@ -271,6 +268,7 @@ impl RBXStudioServer {
          )
          .await?;
          info!(target: "mcp_server::generic_tool_run", request_id = %request_id, "Released state lock after queuing operations");
+
 
          info!(target: "mcp_server::generic_tool_run", request_id = %request_id, "Attempting to send trigger");
          let send_result = trigger.send(());
@@ -290,6 +288,7 @@ impl RBXStudioServer {
         )
         .await
     }
+
 
     // Helper function to wait for, process, and clean up after a plugin response.
     async fn wait_for_plugin_response(
