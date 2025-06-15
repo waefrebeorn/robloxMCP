@@ -191,28 +191,40 @@ impl RBXStudioServer {
         request_id: Uuid, // Added for logging context
     ) -> Result<tokio::sync::MutexGuard<'a, AppState>, McpError> {
         info!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "Attempting to acquire state lock");
+
+
+        const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
+
         // The 5-second timeout is a relatively long duration for a mutex lock attempt.
         // It serves as a crucial safeguard against potential deadlocks in the AppState handling.
         // If typical lock contention were expected to be high, this value might be too long,
         // potentially masking performance issues. However, for preventing indefinite hangs
         // due to programming errors leading to deadlocks, it's a last resort.
         // Operations holding this lock should ideally be very short.
-        match tokio::time::timeout(std::time::Duration::from_secs(5), state_mutex.lock()).await {
-            Ok(Ok(guard)) => {
-                info!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "Acquired state lock");
-                Ok(guard)
+
+        match tokio::time::timeout(LOCK_TIMEOUT, state_mutex.lock()).await {
+            Ok(lock_result) => { // Timeout did not occur, lock_result is Result<MutexGuard, PoisonError>
+                match lock_result {
+                    Ok(guard) => {
+                        // Successfully acquired the lock
+                        info!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "Acquired state lock.");
+                        Ok(guard)
+                    }
+                    Err(poisoned_error) => {
+                        // Mutex was poisoned
+                        error!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "AppState mutex is poisoned! Error: {}", poisoned_error.to_string());
+                        Err(McpError::internal_error(
+                            format!("Server state is corrupted (mutex poisoned: {})", poisoned_error.to_string()),
+                            None,
+                        ))
+                    }
+                }
             }
-            Ok(Err(poisoned_error)) => {
-                error!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "AppState mutex is poisoned! Error: {}", poisoned_error.to_string());
+            Err(_timeout_elapsed) => { // Timeout occurred
+                error!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "Timeout acquiring AppState lock after {} seconds!", LOCK_TIMEOUT.as_secs());
                 Err(McpError::internal_error(
-                    format!("Server state is corrupted (mutex poisoned: {})", poisoned_error.to_string()),
-                    None,
-                ))
-            }
-            Err(_timeout_elapsed) => {
-                error!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "Timeout acquiring AppState lock after 5 seconds!");
-                Err(McpError::internal_error(
-                    "Server busy or deadlocked (timeout acquiring state lock).",
+                    format!("Server busy or deadlocked (timeout acquiring AppState lock after {} seconds).", LOCK_TIMEOUT.as_secs()),
+
                     None,
                 ))
             }
@@ -260,12 +272,13 @@ impl RBXStudioServer {
 
          info!(target: "mcp_server::generic_tool_run", request_id = %request_id, "Attempting to send trigger");
          let send_result = trigger.send(());
-         info!(target: "mcp_server::generic_tool_run", request_id = %id, send_result = ?send_result, "Trigger send attempt completed");
+         info!(target: "mcp_server::generic_tool_run", request_id = %request_id, send_result = ?send_result, "Trigger send attempt completed");
 
 
          send_result.map_err(|e| McpError::internal_error(format!("Unable to trigger send for plugin: {e}"), None))?;
 
          info!(target: "mcp_server::generic_tool_run", request_id = %request_id, "Trigger successfully sent");
+
 
         // Wait for and process the plugin's response.
         Self::wait_for_plugin_response(
@@ -303,6 +316,7 @@ impl RBXStudioServer {
             state_guard.output_map.remove(&request_id);
             info!(target: "mcp_server::wait_for_plugin_response", request_id = %request_id, "Removed request ID from output_map");
         }
+
 
         // Process the plugin response and return the MCP CallToolResult.
         match plugin_response_result {
@@ -478,91 +492,84 @@ pub async fn response_handler(
             Ok((StatusCode::NO_CONTENT).into_response())
         }
     }
+
  }
 
- pub async fn proxy_handler(
-     State(state): State<PackedState>,
-     Json(command_with_id): Json<ToolArguments>,
- ) -> Result<impl IntoResponse, StatusCode> {
-     let id = command_with_id.id.ok_or_else(|| {
-         error!(target: "mcp_server::proxy_handler", args = ?command_with_id.args, "Proxy command received with no ID. Request is malformed.");
-         StatusCode::BAD_REQUEST
-     })?;
-     debug!(target: "mcp_server::proxy_handler", request_id = %id, args = ?command_with_id.args, "Received valid request to proxy.");
+pub async fn proxy_handler(
+    State(state): State<PackedState>,
+    Json(command_with_id): Json<ToolArguments>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let id = command_with_id.id.ok_or_else(|| {
+        error!(target: "mcp_server::proxy_handler", args = ?command_with_id.args, "Proxy command received with no ID. Request is malformed.");
+        StatusCode::BAD_REQUEST
+    })?;
+    debug!(target: "mcp_server::proxy_handler", request_id = %id, args = ?command_with_id.args, "Received valid request to proxy.");
 
-    // Channel for this specific request's response
-     let (tx, mut rx) = mpsc::unbounded_channel();
-     {
-        // Note: state.lock().await can panic if the mutex is poisoned.
-        // Consider acquire_state_lock and error conversion if this becomes an issue.
-         let mut app_state = state.lock().await;
-         app_state.process_queue.push_back(command_with_id);
-         app_state.output_map.insert(id, tx);
-         if let Err(e) = app_state.trigger.send(()) {
-            // This implies the receiver of the trigger (e.g., request_handler or dud_proxy_loop) has been dropped.
-            // This is a significant server state issue, suggesting the core polling loops are not running.
-            error!(target: "mcp_server::proxy_handler", request_id = %id, error = ?e, "Critical: Failed to send trigger to notify polling loops. The task is queued but might not be processed if polling mechanisms are down.");
-            // It's a server-side issue, but the client's request is queued.
-            // Proceeding, but this server instance might be unhealthy.
-         }
-     }
+   // Channel for this specific request's response
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    {
+       // Note: state.lock().await can panic if the mutex is poisoned.
+       // Consider acquire_state_lock and error conversion if this becomes an issue.
+        let mut app_state = state.lock().await;
+        app_state.process_queue.push_back(command_with_id);
+        app_state.output_map.insert(id, tx);
+        if let Err(e) = app_state.trigger.send(()) {
+           // This implies the receiver of the trigger (e.g., request_handler or dud_proxy_loop) has been dropped.
+           // This is a significant server state issue, suggesting the core polling loops are not running.
+           error!(target: "mcp_server::proxy_handler", request_id = %id, error = ?e, "Critical: Failed to send trigger to notify polling loops. The task is queued but might not be processed if polling mechanisms are down.");
+           // It's a server-side issue, but the client's request is queued.
+           // Proceeding, but this server instance might be unhealthy.
+        }
+    }
 
-    // Wait for the result from the internal task processing logic (e.g., generic_tool_run via dud_proxy_loop)
-    // The timeout here is crucial to prevent holding client connections indefinitely.
-     match tokio::time::timeout(LONG_POLL_DURATION + Duration::from_secs(5), rx.recv()).await {
-         Ok(Some(Ok(response_str))) => {
-+            // Successfully received a response string from the internal channel.
-+            debug!(target: "mcp_server::proxy_handler", request_id = %id, "Successfully received response from internal channel for proxy request.");
-             Ok(Json(RunCommandResponse { response: response_str, id }).into_response())
-         }
-         Ok(Some(Err(mcp_err))) => {
--             error!("Error proxied from tool execution for id {}: {:?}", id, mcp_err);
--
--             Ok((StatusCode::INTERNAL_SERVER_ERROR, format!("Proxied error: {}", mcp_err.message)).into_response())
--
-+            // An McpError was explicitly sent through the channel, indicating a handled error during tool execution.
-+            error!(target: "mcp_server::proxy_handler", request_id = %id, error = ?mcp_err, "Error result successfully proxied from tool execution.");
-+            // Return a structured error to the client.
-+            let error_response = rmcp::serde_json::json!({
-+                "type": "proxied_tool_error", // Specific type for errors originating from the tool itself
-+                "message": mcp_err.to_string(), // Full error string from McpError
-+            });
-+            Ok((StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)).into_response())
-         }
-         Ok(None) => {
--             error!("Proxy: Response channel closed for id {}", id);
--             Err(StatusCode::INTERNAL_SERVER_ERROR)
-+            // The MPSC sender `tx` was dropped without a message being sent.
-+            // This usually indicates an unexpected panic or unhandled error within the task processing logic
-+            // before it could send either Ok(response_str) or Err(mcp_err).
-+            error!(target: "mcp_server::proxy_handler", request_id = %id, "Response channel closed prematurely for proxy request. This suggests an unhandled error or panic in the task processing flow.");
-+            // It's important to attempt cleanup, though the task might have already been removed if a panic unwind did so.
-+            state.lock().await.output_map.remove(&id);
-+            let error_response = rmcp::serde_json::json!({
-+                "type": "internal_server_error",
-+                "message": "The server encountered an unexpected issue while processing the tool command (response channel closed prematurely).",
-+            });
-+            // Using INTERNAL_SERVER_ERROR as this is an unexpected server-side failure.
-+            // Note: Axum requires the error type for Ok(...) to implement IntoResponse.
-+            // So we wrap the Json into Ok.
-+            Ok((StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)).into_response())
-         }
-         Err(_timeout_err) => {
--             error!("Proxy: Timeout waiting for response for id {}", id);
-+            // The client's request timed out waiting for the internal processing to complete.
-+            warn!(target: "mcp_server::proxy_handler", request_id = %id, "Timeout waiting for response from internal channel for proxy request. The tool execution may be too long or stuck.");
-+            // Crucially, remove the ID from the output_map to prevent a late response from causing issues.
-              state.lock().await.output_map.remove(&id);
--             Err(StatusCode::GATEWAY_TIMEOUT)
-+            let error_response = rmcp::serde_json::json!({
-+                "type": "gateway_timeout",
-+                "message": "The request timed out while waiting for the tool execution to complete on the server.",
-+            });
-+            // GATEWAY_TIMEOUT is appropriate as this server is acting as a gateway to the tool execution logic.
-+            Ok((StatusCode::GATEWAY_TIMEOUT, Json(error_response)).into_response())
-         }
-     }
- }
+   // Wait for the result from the internal task processing logic (e.g., generic_tool_run via dud_proxy_loop)
+   // The timeout here is crucial to prevent holding client connections indefinitely.
+    match tokio::time::timeout(LONG_POLL_DURATION + Duration::from_secs(5), rx.recv()).await {
+        Ok(Some(Ok(response_str))) => {
+           // Successfully received a response string from the internal channel.
+           debug!(target: "mcp_server::proxy_handler", request_id = %id, "Successfully received response from internal channel for proxy request.");
+           Ok(Json(RunCommandResponse { response: response_str, id }).into_response())
+       }
+       Ok(Some(Err(mcp_err))) => {
+           // An McpError was explicitly sent through the channel, indicating a handled error during tool execution.
+           error!(target: "mcp_server::proxy_handler", request_id = %id, error = ?mcp_err, "Error result successfully proxied from tool execution.");
+           // Return a structured error to the client.
+           let error_response = rmcp::serde_json::json!({
+               "type": "proxied_tool_error", // Specific type for errors originating from the tool itself
+               "message": mcp_err.to_string(), // Full error string from McpError
+           });
+           Ok((StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)).into_response())
+       }
+       Ok(None) => {
+            // The MPSC sender `tx` was dropped without a message being sent.
+           // This usually indicates an unexpected panic or unhandled error within the task processing logic
+           // before it could send either Ok(response_str) or Err(mcp_err).
+           error!(target: "mcp_server::proxy_handler", request_id = %id, "Response channel closed prematurely for proxy request. This suggests an unhandled error or panic in the task processing flow.");
+           // It's important to attempt cleanup, though the task might have already been removed if a panic unwind did so.
+           state.lock().await.output_map.remove(&id);
+           let error_response = rmcp::serde_json::json!({
+               "type": "internal_server_error",
+               "message": "The server encountered an unexpected issue while processing the tool command (response channel closed prematurely).",
+           });
+           // Using INTERNAL_SERVER_ERROR as this is an unexpected server-side failure.
+           // Note: Axum requires the error type for Ok(...) to implement IntoResponse.
+           // So we wrap the Json into Ok.
+           Ok((StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)).into_response())
+       }
+       Err(_timeout_err) => {
+            // The client's request timed out waiting for the internal processing to complete.
+           warn!(target: "mcp_server::proxy_handler", request_id = %id, "Timeout waiting for response from internal channel for proxy request. The tool execution may be too long or stuck.");
+           // Crucially, remove the ID from the output_map to prevent a late response from causing issues.
+            state.lock().await.output_map.remove(&id);
+           let error_response = rmcp::serde_json::json!({
+               "type": "gateway_timeout",
+               "message": "The request timed out while waiting for the tool execution to complete on the server.",
+           });
+            // GATEWAY_TIMEOUT is appropriate as this server is acting as a gateway to the tool execution logic.
+           Ok((StatusCode::GATEWAY_TIMEOUT, Json(error_response)).into_response())
+       }
+    }
+}
 
 // Helper function to wait for the next task from the queue or an exit signal.
 // Returns Option<ToolArguments>, where None signifies an exit condition.
