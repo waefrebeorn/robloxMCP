@@ -1,7 +1,9 @@
+
 -- Simplified RunCode.luau - Test 1: Isolate deepClone
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local HttpService = game:GetService("HttpService")
+
 
 -- Helper functions from the original script
 local function getTableType(arg)
@@ -30,7 +32,7 @@ local function serializeTable(arg)
 		end
 		return newArg
 	elseif type(arg) == "userdata" then
-		return tostring(arg) or "UNABLE_TO_SERIALIZE"
+		return tostring(arg) or "UNABLE_TO_SERIALIZE" -- Fallback for userdata
 	end
 	return arg
 end
@@ -65,6 +67,7 @@ end
 
 local function toStrTable(t: { any }): { string }
     local clonedTable = {}
+
     -- Bypassing deepClone for testing parser issue
     local cloneSuccess, result = true, t -- Bypass deepClone, work directly on t
 
@@ -72,6 +75,7 @@ local function toStrTable(t: { any }): { string }
         clonedTable = result
     else
         -- This 'else' block is effectively dead code for this test, but kept for structure.
+
         local strTableMinimal = table.create(#t)
         for i, arg_elem in ipairs(t) do
             strTableMinimal[i] = tostring(arg_elem)
@@ -90,7 +94,9 @@ local function toStrTable(t: { any }): { string }
 	return strTable
 end
 
+
 -- Main function from previous step
+
 local function handleRunCode(args)
     if type(args.command) ~= "string" then
         return ToolHelpers.FormatErrorResult("Error: RunCode command argument is missing or not a string.")
@@ -121,6 +127,7 @@ local function handleRunCode(args)
         local chunkfenv = getfenv(func)
         local oldPrint = chunkfenv.print or print
         chunkfenv.print = function(...)
+
             if oldPrint then oldPrint(...) end
             addToOutput("[OUTPUT]", ...)
         end
@@ -149,10 +156,12 @@ local function handleRunCode(args)
             addToOutput("[RUNTIME ERROR]", returned_values_from_command[1])
         else
             if #returned_values_from_command > 0 then
+
                 addToOutput("[RETURNED]", table.unpack(returned_values_from_command))
             end
         end
     end)
+
 
     local final_output_str = table.concat(output_parts, "")
 
@@ -167,6 +176,7 @@ local function handleRunCode(args)
             final_output_str = "Command executed successfully with no output or return values."
         end
         return ToolHelpers.FormatSuccessResult({ output = final_output_str })
+
     end
 end
 
