@@ -382,7 +382,7 @@ impl ServerHandler for RBXStudioServer {
                 self.discovered_luau_tools.keys().cloned().collect::<Vec<String>>().join(", ")
             ).into()),
 
-            input_schema: Some(std::sync::Arc::new(exec_tool_input_schema_map)),
+            input_schema: std::sync::Arc::new(exec_tool_input_schema_map),
             annotations: None,
 
         };
@@ -403,7 +403,8 @@ impl ServerHandler for RBXStudioServer {
         let run_cmd_tool = rmcp::model::Tool {
             name: "run_command".to_string().into(),
             description: Some("Runs a raw Luau command string in Roblox Studio.".to_string().into()),
-            input_schema: Some(std::sync::Arc::new(run_cmd_input_schema_map)),
+
+            input_schema: std::sync::Arc::new(run_cmd_input_schema_map),
             annotations: None,
 
         };
@@ -424,7 +425,8 @@ impl ServerHandler for RBXStudioServer {
         let insert_model_tool = rmcp::model::Tool {
             name: "insert_model".to_string().into(),
             description: Some("Inserts a model from the Roblox marketplace into the workspace.".to_string().into()),
-            input_schema: Some(std::sync::Arc::new(insert_model_input_schema_map)),
+
+            input_schema: std::sync::Arc::new(insert_model_input_schema_map),
             annotations: None,
 
         };
@@ -432,8 +434,10 @@ impl ServerHandler for RBXStudioServer {
 
         let mut capabilities = ServerCapabilities::default();
 
-        capabilities.tools = Some(tools_list);
-        capabilities.list_changed = Some(true); // Speculative: Add if ServerCapabilities has this field
+        capabilities.tools = Some(rmcp::model::ToolsCapability {
+            items: tools_list,
+            list_changed: Some(true),
+        });
 
 
         if self.discovered_luau_tools.is_empty() {
