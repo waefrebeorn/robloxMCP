@@ -210,31 +210,7 @@ impl StateManager {
 
         }
     }
-
-    fn handle_post_response(&mut self, task_id: Uuid, result: Result<String, McpError>) {
-        info!(target: "state_manager", task_id = %task_id, "Handling PostResponse.");
-        if let Some(response_channel_tx) = self.output_map.remove(&task_id) {
-            if response_channel_tx.send(result).is_err() {
-                warn!(target: "state_manager", task_id = %task_id, "Failed to send result to original requester; receiver was dropped (likely timed out).");
-            }
-        } else {
-            warn!(target: "state_manager", task_id = %task_id, "Received response for task_id not in output_map (already cleaned up or unknown).");
-        }
-    }
-
-    fn handle_cleanup_task_on_timeout(&mut self, task_id: Uuid) {
-        debug!(target: "state_manager", task_id = %task_id, "Handling CleanupTaskOnTimeout.");
-        if self.output_map.remove(&task_id).is_none() {
-            warn!(target: "state_manager", task_id = %task_id, "CleanupTaskOnTimeout requested for task_id not in output_map.");
-        }
-    }
 }
-
-#[derive(Clone)]
-pub struct AxumSharedState {
-    pub sm_command_tx: tokio::sync::mpsc::Sender<StateManagerCommand>,
-}
-
 
 #[derive(Clone)]
 pub struct AxumSharedState {
@@ -345,7 +321,7 @@ impl RBXStudioServer {
                     error!(target: "mcp_server::generic_tool_run", request_id = %request_id, "Failed to send CleanupTaskOnTimeout to StateManager during tool execution timeout handling.");
                 }
 
-                Err(McpError::new(rmcp::model::ErrorCode::InternalError, format!("Tool execution timed out after {}s.", TOOL_EXECUTION_TIMEOUT.as_secs()), None))
+                Err(McpError::new(rmcp::model::ErrorCode::Internal, format!("Tool execution timed out after {}s.", TOOL_EXECUTION_TIMEOUT.as_secs()), None))
 
             }
         }
@@ -465,7 +441,7 @@ pub async fn response_handler(State(axum_state): State<AxumSharedState>, Json(pa
     // If the command was sent successfully to the StateManager,
     // it's now the StateManager's job to route it.
     // response_handler's job is done for this HTTP request.
-    StatusCode::OK
+    (StatusCode::OK, Json(rmcp::serde_json::json!({"status": "success"}))).into_response()
 }
 
 // pub async fn request_handler(State(state): State<PackedState>) -> Result<impl IntoResponse, StatusCode> { // OLD
