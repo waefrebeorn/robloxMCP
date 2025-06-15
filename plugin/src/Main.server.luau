@@ -1,6 +1,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local MockWebSocketService = require(Main.MockWebSocketService)
 local Types = require(Main.Types)
+local ToolHelpers = require(Main.ToolHelpers) -- Add this line
 
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local HttpService = game:GetService("HttpService")
@@ -34,32 +35,66 @@ end
 
 -- New: Load tools into a dictionary for named dispatch
 local function loadToolFunctions()
+    print("[MCP Diagnostics] Attempting to load tool functions...")
     local toolModules = {}
-    local toolsFolder = Main.Tools or script.Tools -- Prefer Main.Tools if defined, else script.Tools
+
+    print("[MCP Diagnostics] Main (script:FindFirstAncestor(\"MCPStudioPlugin\")) is: " .. tostring(Main))
+    if Main then
+        print("[MCP Diagnostics] Main.Tools is: " .. tostring(Main.Tools))
+    else
+        print("[MCP Diagnostics] Main is nil, cannot access Main.Tools.")
+    end
+    if script:FindFirstChild("Tools") then
+        print("[MCP Diagnostics] script.Tools is: " .. tostring(script.Tools) .. " (" .. script.Tools:GetFullName() .. ")")
+    else
+        print("[MCP Diagnostics] script.Tools is: nil (not found as a child of script)")
+    end
+
+    local toolsFolder = Main and Main.Tools or script.Tools -- Check Main before Main.Tools
+    print("[MCP Diagnostics] Determined toolsFolder: " .. tostring(toolsFolder) .. (toolsFolder and (" (" .. toolsFolder:GetFullName() .. ")") or ""))
 
     if toolsFolder then
-        for _, toolModuleScript in ipairs(toolsFolder:GetChildren()) do
+        print("[MCP Diagnostics] Tools folder found. Iterating children...")
+        local children = toolsFolder:GetChildren()
+        print("[MCP Diagnostics] Number of children in toolsFolder: " .. tostring(#children))
+        for i, toolModuleScript in ipairs(children) do
+            print("[MCP Diagnostics] Processing child #" .. i .. ": " .. toolModuleScript.Name .. ", ClassName: " .. toolModuleScript.ClassName)
             if toolModuleScript:IsA("ModuleScript") then
-                local success, toolFunction = pcall(require, toolModuleScript)
-                if success and type(toolFunction) == "function" then
-                    log("[MCP] Loaded tool: " .. toolModuleScript.Name)
-                    toolModules[toolModuleScript.Name] = toolFunction
+                print("[MCP Diagnostics] Attempting to require ModuleScript: " .. toolModuleScript.Name)
+                local success, toolFunctionOrError = pcall(require, toolModuleScript)
+                if success and type(toolFunctionOrError) == "function" then
+                    print("[MCP Diagnostics] Successfully loaded tool: " .. toolModuleScript.Name)
+                    toolModules[toolModuleScript.Name] = toolFunctionOrError
+                elseif success then
+                    print("[MCP Diagnostics] Error loading tool " .. toolModuleScript.Name .. ": require succeeded but returned type " .. type(toolFunctionOrError) .. " instead of function.")
                 else
-                    log("[MCP] Error loading tool " .. toolModuleScript.Name .. ": " .. tostring(toolFunction))
+                    print("[MCP Diagnostics] Error loading tool " .. toolModuleScript.Name .. " (pcall failed): " .. tostring(toolFunctionOrError))
                 end
+            else
+                print("[MCP Diagnostics] Child " .. toolModuleScript.Name .. " is not a ModuleScript. Skipping.")
             end
         end
     else
-        log("[MCP] Error: Tools folder not found.")
+        print("[MCP Diagnostics] Error: Tools folder not found or resolved to nil.")
     end
+
+    local loadedToolNames = {}
+    for name, _ in pairs(toolModules) do
+        table.insert(loadedToolNames, name)
+    end
+    print("[MCP Diagnostics] Finished loading tools. Loaded tool names: {" .. table.concat(loadedToolNames, ", ") .. "}")
+
     return toolModules
 end
 
 local toolFunctions = loadToolFunctions()
 -- For debugging, print loaded tools
-for name, _ in pairs(toolFunctions) do
-    log("[MCP] Registered tool function: " .. name)
-end
+-- for name, _ in pairs(toolFunctions) do
+-- log("[MCP] Registered tool function: " .. name) -- Keep this commented or use print for consistency
+-- end
+-- for name, _ in pairs(toolFunctions) do
+-- log("[MCP] Registered tool function: " .. name) -- Keep this commented or use print for consistency
+-- end
 
 local function connectWebSocket()
 	local client = MockWebSocketService:CreateClient(URI)
@@ -96,32 +131,105 @@ local function connectWebSocket()
 
 				-- responseCallToolResultTable is the Lua table like {content={{type="text",...}}, isError=...}
 				-- This is what needs to be JSON encoded and sent as the 'response' field of the body to /response
+				print("[MCP Diagnostics] sendResponseOnce: Attempting to encode responseCallToolResultTable. Content:")
+				-- Safe deep print of the table
+				local function safeDeepPrint(tbl, indent)
+					indent = indent or 0
+					if type(tbl) ~= "table" then
+						print(string.rep("  ", indent) .. "- " .. tostring(tbl))
+						return
+					end
+					if indent > 4 then -- Prevent excessively deep recursion for huge tables
+						 print(string.rep("  ", indent) .. "- Table (depth limit reached)")
+						return
+					end
+					for k, v in pairs(tbl) do
+						print(string.rep("  ", indent) .. tostring(k) .. ":")
+						safeDeepPrint(v, indent + 1)
+					end
+				end
+				safeDeepPrint(responseCallToolResultTable)
+				print("[MCP Diagnostics] sendResponseOnce: End of responseCallToolResultTable content.")
 
-				local jsonEncodedCallToolResultStr, encodeErr = pcall(HttpService.JSONEncode, HttpService, responseCallToolResultTable)
-				if encodeErr then -- If encoding the CallToolResult-like table itself fails
-					local errorDetail = "Plugin internal error: Failed to JSON encode the tool's result structure: " .. tostring(jsonEncodedCallToolResultStr) -- jsonEncodedCallToolResultStr is error here
-					log("[MCP] CRITICAL: " .. errorDetail)
-					-- Create a valid CallToolResult structure representing this encoding error
+				local successEncode, resultOrError = pcall(HttpService.JSONEncode, HttpService, responseCallToolResultTable)
+				local jsonEncodedCallToolResultStr
+
+				if not successEncode then
+					local errorMessageFromEncode = tostring(resultOrError) -- This is the error from JSONEncode
+					print("[MCP Diagnostics] sendResponseOnce: First JSONEncode pcall FAILED. Error: " .. errorMessageFromEncode)
+
+					local errorDetail = "Plugin internal error: Failed to JSON encode the tool's result structure: " .. errorMessageFromEncode
+					-- log("[MCP] CRITICAL: " .. errorDetail) -- Keep conditional log or change to print
+					print("[MCP CRITICAL] " .. errorDetail) -- Make it unconditional for now
+
 					local errorCtResultTable = ToolHelpers.FormatErrorResult(errorDetail)
-					jsonEncodedCallToolResultStr = HttpService:JSONEncode(errorCtResultTable) -- Re-encode the error CallToolResult
+					print("[MCP Diagnostics] sendResponseOnce: Attempting to encode fallback errorCtResultTable. Content:")
+					safeDeepPrint(errorCtResultTable)
+					print("[MCP Diagnostics] sendResponseOnce: End of fallback errorCtResultTable content.")
+
+					local finalErrorJsonSuccess, finalErrorJsonOrMsg = pcall(HttpService.JSONEncode, HttpService, errorCtResultTable)
+					if finalErrorJsonSuccess then
+						jsonEncodedCallToolResultStr = finalErrorJsonOrMsg
+					else
+						local fallbackEncodeErrorMessage = tostring(finalErrorJsonOrMsg)
+						print("[MCP CRITICAL] Failed to encode even the fallback error message! Fallback Encode Error: " .. fallbackEncodeErrorMessage)
+						jsonEncodedCallToolResultStr = "{\"content\":[{\"type\":\"text\",\"text\":\"Plugin critical error: Failed to construct final JSON response. Fallback encode error: " .. HttpService:JSONEncode(fallbackEncodeErrorMessage) .. "\"}],\"isError\":true}"
+					end
+				else
+					print("[MCP Diagnostics] sendResponseOnce: First JSONEncode pcall SUCCEEDED.")
+					jsonEncodedCallToolResultStr = resultOrError
 				end
 
 				local payloadForRust = { -- This is the body for the POST to the /response endpoint
 					id = id, -- MCP Transaction ID, captured from the incoming message
 					response = jsonEncodedCallToolResultStr -- This is the JSON string of the CallToolResult-like table
 				}
+				print("[MCP Diagnostics] sendResponseOnce: payloadForRust before second JSONEncode. Content:")
+				safeDeepPrint(payloadForRust)
+				print("[MCP Diagnostics] sendResponseOnce: End of payloadForRust content.")
 
-				local finalJsonToSend, finalEncodeErr = pcall(HttpService.JSONEncode, HttpService, payloadForRust)
+				local successFinalEncode, resultOrErrorFinal = pcall(HttpService.JSONEncode, HttpService, payloadForRust)
+				local finalJsonToSend -- This will be the string to send to client:Send
 
-				if not finalEncodeErr then
-					log("[MCP] Sending response: " .. finalJsonToSend)
+				if successFinalEncode then
+					finalJsonToSend = resultOrErrorFinal
+					print("[MCP Diagnostics] sendResponseOnce: Successfully encoded final payloadForRust into finalJsonToSend.")
+					-- log("[MCP] Sending response: " .. finalJsonToSend) -- Keep original log call if it's preferred
+					print("[MCP] Sending response: " .. finalJsonToSend) -- Or use print for visibility
 					client:Send(finalJsonToSend)
 				else
-					log("[MCP] CRITICAL: Failed to encode the final payload for /response: " .. tostring(finalJsonToSend) .. " for original message id: " .. id)
-					-- Fallback for critical double encoding failure (extremely unlikely if first encode worked)
-					local criticalErrorCtResult = ToolHelpers.FormatErrorResult("Plugin critical error: Failed to construct final JSON response.")
-					local criticalErrorJson = HttpService:JSONEncode(criticalErrorCtResult)
-					client:Send(HttpService:JSONEncode({ id = id, response = criticalErrorJson }))
+					-- resultOrErrorFinal is the error message from encoding payloadForRust
+					local payloadEncodeErrorMsg = tostring(resultOrErrorFinal)
+					print("[MCP CRITICAL] Failed to encode the final payload (payloadForRust). Error: " .. payloadEncodeErrorMsg)
+
+					local criticalErrorMsg = "Plugin critical error: Failed to construct final JSON response. Error encoding payloadForRust: " .. payloadEncodeErrorMsg
+					local criticalErrorCtResult = ToolHelpers.FormatErrorResult(criticalErrorMsg)
+
+					local successCriticalEncode, jsonForCriticalError = pcall(HttpService.JSONEncode, HttpService, criticalErrorCtResult)
+					local responseContentForAgent
+
+					if successCriticalEncode then
+						responseContentForAgent = jsonForCriticalError
+					else
+						local criticalEncodeErrorMsg = tostring(jsonForCriticalError)
+						print("[MCP CRITICAL] Failed to encode even the criticalErrorCtResult. Error: " .. criticalEncodeErrorMsg)
+						-- Manually craft the JSON string for responseContentForAgent
+						responseContentForAgent = string.format("{\"content\":[{\"type\":\"text\",\"text\":\"Plugin meltdown. Cannot encode error responses. Initial error: %s. Fallback error: %s\"}],\"isError\":true}", HttpService:JSONEncode(payloadEncodeErrorMsg), HttpService:JSONEncode(criticalEncodeErrorMsg))
+					end
+
+					-- Now, construct the final payload string for the agent, ensuring this step is also safe
+					local finalPayloadTable = { id = id, response = responseContentForAgent }
+					local successUltimateEncode, ultimatePayloadString = pcall(HttpService.JSONEncode, HttpService, finalPayloadTable)
+
+					if successUltimateEncode then
+						client:Send(ultimatePayloadString)
+					else
+						local ultimateEncodeErrorMsg = tostring(ultimatePayloadString)
+						print("[MCP CRITICAL] Failed to encode the absolute final fallback payload. Error: " .. ultimateEncodeErrorMsg)
+						-- As a very last resort, send a completely hardcoded string if possible, though client:Send might expect specific structure
+						-- This situation indicates HttpService:JSONEncode is fundamentally broken or id is problematic.
+						client:Send(string.format("{\"id\":\"%s\",\"response\":\"{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"MELTDOWN (%s)\\\"}],\\\"isError\\\":true}\"}", tostring(id), HttpService:JSONEncode(ultimateEncodeErrorMsg)))
+					end
 				end
 			end
 		end
@@ -206,9 +314,24 @@ local function connectWebSocket()
 			return
 		end
 
-        local toolFunc = toolFunctions[toolNameForExecution]
+		-- ADD DIAGNOSTICS HERE
+		print("[MCP Diagnostics] MessageReceived: Attempting to find tool. toolNameForExecution = '" .. tostring(toolNameForExecution) .. "'")
+		local currentToolKeys = {}
+		for k, _ in pairs(toolFunctions) do
+			table.insert(currentToolKeys, "'" .. tostring(k) .. "'")
+		end
+		print("[MCP Diagnostics] MessageReceived: Current keys in toolFunctions: {" .. table.concat(currentToolKeys, ", ") .. "}")
+		-- Check explicitly if the key exists
+		if toolFunctions[toolNameForExecution] then
+			print("[MCP Diagnostics] MessageReceived: toolFunctions[toolNameForExecution] IS found. Type: " .. type(toolFunctions[toolNameForExecution]))
+		else
+			print("[MCP Diagnostics] MessageReceived: toolFunctions[toolNameForExecution] IS NIL.")
+		end
+
+		local toolFunc = toolFunctions[toolNameForExecution]
 		if not toolFunc then
-			local errorResultTable = ToolHelpers.FormatErrorResult("Tool function not found in toolFunctions map: " .. toolNameForExecution)
+            -- This is the path currently taken for RunCode
+			local errorResultTable = ToolHelpers.FormatErrorResult("Tool function not found in toolFunctions map: " .. tostring(toolNameForExecution))
 			sendResponseOnce(errorResultTable, originalToolNameToRespondWith)
 			return
 		end
