@@ -1,9 +1,11 @@
+
 -- Simplified RunCode.luau - Test: Restore partial table serialization in toStrTable
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 -- HttpService remains removed
 
 --[[
+
 local function getTableType(arg)
 	local hasArray = false
 	local hasTable = false
@@ -30,7 +32,7 @@ local function serializeTable(arg)
 		end
 		return newArg
 	elseif type(arg) == "userdata" then
-		return tostring(arg) or "UNABLE_TO_SERIALIZE"
+		return tostring(arg) or "UNABLE_TO_SERIALIZE" -- Fallback for userdata
 	end
 	return arg
 end
@@ -64,6 +66,7 @@ local function deepClone(t, cache)
 end
 --]]
 
+
 -- Modified toStrTable for one-level deep table string representation
 local function toStrTable(t) -- t is from table.pack
     local strTable = {}
@@ -94,7 +97,15 @@ local function toStrTable(t) -- t is from table.pack
         return {tostring(t)}
     end
     return strTable
+
 end
+
+-- Main function from previous step
+local function handleRunCode(args)
+    if type(args.command) ~= "string" then
+        return ToolHelpers.FormatErrorResult("Error: RunCode command argument is missing or not a string.")
+    end
+
 
 
 -- Main function from previous step
@@ -103,9 +114,11 @@ local function handleRunCode(args)
         return ToolHelpers.FormatErrorResult("Error: RunCode command argument is missing or not a string.")
     end
 
+
     local command = args.command
     local output_parts = {}
     local an_error_occurred_in_command = false
+
 
     local function addToOutput(tag, ...)
         local packedArgs = table.pack(...)
@@ -113,6 +126,7 @@ local function handleRunCode(args)
             table.insert(output_parts, tag .. "\n")
             return
         end
+
         -- Now uses the toStrTable with one-level deep serialization
         local strResults = toStrTable(packedArgs)
         table.insert(output_parts, tag .. " " .. table.concat(strResults, "\t") .. "\n")
@@ -129,6 +143,7 @@ local function handleRunCode(args)
         local chunkfenv = getfenv(func)
         local oldPrint = chunkfenv.print or print
         chunkfenv.print = function(...)
+
             if oldPrint then oldPrint(...) end
             addToOutput("[OUTPUT]", ...)
         end
@@ -152,15 +167,18 @@ local function handleRunCode(args)
             table.insert(returned_values_from_command, results[i])
         end
 
+
         if not run_success then
             an_error_occurred_in_command = true
             addToOutput("[RUNTIME ERROR]", returned_values_from_command[1])
         else
             if #returned_values_from_command > 0 then
+
                 addToOutput("[RETURNED]", table.unpack(returned_values_from_command))
             end
         end
     end)
+
 
     local final_output_str = table.concat(output_parts, "")
 
@@ -175,6 +193,7 @@ local function handleRunCode(args)
             final_output_str = "Command executed successfully with no output or return values."
         end
         return ToolHelpers.FormatSuccessResult({ output = final_output_str })
+
     end
 end
 
