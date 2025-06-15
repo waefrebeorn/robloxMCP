@@ -192,13 +192,16 @@ impl RBXStudioServer {
     ) -> Result<tokio::sync::MutexGuard<'a, AppState>, McpError> {
         info!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "Attempting to acquire state lock");
 
+
         const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
+
         // The 5-second timeout is a relatively long duration for a mutex lock attempt.
         // It serves as a crucial safeguard against potential deadlocks in the AppState handling.
         // If typical lock contention were expected to be high, this value might be too long,
         // potentially masking performance issues. However, for preventing indefinite hangs
         // due to programming errors leading to deadlocks, it's a last resort.
         // Operations holding this lock should ideally be very short.
+
         match tokio::time::timeout(LOCK_TIMEOUT, state_mutex.lock()).await {
             Ok(lock_result) => { // Timeout did not occur, lock_result is Result<MutexGuard, PoisonError>
                 match lock_result {
@@ -221,11 +224,13 @@ impl RBXStudioServer {
                 error!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "Timeout acquiring AppState lock after {} seconds!", LOCK_TIMEOUT.as_secs());
                 Err(McpError::internal_error(
                     format!("Server busy or deadlocked (timeout acquiring AppState lock after {} seconds).", LOCK_TIMEOUT.as_secs()),
+
                     None,
                 ))
             }
         }
     }
+
 
     // Helper function to queue a command and prepare for its response.
     // This encapsulates the logic of modifying the shared state (process_queue, output_map).
@@ -248,6 +253,7 @@ impl RBXStudioServer {
         Ok(cloned_trigger)
         // state_guard is dropped here, releasing the lock.
     }
+
 
     async fn generic_tool_run(&self, args_values: ToolArgumentValues) -> Result<CallToolResult, McpError> {
          let (tool_arguments_with_id, request_id) = ToolArguments::new_with_id(args_values); // Renamed command_with_wrapper_id and id
@@ -274,6 +280,7 @@ impl RBXStudioServer {
          send_result.map_err(|e| McpError::internal_error(format!("Unable to trigger send for plugin: {e}"), None))?;
 
          info!(target: "mcp_server::generic_tool_run", request_id = %request_id, "Trigger successfully sent");
+
 
         // Wait for and process the plugin's response.
         Self::wait_for_plugin_response(
@@ -311,6 +318,7 @@ impl RBXStudioServer {
             state_guard.output_map.remove(&request_id);
             info!(target: "mcp_server::wait_for_plugin_response", request_id = %request_id, "Removed request ID from output_map");
         }
+
 
         // Process the plugin response and return the MCP CallToolResult.
         match plugin_response_result {
@@ -452,6 +460,7 @@ pub async fn response_handler(
                 app_state_locked.waiter.clone()
             };
 
+
             // Wait for a signal that the process_queue might have new items, or that the server is shutting down.
             if waiter.changed().await.is_err() {
                 // This error means the watch channel sender (trigger) has been dropped,
@@ -486,6 +495,7 @@ pub async fn response_handler(
             Ok((StatusCode::NO_CONTENT).into_response())
         }
     }
+
  }
 
 pub async fn proxy_handler(
