@@ -11,10 +11,12 @@ local function handleRunCode(args)
     local output_text = ""
     local is_error = false
 
+
     local success, result = pcall(function()
         local func, err = loadstring(command)
         if not func then
             return { message = "LOADSTRING ERROR: " .. tostring(err), is_error = true }
+
         end
 
         local results = {pcall(func)} -- Execute and capture results
