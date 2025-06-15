@@ -1,12 +1,11 @@
 
--- Simplified RunCode.luau - Test 1a: Isolate deepClone (identical to Test 1)
-
+-- Simplified RunCode.luau - Test: Further simplify toStrTable
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
-local HttpService = game:GetService("HttpService")
+-- HttpService is likely not needed anymore if JSONEncode is removed from toStrTable
 
+--[[
 
--- Helper functions from the original script
 local function getTableType(arg)
 	local hasArray = false
 	local hasTable = false
@@ -37,6 +36,7 @@ local function serializeTable(arg)
 	end
 	return arg
 end
+--]]
 
 --[[
 local function deepClone(t, cache)
@@ -66,33 +66,23 @@ local function deepClone(t, cache)
 end
 --]]
 
-local function toStrTable(t: { any }): { string }
-    local clonedTable = {}
 
-    -- Bypassing deepClone for testing parser issue
-    local cloneSuccess, result = true, t -- Bypass deepClone, work directly on t
-
-    if cloneSuccess then -- This will always be true now for the direct assignment
-        clonedTable = result
-    else
-        -- This 'else' block is effectively dead code for this test, but kept for structure.
-
-        local strTableMinimal = table.create(#t)
-        for i, arg_elem in ipairs(t) do
-            strTableMinimal[i] = tostring(arg_elem)
+-- Further simplified toStrTable
+local function toStrTable(t) -- Removed type hint for simplicity in this test
+    local strTable = {} -- Use a dynamic table
+    if t and t.n then -- Check if it looks like a packed table
+        for i = 1, t.n do
+            strTable[i] = tostring(t[i])
         end
-        return strTableMinimal
+    else -- Fallback for other table types, though not expected for current usage
+        for _, arg_elem in pairs(t) do -- Use pairs for general table iteration
+            table.insert(strTable, tostring(arg_elem))
+
+        end
     end
 
-	local strTable = table.create(#clonedTable)
-	for i, arg_elem in ipairs(clonedTable) do
-		local serializedArg = serializeTable(arg_elem)
-		strTable[i] = if typeof(serializedArg) == "table"
-			then HttpService:JSONEncode(serializedArg)
-			else tostring(serializedArg)
-		end
-	end
-	return strTable
+    return strTable
+
 end
 
 -- Main function from previous step
@@ -102,10 +92,10 @@ local function handleRunCode(args)
     end
 
 
-
     local command = args.command
     local output_parts = {}
     local an_error_occurred_in_command = false
+
 
     local function addToOutput(tag, ...)
         local packedArgs = table.pack(...)
@@ -113,6 +103,9 @@ local function handleRunCode(args)
             table.insert(output_parts, tag .. "\n")
             return
         end
+
+        -- Now uses the very simplified toStrTable
+
         local strResults = toStrTable(packedArgs)
         table.insert(output_parts, tag .. " " .. table.concat(strResults, "\t") .. "\n")
     end
