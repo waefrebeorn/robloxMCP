@@ -44,11 +44,13 @@ local function loadToolFunctions()
     else
         print("[MCP Diagnostics] Main is nil, cannot access Main.Tools.")
     end
+
     if script:FindFirstChild("Tools") then
         print("[MCP Diagnostics] script.Tools is: " .. tostring(script.Tools) .. " (" .. script.Tools:GetFullName() .. ")")
     else
         print("[MCP Diagnostics] script.Tools is: nil (not found as a child of script)")
     end
+
 
     local toolsFolder = Main and Main.Tools or script.Tools -- Check Main before Main.Tools
     print("[MCP Diagnostics] Determined toolsFolder: " .. tostring(toolsFolder) .. (toolsFolder and (" (" .. toolsFolder:GetFullName() .. ")") or ""))
@@ -76,12 +78,14 @@ local function loadToolFunctions()
         end
     else
         print("[MCP Diagnostics] Error: Tools folder not found or resolved to nil.")
+
     end
 
     local loadedToolNames = {}
     for name, _ in pairs(toolModules) do
         table.insert(loadedToolNames, name)
     end
+
     print("[MCP Diagnostics] Finished loading tools. Loaded tool names: {" .. table.concat(loadedToolNames, ", ") .. "}")
 
     return toolModules
