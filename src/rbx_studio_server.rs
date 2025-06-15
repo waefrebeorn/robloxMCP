@@ -5,9 +5,11 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{extract::State, Json};
 // color_eyre is not directly used, McpError handles errors.
-use rmcp::handler::server::tool::Parameters;
+
+use rmcp::handler::server::tool::Parameters; // This will likely be unused after refactor
+
 use rmcp::model::{
-    ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult, ToolsCapability,
+    ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult, ToolsCapability, Schema, SchemaObject,
 };
 use rmcp::schemars;
 use rmcp::tool;
@@ -360,10 +362,39 @@ impl ServerHandler for RBXStudioServer {
             props.insert("tool_arguments_str".to_string(), rmcp::serde_json::json!({"type": "string", "description": "A JSON string representing arguments for the Luau tool."}));
             props
         };
-        let exec_tool_params = Parameters {
-            r#type: "object".to_string(),
-            properties: exec_tool_params_props,
-            required: vec!["tool_name".to_string(), "tool_arguments_str".to_string()],
+
+        let exec_tool_schema_object_data = rmcp::model::SchemaObject {
+            properties: exec_tool_params_props.into_iter().map(|(k, v)| (k.into(), Schema::from_json_value(v).unwrap_or_else(|e| panic!("Failed to convert Value to Schema for exec_tool_params_props property {}: {}", k, e)) )).collect(),
+            required: vec!["tool_name".to_string(), "tool_arguments_str".to_string()].into_iter().map(|s| s.into()).collect(),
+            description: None,
+            default_value: None,
+            read_only: false,
+            write_only: false,
+            examples: None,
+            all_of: None,
+            any_of: None,
+            one_of: None,
+            not: None,
+            r#if: None,
+            then: None,
+            r#else: None,
+            format: None,
+            pattern: None,
+            max_length: None,
+            min_length: None,
+            max_items: None,
+            min_items: None,
+            unique_items: false,
+            max_properties: None,
+            min_properties: None,
+            multiple_of: None,
+            maximum: None,
+            exclusive_maximum: None,
+            minimum: None,
+            exclusive_minimum: None,
+            r#enum: None,
+            r#const: None,
+
         };
         let exec_tool = rmcp::model::Tool {
             name: "execute_discovered_luau_tool".to_string().into(),
@@ -371,7 +402,10 @@ impl ServerHandler for RBXStudioServer {
                 "Executes a specific Luau tool script by its name. Available Luau tools: [{}]",
                 self.discovered_luau_tools.keys().cloned().collect::<Vec<String>>().join(", ")
             ).into()),
-            input_schema: Some(Schema::Object(exec_tool_params)),
+
+            input_schema: Some(Schema::Object(exec_tool_schema_object_data)),
+            annotations: None,
+
         };
         tools_list.push(exec_tool);
 
@@ -381,15 +415,47 @@ impl ServerHandler for RBXStudioServer {
             props.insert("command".to_string(), rmcp::serde_json::json!({"type": "string", "description": "The Luau code to execute."}));
             props
         };
-        let run_cmd_params = Parameters {
-            r#type: "object".to_string(),
-            properties: run_cmd_params_props,
-            required: vec!["command".to_string()],
+
+        let run_cmd_schema_object_data = rmcp::model::SchemaObject {
+            properties: run_cmd_params_props.into_iter().map(|(k, v)| (k.into(), Schema::from_json_value(v).unwrap_or_else(|e| panic!("Failed to convert Value to Schema for run_cmd_params_props property {}: {}", k, e)) )).collect(),
+            required: vec!["command".to_string()].into_iter().map(|s| s.into()).collect(),
+            description: None,
+            default_value: None,
+            read_only: false,
+            write_only: false,
+            examples: None,
+            all_of: None,
+            any_of: None,
+            one_of: None,
+            not: None,
+            r#if: None,
+            then: None,
+            r#else: None,
+            format: None,
+            pattern: None,
+            max_length: None,
+            min_length: None,
+            max_items: None,
+            min_items: None,
+            unique_items: false,
+            max_properties: None,
+            min_properties: None,
+            multiple_of: None,
+            maximum: None,
+            exclusive_maximum: None,
+            minimum: None,
+            exclusive_minimum: None,
+            r#enum: None,
+            r#const: None,
+
         };
         let run_cmd_tool = rmcp::model::Tool {
             name: "run_command".to_string().into(),
             description: Some("Runs a raw Luau command string in Roblox Studio.".to_string().into()),
-            input_schema: Some(Schema::Object(run_cmd_params)),
+
+            input_schema: Some(Schema::Object(run_cmd_schema_object_data)),
+            annotations: None,
+
         };
         tools_list.push(run_cmd_tool);
 
@@ -399,21 +465,55 @@ impl ServerHandler for RBXStudioServer {
             props.insert("query".to_string(), rmcp::serde_json::json!({"type": "string", "description": "Query to search for the model."}));
             props
         };
-        let insert_model_params = Parameters {
-            r#type: "object".to_string(),
-            properties: insert_model_params_props,
-            required: vec!["query".to_string()],
+
+        let insert_model_schema_object_data = rmcp::model::SchemaObject {
+            properties: insert_model_params_props.into_iter().map(|(k, v)| (k.into(), Schema::from_json_value(v).unwrap_or_else(|e| panic!("Failed to convert Value to Schema for insert_model_params_props property {}: {}", k, e)) )).collect(),
+            required: vec!["query".to_string()].into_iter().map(|s| s.into()).collect(),
+            description: None,
+            default_value: None,
+            read_only: false,
+            write_only: false,
+            examples: None,
+            all_of: None,
+            any_of: None,
+            one_of: None,
+            not: None,
+            r#if: None,
+            then: None,
+            r#else: None,
+            format: None,
+            pattern: None,
+            max_length: None,
+            min_length: None,
+            max_items: None,
+            min_items: None,
+            unique_items: false,
+            max_properties: None,
+            min_properties: None,
+            multiple_of: None,
+            maximum: None,
+            exclusive_maximum: None,
+            minimum: None,
+            exclusive_minimum: None,
+            r#enum: None,
+            r#const: None,
+
         };
         let insert_model_tool = rmcp::model::Tool {
             name: "insert_model".to_string().into(),
             description: Some("Inserts a model from the Roblox marketplace into the workspace.".to_string().into()),
-            input_schema: Some(Schema::Object(insert_model_params)),
+
+            input_schema: Some(Schema::Object(insert_model_schema_object_data)),
+            annotations: None,
+
         };
         tools_list.push(insert_model_tool);
 
         let mut capabilities = ServerCapabilities::default();
         capabilities.tools = Some(ToolsCapability {
-            tool_definitions: tools_list,
+
+            available_tools: tools_list,
+
             list_changed: Some(true),
             // No other tool capabilities like 'definition_provider' are being set here.
         });
