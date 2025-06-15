@@ -1,43 +1,43 @@
 -- GetTeleportData.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 local PlayersService = game:GetService("Players")
 
 local function execute(args)
-    -- This function is intended to be called by a LocalScript on the client after a teleport.
-    -- Or, if called on server, it might get data if server itself was "teleported" to (not typical for players).
-    -- For now, assumes LocalPlayer context for typical use case.
+    -- This tool does not take arguments from the 'args' table for its core logic.
     local success, pcall_result = pcall(function()
-        local localPlayer = PlayersService.LocalPlayer -- This will be nil if not in a LocalScript or client context
+        local localPlayer = PlayersService.LocalPlayer
 
         if not localPlayer then
-            return ToolHelpers.FormatErrorResult("Cannot get LocalPlayer. This tool is primarily for client-side use after a teleport or requires specific server context.")
+            return ToolHelpers.FormatErrorResult("GetTeleportData: LocalPlayer not available. This tool is intended for client-side use or specific contexts where LocalPlayer exists.")
         end
 
-        local teleportData = localPlayer:GetJoinData() -- GetJoinData contains TeleportData among other things
+        local joinData = localPlayer:GetJoinData()
 
-        if not teleportData or not teleportData.TeleportData then
+        -- joinData.TeleportData can be nil if no data was sent, or any Lua type/table.
+        local teleportDataContent = joinData and joinData.TeleportData -- This is the actual data passed via TeleportService
+
+        if teleportDataContent == nil then -- Explicitly check for nil to differentiate from false or empty string/table
             return ToolHelpers.FormatSuccessResult({
-                message = "No teleport data found for the local player.",
-                teleport_data = nil
+                message = "No TeleportData found for the local player (TeleportData was nil).",
+                teleport_data = nil,
+                source_place_id = joinData and joinData.SourcePlaceId or nil
             })
         end
 
-        -- teleportData.TeleportData is already a Lua table.
-        -- We use RobloxValueToJson to ensure it's in a JSON-friendly format if it contains complex Roblox types (unlikely for pure teleport data).
-        local jsonData = ToolHelpers.RobloxValueToJson(teleportData.TeleportData)
-
+        -- The teleportDataContent is already a Lua value/table.
+        -- FormatSuccessResult will handle its JSON encoding.
         return ToolHelpers.FormatSuccessResult({
-            message = "Successfully retrieved teleport data for the local player.",
-            teleport_data = jsonData
+            message = "Successfully retrieved TeleportData for the local player.",
+            teleport_data = teleportDataContent, -- Pass the raw Lua data
+            source_place_id = joinData and joinData.SourcePlaceId or nil
         })
     end)
 
     if success then
-        return pcall_result
+        return pcall_result -- This is already a ToolHelpers formatted table
     else
-        if string.find(tostring(pcall_result), "Cannot get LocalPlayer") then
-             return ToolHelpers.FormatErrorResult(tostring(pcall_result))
-        end
+        -- pcall_result contains the error message string
         return ToolHelpers.FormatErrorResult("Internal error in GetTeleportData: " .. tostring(pcall_result))
     end
 end

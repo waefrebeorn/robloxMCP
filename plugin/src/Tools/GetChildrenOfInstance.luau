@@ -1,7 +1,9 @@
 -- GetChildrenOfInstance.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 
 local function execute(args)
+    -- Arguments are now expected directly on args table
     local success, pcall_result = pcall(function()
         local instancePath = args.instance_path
 
@@ -15,16 +17,20 @@ local function execute(args)
         end
 
         local children = instance:GetChildren()
-        local childrenPaths = {}
+        local childrenInfo = {}
 
         for _, child in ipairs(children) do
-            table.insert(childrenPaths, child:GetFullName())
+            table.insert(childrenInfo, {
+                name = child.Name,
+                path = child:GetFullName(),
+                class_name = child.ClassName
+            })
         end
 
         return ToolHelpers.FormatSuccessResult({
-            message = ("Found %d children for instance %s."):format(#childrenPaths, instancePath),
+            message = ("Found %d children for instance %s."):format(#childrenInfo, instancePath),
             instance_path = instancePath,
-            children_paths = childrenPaths
+            children = childrenInfo
         })
     end)
 

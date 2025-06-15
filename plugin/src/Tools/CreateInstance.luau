@@ -1,57 +1,92 @@
 -- CreateInstance.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 
 local function execute(args)
-    local success, result = pcall(function()
+    -- Arguments are now expected directly on args table
+    local success, pcall_result = pcall(function()
         local className = args.class_name
-        local properties = args.properties
+        local properties = args.properties -- Table of properties
 
         if not className or type(className) ~= "string" then
             return ToolHelpers.FormatErrorResult("'class_name' is required and must be a string.")
         end
-        if not properties or type(properties) ~= "table" then
-            return ToolHelpers.FormatErrorResult("'properties' is required and must be a table.")
+
+        properties = properties or {} -- Default to empty table if nil or not provided
+        if type(properties) ~= "table" then
+             return ToolHelpers.FormatErrorResult("'properties', if provided, must be a table.")
         end
 
-        local newInstance = Instance.new(className)
 
-        for propName, propValueJson in pairs(properties) do
-            if string.lower(propName) == "parent" then
-                if type(propValueJson) == "string" then
-                    local parentInstance, err = ToolHelpers.FindInstanceByPath(propValueJson)
-                    if parentInstance then
-                        newInstance.Parent = parentInstance
-                    else
-                        -- Log warning or decide if this should be an error
-                        print("CreateInstance: Could not find parent at path: " .. propValueJson .. " Error: " .. (err or "Unknown"))
-                        -- Optionally return error: return ToolHelpers.FormatErrorResult("Failed to set parent: " .. propValueJson .. ". " .. (err or ""))
-                    end
+        local createSuccess, newInstanceOrError = pcall(Instance.new, className)
+        if not createSuccess then
+            return ToolHelpers.FormatErrorResult(("Failed to create instance of type '%s': %s"):format(className, tostring(newInstanceOrError)))
+        end
+        local newInstance = newInstanceOrError
+
+        local propertyErrors = {}
+        local parentInstance = nil
+
+        -- Handle Parent property separately if it exists in the properties table
+        local parentPropertyProvided = false
+        if properties.Parent ~= nil then -- Check if Parent key explicitly exists
+            parentPropertyProvided = true
+            local parentValue = properties.Parent
+            if type(parentValue) == "string" then
+                local foundParent, err = ToolHelpers.FindInstanceByPath(parentValue)
+                if foundParent then
+                    parentInstance = foundParent
                 else
-                     print("CreateInstance: Parent property value must be a string path. Got: " .. type(propValueJson))
+                    newInstance:Destroy()
+                    return ToolHelpers.FormatErrorResult(("Failed to find specified Parent at path: %s. %s"):format(parentValue, err or "Unknown error"))
                 end
+            -- Check if parentValue is already an Instance (e.g. passed from another tool or pre-resolved)
+            elseif typeof(parentValue) == "Instance" then
+                parentInstance = parentValue
             else
-                local convertedValue = ToolHelpers.JsonToRobloxValue(propValueJson)
-                local setSuccess, setError = pcall(function()
-                    newInstance[propName] = convertedValue
-                end)
-                if not setSuccess then
-                    print("CreateInstance: Error setting property '" .. propName .. "' on new " .. className .. ": " .. setError)
-                    -- Decide if one failed property should halt the whole operation or just be skipped
-                    -- For now, we'll let it continue and attempt to set other properties
+                newInstance:Destroy()
+                return ToolHelpers.FormatErrorResult("'Parent' property, if provided, must be a string path or an Instance. Got type: " .. typeof(parentValue))
+            end
+        end
+
+        -- Apply other properties
+        for propName, propValueInput in pairs(properties) do
+            if string.lower(propName) ~= "parent" then
+                -- Use JsonToRobloxValue for each property value, as it might be a JSON representation of a Roblox type
+                local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, newInstance:GetClass().."."..propName)
+                if convertError then
+                    table.insert(propertyErrors, ("Property '%s': Failed to convert input value: %s"):format(propName, convertError))
+                else
+                    local setSuccess, setError = pcall(function()
+                        newInstance[propName] = convertedValue
+                    end)
+                    if not setSuccess then
+                        table.insert(propertyErrors, ("Property '%s': Error setting value: %s"):format(propName, setError))
+                    end
                 end
             end
         end
 
+        if #propertyErrors > 0 then
+            newInstance:Destroy()
+            return ToolHelpers.FormatErrorResult(("Error(s) applying properties to new %s: %s"):format(className, table.concat(propertyErrors, "; ")))
+        end
+
+        if parentInstance then
+            newInstance.Parent = parentInstance
+        end
+
         return ToolHelpers.FormatSuccessResult({
-            path = newInstance:GetFullName(),
-            message = ("Successfully created %s instance named '%s' with path %s"):format(className, newInstance.Name, newInstance:GetFullName())
+            message = ("Successfully created %s instance named '%s'."):format(className, newInstance.Name),
+            instance_path = newInstance:GetFullName(),
+            class_name = className
         })
     end)
 
     if success then
-        return result
+        return pcall_result
     else
-        return ToolHelpers.FormatErrorResult("Internal error in CreateInstance: " .. tostring(result))
+        return ToolHelpers.FormatErrorResult("Internal error in CreateInstance: " .. tostring(pcall_result))
     end
 end
 

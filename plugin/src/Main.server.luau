@@ -51,7 +51,6 @@ local function loadToolFunctions()
         print("[MCP Diagnostics] script.Tools is: nil (not found as a child of script)")
     end
 
-
     local toolsFolder = Main and Main.Tools or script.Tools -- Check Main before Main.Tools
     print("[MCP Diagnostics] Determined toolsFolder: " .. tostring(toolsFolder) .. (toolsFolder and (" (" .. toolsFolder:GetFullName() .. ")") or ""))
 
