@@ -190,6 +190,7 @@ impl RBXStudioServer {
         state_mutex: &'a Mutex<AppState>,
         request_id: Uuid, // Added for logging context
     ) -> Result<tokio::sync::MutexGuard<'a, AppState>, McpError> {
+
 {
     info!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "Attempting to acquire state lock");
 
@@ -220,6 +221,7 @@ impl RBXStudioServer {
                     ))
                 }
             }
+
         }
         Err(_timeout_elapsed) => { // Timeout occurred while waiting for lock_acquisition_future
             error!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "Timeout acquiring AppState lock after {} seconds!", LOCK_TIMEOUT.as_secs());
