@@ -38,39 +38,37 @@ local function execute(args)
 
         local propertyErrors = {}
         for propName, propValueInput in pairs(properties) do
-            if string.lower(propName) == "parent" and parentInstance then
-                 table.insert(propertyErrors, "Cannot set 'Parent' via properties if 'parent_path' argument is also used. Parent is already determined.")
-                 goto continue_loop
-            end
-            if string.lower(propName) == "parent" and not parentInstance then
-                -- Allow Parent property if parent_path arg was not given
-                if type(propValueInput) == "string" then
-                    local foundParentFromProp, errProp = ToolHelpers.FindInstanceByPath(propValueInput)
-                    if foundParentFromProp then
-                        parentInstance = foundParentFromProp
-                    else
-                        table.insert(propertyErrors, ("Parent path '%s' from properties not found. Error: %s"):format(propValueInput, errProp or ""))
-                    end
-                elseif typeof(propValueInput) == "Instance" then
-                    parentInstance = propValueInput
+            if string.lower(propName) == "parent" then
+                if parentInstance then
+                    table.insert(propertyErrors, "Cannot set 'Parent' via properties if 'parent_path' argument is also used. Parent is already determined.")
                 else
-                    table.insert(propertyErrors, "'Parent' property must be a string path or Instance.")
+                    -- Allow Parent property if parent_path arg was not given
+                    if type(propValueInput) == "string" then
+                        local foundParentFromProp, errProp = ToolHelpers.FindInstanceByPath(propValueInput)
+                        if foundParentFromProp then
+                            parentInstance = foundParentFromProp
+                        else
+                            table.insert(propertyErrors, ("Parent path '%s' from properties not found. Error: %s"):format(propValueInput, errProp or ""))
+                        end
+                    elseif typeof(propValueInput) == "Instance" then
+                        parentInstance = propValueInput
+                    else
+                        table.insert(propertyErrors, "'Parent' property must be a string path or Instance.")
+                    end
                 end
-                goto continue_loop -- Parent is handled separately after all other props
-            end
-
-            local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, "Sound."..propName)
-            if convertError then
-                table.insert(propertyErrors, ("Property '%s': Failed to convert input value: %s"):format(propName, convertError))
             else
-                local setSuccess, setError = pcall(function()
-                    soundInstance[propName] = convertedValue
-                end)
-                if not setSuccess then
-                    table.insert(propertyErrors, ("Property '%s': Error setting value: %s"):format(propName, setError))
+                local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, "Sound."..propName)
+                if convertError then
+                    table.insert(propertyErrors, ("Property '%s': Failed to convert input value: %s"):format(propName, convertError))
+                else
+                    local setSuccess, setError = pcall(function()
+                        soundInstance[propName] = convertedValue
+                    end)
+                    if not setSuccess then
+                        table.insert(propertyErrors, ("Property '%s': Error setting value: %s"):format(propName, setError))
+                    end
                 end
             end
-            ::continue_loop::
         end
 
         if #propertyErrors > 0 then

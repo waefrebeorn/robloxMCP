@@ -93,7 +93,7 @@ local function runCodeWithOutput(command: string): (string, boolean)
 	local output_parts = {} -- Store parts of output to join later
     local anErrorOccurred = false
 
-	local function addToOutput(header: string, ...)
+	local function addToOutput(header: string, ...) do
         local packedArgs = table.pack(...)
         if packedArgs.n == 0 then -- Handle calls like print() with no arguments
             table.insert(output_parts, header .. "\n")
