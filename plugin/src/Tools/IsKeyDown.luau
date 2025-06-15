@@ -1,57 +1,48 @@
 -- IsKeyDown.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 local UserInputService = game:GetService("UserInputService")
 
 local function execute(args)
+    -- Arguments are expected directly on args table
     local success, pcall_result = pcall(function()
-        local keyCodeString = args.key_code_string -- e.g., "Enum.KeyCode.E" or just "E"
+        local keyCodeString = args.key_code_string -- e.g., "E", "Space", "LeftShift"
 
         if not keyCodeString or type(keyCodeString) ~= "string" then
-            return ToolHelpers.FormatErrorResult("'key_code_string' is required and must be a string (e.g., 'E', 'Space', 'Enum.KeyCode.LeftShift').")
+            return ToolHelpers.FormatErrorResult("'key_code_string' is required and must be a string (e.g., 'E', 'Space', 'LeftShift').")
         end
 
         if not UserInputService then
             return ToolHelpers.FormatErrorResult("UserInputService not available in this context.")
         end
 
-        local keyCodeEnum
-        if string.sub(keyCodeString, 1, 5) == "Enum." then
-            local parsedEnum, err = ToolHelpers.StringToEnum(keyCodeString)
-            if not parsedEnum then
-                 return ToolHelpers.FormatErrorResult("Invalid KeyCode enum string: " .. keyCodeString .. ". " .. (err or ""))
-            end
-            if parsedEnum.EnumType ~= Enum.KeyCode then
-                return ToolHelpers.FormatErrorResult("Provided enum string is not a KeyCode: " .. keyCodeString)
-            end
-            keyCodeEnum = parsedEnum
-        else
-            -- Try to find KeyCode directly if short form like "E" is used
-            if Enum.KeyCode[keyCodeString] then
-                keyCodeEnum = Enum.KeyCode[keyCodeString]
-            else
-                return ToolHelpers.FormatErrorResult("Invalid KeyCode string: " .. keyCodeString .. ". Use full Enum path or valid short name.")
+        local keyCodeEnum = Enum.KeyCode[keyCodeString]
+
+        -- Attempt to handle if user provides "Enum.KeyCode.E" format
+        if not keyCodeEnum and string.match(keyCodeString, "^Enum%.KeyCode%.(.+)$") then
+            local actualKey = string.match(keyCodeString, "^Enum%.KeyCode%.(.+)$")
+            if actualKey and Enum.KeyCode[actualKey] then
+                keyCodeEnum = Enum.KeyCode[actualKey]
             end
         end
 
-        if not keyCodeEnum then
-             return ToolHelpers.FormatErrorResult("Could not determine KeyCode from: " .. keyCodeString)
+        if not keyCodeEnum or typeof(keyCodeEnum) ~= "EnumItem" then -- Validate it's an actual EnumItem
+             return ToolHelpers.FormatErrorResult(("Invalid or unsupported KeyCode string: '%s'. Ensure it's a direct member of Enum.KeyCode (e.g., 'LeftShift', not 'Enum.KeyCode.LeftShift' directly if using short names)."):format(keyCodeString))
         end
 
         local isDown = UserInputService:IsKeyDown(keyCodeEnum)
 
         return ToolHelpers.FormatSuccessResult({
             message = ("Key %s is currently %s."):format(tostring(keyCodeEnum), isDown and "pressed" or "not pressed"),
-            key_code = tostring(keyCodeEnum),
+            key_code_used = tostring(keyCodeEnum), -- Use the resolved enum string
             is_down = isDown
         })
     end)
 
     if success then
-        return pcall_result
+        return pcall_result -- This is already a ToolHelpers formatted table
     else
-        if string.find(tostring(pcall_result), "UserInputService not available") or string.find(tostring(pcall_result), "Invalid KeyCode") then
-             return ToolHelpers.FormatErrorResult(tostring(pcall_result))
-        end
+        -- pcall_result contains the error message string
         return ToolHelpers.FormatErrorResult("Internal error in IsKeyDown: " .. tostring(pcall_result))
     end
 end

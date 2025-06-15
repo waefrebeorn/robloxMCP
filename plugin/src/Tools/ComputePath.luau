@@ -1,8 +1,10 @@
 -- ComputePath.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 local PathfindingService = game:GetService("PathfindingService")
 
 local function execute(args)
+    -- Arguments are now expected directly on args table
     local success, pcall_result = pcall(function()
         local startPosJson = args.start_position
         local endPosJson = args.end_position
@@ -30,59 +32,67 @@ local function execute(args)
 
         local agentParameters = {}
         if agentParamsJson then
-            -- Convert known agent parameters, allow others if PathfindingService supports them dynamically
             if agentParamsJson.AgentRadius then agentParameters.AgentRadius = agentParamsJson.AgentRadius end
             if agentParamsJson.AgentHeight then agentParameters.AgentHeight = agentParamsJson.AgentHeight end
             if agentParamsJson.AgentCanJump then agentParameters.AgentCanJump = agentParamsJson.AgentCanJump end
             if agentParamsJson.WaypointSpacing then agentParameters.WaypointSpacing = agentParamsJson.WaypointSpacing end
-            if agentParamsJson.Costs then -- Costs is a dictionary itself
+            if agentParamsJson.Costs then
                 agentParameters.Costs = {}
                 for materialName, cost in pairs(agentParamsJson.Costs) do
                     local materialEnum = Enum.Material[materialName]
                     if materialEnum then
                         agentParameters.Costs[materialEnum] = cost
                     else
-                        print("ComputePath: Unknown material name in Costs: " .. materialName)
+                        print("ComputePath: Unknown material name in Costs: " .. materialName .. ". Skipping.")
                     end
                 end
             end
         end
 
         local path = PathfindingService:CreatePath(agentParameters)
-        path:ComputeAsync(startPos, endPos)
+
+        local computeSuccess, computeMessage = pcall(path.ComputeAsync, path, startPos, endPos)
+        if not computeSuccess then
+            return ToolHelpers.FormatErrorResult("Path:ComputeAsync failed: " .. tostring(computeMessage))
+        end
 
         local status = path.Status
-        local waypointsJson = {}
+        local waypointsData = {} -- Store Roblox Vector3s directly
         local resultMessage = ""
+        local isPathError = false
 
         if status == Enum.PathStatus.Success then
             resultMessage = "Path computed successfully."
             local waypoints = path:GetWaypoints()
             for _, waypoint in ipairs(waypoints) do
-                table.insert(waypointsJson, ToolHelpers.RobloxValueToJson(waypoint.Position)) -- Store position only for simplicity
-                -- Could also include waypoint.Action if needed by adding to the table above
+                -- Storing Roblox Vector3s; FormatSuccessResult will handle their conversion via RobloxValueToJson.
+                table.insert(waypointsData, waypoint.Position)
             end
         elseif status == Enum.PathStatus.NoPath then
             resultMessage = "No path found between the points."
-        elseif status == Enum.PathStatus.ClosestNoPath then
-            resultMessage = "No path found, but closest path might be available (not implemented by this tool)."
-        elseif status == Enum.PathStatus.ClosestOutOfRange then
-             resultMessage = "Closest path is out of range (not implemented by this tool)."
-        elseif status == Enum.PathStatus.FailStartNotEmpty then
-            resultMessage = "Pathfinding failed: Start point is inside an obstacle."
-        elseif status == Enum.PathStatus.FailFinishNotEmpty then
-            resultMessage = "Pathfinding failed: End point is inside an obstacle."
+            isPathError = true
         else
-            resultMessage = "Pathfinding failed with an unknown status: " .. tostring(status)
+            resultMessage = "Pathfinding failed with status: " .. tostring(status)
+            isPathError = true
         end
 
-        return ToolHelpers.FormatSuccessResult({
-            message = resultMessage,
+        local resultPayload = {
             status = tostring(status),
-            start_position_used = ToolHelpers.RobloxValueToJson(startPos),
-            end_position_used = ToolHelpers.RobloxValueToJson(endPos),
-            waypoints = waypointsJson -- This will be an array of Vector3-like tables
-        })
+            start_position_used = startPos, -- Store Roblox Vector3
+            end_position_used = endPos,     -- Store Roblox Vector3
+            -- waypoints will be added by success case
+        }
+
+        if isPathError then
+            resultPayload.message = resultMessage
+            -- No waypoints to add for error cases generally, or they are not valid.
+            return ToolHelpers.FormatErrorResult(resultPayload.message, resultPayload)
+        end
+
+        resultPayload.message = resultMessage
+        resultPayload.waypoints = waypointsData -- Array of Vector3s
+
+        return ToolHelpers.FormatSuccessResult(resultPayload)
     end)
 
     if success then

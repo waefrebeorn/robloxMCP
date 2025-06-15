@@ -1,12 +1,14 @@
 -- SaveData.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 local DataStoreService = game:GetService("DataStoreService")
 
 local function execute(args)
+    -- Arguments are expected directly on args table
     local success, pcall_result = pcall(function()
         local storeName = args.store_name
         local key = args.key
-        local dataToSave = args.data -- This data is already in JSON-friendly Lua table/primitive format from Gemini
+        local dataToSave = args.data
 
         if not storeName or type(storeName) ~= "string" or storeName == "" then
             return ToolHelpers.FormatErrorResult("'store_name' is required and must be a non-empty string.")
@@ -14,22 +16,16 @@ local function execute(args)
         if not key or type(key) ~= "string" or key == "" then
             return ToolHelpers.FormatErrorResult("'key' is required and must be a non-empty string.")
         end
-        if dataToSave == nil then -- Explicitly checking for nil, as false or 0 are valid data
-            return ToolHelpers.FormatErrorResult("'data' is required.")
+        if dataToSave == nil then
+            return ToolHelpers.FormatErrorResult("'data' is required. To store a nil value explicitly, consider if DataStore handles this or if an alternative representation is needed (e.g., a special string or table). For 'remove', use RemoveData tool.")
         end
 
         local dataStore = DataStoreService:GetDataStore(storeName)
 
-        -- DataStore only accepts Lua primitives or tables that can be saved.
-        -- The 'dataToSave' from Gemini is already in a Lua table/primitive format that
-        -- should be directly usable by SetAsync after HttpService:JSONDecode on the Python side.
-        -- No further ToolHelpers.JsonToRobloxValue is typically needed here for the *data itself*
-        -- unless the data contained specific Roblox types that needed conversion, which is not
-        -- standard for pure DataStore usage (as it stores serializable Lua types).
-
-        local dsSuccess, dsError = pcall(function()
-            dataStore:SetAsync(key, dataToSave)
-        end)
+        -- DataStore's SetAsync expects Lua data.
+        -- The 'dataToSave' argument is assumed to be valid Lua data,
+        -- as it would have been decoded from JSON by the calling environment (Main.server.luau).
+        local dsSuccess, dsError = pcall(dataStore.SetAsync, dataStore, key, dataToSave)
 
         if not dsSuccess then
             return ToolHelpers.FormatErrorResult(("Failed to save data to DataStore '%s' with key '%s': %s"):format(storeName, key, tostring(dsError)))
@@ -39,7 +35,7 @@ local function execute(args)
             message = ("Data successfully saved to DataStore '%s' with key '%s'."):format(storeName, key),
             store_name = storeName,
             key = key
-            -- Not returning the data itself to avoid large payloads, client should know what it saved.
+            -- Data saved is not returned in the response to keep it concise.
         })
     end)
 

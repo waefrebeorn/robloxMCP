@@ -1,8 +1,10 @@
 -- GetInstancesWithTag.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 local CollectionService = game:GetService("CollectionService")
 
 local function execute(args)
+    -- Arguments are now expected directly on args table
     local success, pcall_result = pcall(function()
         local tagName = args.tag_name
 
@@ -10,19 +12,23 @@ local function execute(args)
             return ToolHelpers.FormatErrorResult("'tag_name' is required and must be a non-empty string.")
         end
 
-        local instances = CollectionService:GetTagged(tagName)
-        local instancePaths = {}
+        local taggedInstances = CollectionService:GetTagged(tagName)
+        local instancesInfo = {}
 
-        for _, instance in ipairs(instances) do
-            if instance then -- Make sure instance hasn't been destroyed since tagging
-                table.insert(instancePaths, instance:GetFullName())
+        for _, instance in ipairs(taggedInstances) do
+            if instance and instance.Parent ~= nil then
+                table.insert(instancesInfo, {
+                    name = instance.Name,
+                    path = instance:GetFullName(),
+                    class_name = instance.ClassName
+                })
             end
         end
 
         return ToolHelpers.FormatSuccessResult({
-            message = ("Found %d instance(s) with tag '%s'."):format(#instancePaths, tagName),
+            message = ("Found %d instance(s) with tag '%s'."):format(#instancesInfo, tagName),
             tag_name = tagName,
-            instance_paths = instancePaths
+            instances = instancesInfo
         })
     end)
 

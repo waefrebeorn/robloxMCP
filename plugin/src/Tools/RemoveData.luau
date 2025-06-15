@@ -1,8 +1,10 @@
 -- RemoveData.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 local DataStoreService = game:GetService("DataStoreService")
 
 local function execute(args)
+    -- Arguments are expected directly on args table
     local success, pcall_result = pcall(function()
         local storeName = args.store_name
         local key = args.key
@@ -16,17 +18,16 @@ local function execute(args)
 
         local dataStore = DataStoreService:GetDataStore(storeName)
 
-        -- RemoveAsync does not return the old value, just success/error.
-        local dsSuccess, dsError = pcall(function()
-            dataStore:RemoveAsync(key)
-        end)
+        local dsSuccess, dsError = pcall(dataStore.RemoveAsync, dataStore, key)
 
         if not dsSuccess then
             return ToolHelpers.FormatErrorResult(("Failed to remove data from DataStore '%s' for key '%s': %s"):format(storeName, key, tostring(dsError)))
         end
 
+        -- RemoveAsync returns nil on success, or throws an error.
+        -- The pcall captures the error. If dsSuccess is true, it means nil was returned (operation successful).
         return ToolHelpers.FormatSuccessResult({
-            message = ("Data successfully removed from DataStore '%s' for key '%s'."):format(storeName, key),
+            message = ("Data successfully removed/marked for removal from DataStore '%s' for key '%s'."):format(storeName, key),
             store_name = storeName,
             key = key
         })

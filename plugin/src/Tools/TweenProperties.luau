@@ -1,19 +1,21 @@
 -- TweenProperties.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 local TweenService = game:GetService("TweenService")
 
 local function execute(args)
+    -- Arguments are expected directly on args table
     local success, pcall_result = pcall(function()
         local instancePath = args.instance_path
         local duration = args.duration
         local easingStyleStr = args.easing_style
         local easingDirectionStr = args.easing_direction
-        local propertiesToTweenJson = args.properties_to_tween
+        local propertiesToTween = args.properties_to_tween -- Expecting Lua table {propName = value, ...}
 
-        -- Optional params
-        local repeatCount = args.repeat_count -- nil if not provided
-        local reverses = args.reverses       -- nil if not provided
-        local delayTime = args.delay_time     -- nil if not provided
+        -- Optional params for TweenInfo
+        local repeatCount = args.repeat_count
+        local reverses = args.reverses
+        local delayTime = args.delay_time
 
         if not instancePath or type(instancePath) ~= "string" then
             return ToolHelpers.FormatErrorResult("'instance_path' is required and must be a string.")
@@ -22,13 +24,16 @@ local function execute(args)
             return ToolHelpers.FormatErrorResult("'duration' must be a positive number.")
         end
         if not easingStyleStr or type(easingStyleStr) ~= "string" then
-            return ToolHelpers.FormatErrorResult("'easing_style' (Enum.EasingStyle) is required and must be a string.")
+            return ToolHelpers.FormatErrorResult("'easing_style' (Enum.EasingStyle name) is required and must be a string.")
         end
         if not easingDirectionStr or type(easingDirectionStr) ~= "string" then
-            return ToolHelpers.FormatErrorResult("'easing_direction' (Enum.EasingDirection) is required and must be a string.")
+            return ToolHelpers.FormatErrorResult("'easing_direction' (Enum.EasingDirection name) is required and must be a string.")
         end
-        if not propertiesToTweenJson or type(propertiesToTweenJson) ~= "table" then
+        if not propertiesToTween or type(propertiesToTween) ~= "table" then
             return ToolHelpers.FormatErrorResult("'properties_to_tween' is required and must be a table.")
+        end
+        if next(propertiesToTween) == nil then
+             return ToolHelpers.FormatErrorResult("'properties_to_tween' table cannot be empty.")
         end
 
         local instance, err = ToolHelpers.FindInstanceByPath(instancePath)
@@ -38,48 +43,59 @@ local function execute(args)
 
         local easingStyle = Enum.EasingStyle[easingStyleStr]
         if not easingStyle then
-            return ToolHelpers.FormatErrorResult("Invalid EasingStyle: " .. easingStyleStr)
+            return ToolHelpers.FormatErrorResult("Invalid EasingStyle: " .. easingStyleStr .. ". Refer to Enum.EasingStyle.")
         end
         local easingDirection = Enum.EasingDirection[easingDirectionStr]
         if not easingDirection then
-            return ToolHelpers.FormatErrorResult("Invalid EasingDirection: " .. easingDirectionStr)
+            return ToolHelpers.FormatErrorResult("Invalid EasingDirection: " .. easingDirectionStr .. ". Refer to Enum.EasingDirection.")
         end
 
         local tweenInfo = TweenInfo.new(
             duration,
             easingStyle,
             easingDirection,
-            repeatCount or 0,
-            reverses or false,
-            delayTime or 0
+            repeatCount or 0, -- Default to 0 if nil
+            reverses or false,  -- Default to false if nil
+            delayTime or 0    -- Default to 0 if nil
         )
 
         local propertiesGoal = {}
-        for propName, propValueJson in pairs(propertiesToTweenJson) do
-            propertiesGoal[propName] = ToolHelpers.JsonToRobloxValue(propValueJson)
-            if propertiesGoal[propName] == nil and propValueJson ~= nil then
-                 -- If JsonToRobloxValue returned nil for a non-nil input, it might be an invalid complex type format
-                print(("TweenProperties: Warning - property '%s' received a nil value after conversion from JSON. Original JSON: %s"):format(propName, ToolHelpers.SafeJsonEncode(propValueJson) or "encode_failed"))
-                -- Potentially return an error here if strictness is required
-                -- return ToolHelpers.FormatErrorResult(("Invalid format for property '%s'. Could not convert from JSON."):format(propName))
+        local conversionErrors = {}
+        for propName, propValueInput in pairs(propertiesToTween) do
+            -- Values in propertiesToTween are Lua values; JsonToRobloxValue converts tables to Color3/Vector3 etc.
+            local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, instance:GetClass().."."..propName)
+            if convertError then
+                table.insert(conversionErrors, ("Property '%s': Failed to convert input value: %s"):format(propName, convertError))
+            else
+                propertiesGoal[propName] = convertedValue
             end
         end
 
-        if next(propertiesGoal) == nil then
-            return ToolHelpers.FormatErrorResult("No valid properties to tween after conversion.")
+        if #conversionErrors > 0 then
+            return ToolHelpers.FormatErrorResult("Error(s) converting property values for tween: " .. table.concat(conversionErrors, "; "))
         end
 
-        local tween = TweenService:Create(instance, tweenInfo, propertiesGoal)
+        if next(propertiesGoal) == nil then
+            -- This might happen if all properties had conversion errors
+            return ToolHelpers.FormatErrorResult("No valid properties to tween after conversion attempts.")
+        end
+
+        local tweenCreateSuccess, tweenOrError = pcall(TweenService.Create, TweenService, instance, tweenInfo, propertiesGoal)
+        if not tweenCreateSuccess then
+             return ToolHelpers.FormatErrorResult("TweenService:Create failed: " .. tostring(tweenOrError))
+        end
+        local tween = tweenOrError
+
         tween:Play()
-        -- Note: This tool does NOT wait for tween completion.
+        -- This tool fires the tween and returns. It does not yield/wait for tween completion.
 
         return ToolHelpers.FormatSuccessResult({
             message = ("Tween started for instance %s with duration %.2fs."):format(instancePath, duration),
             instance_path = instancePath,
             duration = duration,
-            easing_style = easingStyleStr,
-            easing_direction = easingDirectionStr,
-            properties_tweened = ToolHelpers.RobloxValueToJson(propertiesGoal) -- Show what we attempted to tween to
+            easing_style_used = easingStyleStr,
+            easing_direction_used = easingDirectionStr,
+            properties_goal = ToolHelpers.RobloxValueToJson(propertiesGoal) -- Confirm the goal table used
         })
     end)
 
