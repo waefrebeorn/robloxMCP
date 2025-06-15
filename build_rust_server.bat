@@ -96,6 +96,7 @@ GOTO :DeleteRustupAndFinish
     ECHO Cargo is available. Proceeding to build the Rust MCP Server...
     ECHO Enabling 'gemini_python_broker' feature for this build.
     cargo build --release --features gemini_python_broker
+	pause
     IF !ERRORLEVEL! NEQ 0 (
         ECHO.
         ECHO =====================================================================
