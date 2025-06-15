@@ -1,9 +1,8 @@
 
--- Simplified RunCode.luau - Test: Restore partial table serialization in toStrTable
+-- Simplified RunCode.luau - Correcting syntax in toStrTable
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 -- HttpService remains removed
-
 
 --[[
 
@@ -91,7 +90,9 @@ local function toStrTable(t) -- t is from table.pack
         end
         -- This case should return a table of strings, so wrap the single string in a table
         return {"{ " .. table.concat(fallbackParts, ", ") .. " }"}
-    else if t == nil then
+
+    elseif t == nil then -- Corrected 'else if' to 'elseif'
+
         return {"nil"} -- Handle nil input explicitly if it can occur
     else
         -- For any other non-table, non-nil type passed directly.
@@ -123,7 +124,6 @@ local function handleRunCode(args)
         return ToolHelpers.FormatErrorResult("Error: RunCode command argument is missing or not a string.")
     end
 
-
     local command = args.command
     local output_parts = {}
     local an_error_occurred_in_command = false
@@ -140,7 +140,6 @@ local function handleRunCode(args)
         local strResults = toStrTable(packedArgs)
         table.insert(output_parts, tag .. " " .. table.concat(strResults, "\t") .. "\n")
     end
-
 
     local pcall_success, execution_result = pcall(function()
         local func, load_err = loadstring(command)
