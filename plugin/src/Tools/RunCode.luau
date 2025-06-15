@@ -134,6 +134,7 @@ local function runCodeWithOutput(command: string): (string, boolean)
             -- Unlike the original, we don't call the actual error() here to allow script to continue
             -- and capture more output if possible, or let pcall handle the halt.
             -- For true halting behavior, the pcall below is the primary catcher.
+
 		end -- Added missing 'end'
 
 		-- Execute the chunk
@@ -153,6 +154,7 @@ local function runCodeWithOutput(command: string): (string, boolean)
             end
 			addToOutput("[RETURNED]", table.unpack(unpackedResults, 1, results.n))
 		end
+
 	end
 
 	-- The main pcall for executeCode itself (though internal execution is also pcalled now)
