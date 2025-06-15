@@ -271,8 +271,10 @@ impl RBXStudioServer {
 
     // Helper function to acquire the AppState lock with a timeout.
     // This function abstracts the locking mechanism, including timeout and error handling.
+
     async fn generic_tool_run(&self, args_values: ToolArgumentValues) -> Result<CallToolResult, McpError> {
         let (tool_arguments_with_id, request_id) = ToolArguments::new_with_id(args_values.clone()); // Clone args_values if needed by new_with_id
+
 
         info!(target: "mcp_server::generic_tool_run", request_id = %request_id, "Preparing to send AddTask to StateManager.");
         debug!(target: "mcp_server::generic_tool_run", request_id = %request_id, args = ?tool_arguments_with_id.args, "Command details");
