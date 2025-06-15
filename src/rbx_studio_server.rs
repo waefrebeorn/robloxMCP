@@ -16,6 +16,10 @@ use rmcp::tool;
 use rmcp::tool::Schema;
 use rmcp::{Error as McpError, ServerHandler};
 
+// Corrected Schema imports
+use crate::rbx_studio_server::schemars::schema::Schema;
+use crate::rbx_studio_server::schemars::schema::SchemaObject;
+
 use std::collections::{HashMap, VecDeque};
 // use serde_json::Value; // Likely not needed if serde_json::Map and json! macro are used
 use std::path::{Path, PathBuf};
@@ -363,9 +367,13 @@ impl ServerHandler for RBXStudioServer {
             props
         };
 
-        let exec_tool_schema_object_data = rmcp::model::SchemaObject {
-            properties: exec_tool_params_props.into_iter().map(|(k, v)| (k.into(), Schema::from_json_value(v).unwrap_or_else(|e| panic!("Failed to convert Value to Schema for exec_tool_params_props property {}: {}", k, e)) )).collect(),
-            required: vec!["tool_name".to_string(), "tool_arguments_str".to_string()].into_iter().map(|s| s.into()).collect(),
+        let exec_tool_schema_object_data = SchemaObject {
+            properties: exec_tool_params_props.into_iter().map(|(k, v)| {
+                let schema_val: Schema = rmcp::serde_json::from_value(v).expect("Failed to deserialize property JSON into Schema");
+                (k, schema_val)
+            }).collect(),
+            required: vec!["tool_name".to_string(), "tool_arguments_str".to_string()],
+
             description: None,
             default_value: None,
             read_only: false,
@@ -416,9 +424,13 @@ impl ServerHandler for RBXStudioServer {
             props
         };
 
-        let run_cmd_schema_object_data = rmcp::model::SchemaObject {
-            properties: run_cmd_params_props.into_iter().map(|(k, v)| (k.into(), Schema::from_json_value(v).unwrap_or_else(|e| panic!("Failed to convert Value to Schema for run_cmd_params_props property {}: {}", k, e)) )).collect(),
-            required: vec!["command".to_string()].into_iter().map(|s| s.into()).collect(),
+        let run_cmd_schema_object_data = SchemaObject {
+            properties: run_cmd_params_props.into_iter().map(|(k, v)| {
+                let schema_val: Schema = rmcp::serde_json::from_value(v).expect("Failed to deserialize property JSON into Schema");
+                (k, schema_val)
+            }).collect(),
+            required: vec!["command".to_string()],
+
             description: None,
             default_value: None,
             read_only: false,
@@ -466,9 +478,13 @@ impl ServerHandler for RBXStudioServer {
             props
         };
 
-        let insert_model_schema_object_data = rmcp::model::SchemaObject {
-            properties: insert_model_params_props.into_iter().map(|(k, v)| (k.into(), Schema::from_json_value(v).unwrap_or_else(|e| panic!("Failed to convert Value to Schema for insert_model_params_props property {}: {}", k, e)) )).collect(),
-            required: vec!["query".to_string()].into_iter().map(|s| s.into()).collect(),
+        let insert_model_schema_object_data = SchemaObject {
+            properties: insert_model_params_props.into_iter().map(|(k, v)| {
+                let schema_val: Schema = rmcp::serde_json::from_value(v).expect("Failed to deserialize property JSON into Schema");
+                (k, schema_val)
+            }).collect(),
+            required: vec!["query".to_string()],
+
             description: None,
             default_value: None,
             read_only: false,
@@ -510,13 +526,9 @@ impl ServerHandler for RBXStudioServer {
         tools_list.push(insert_model_tool);
 
         let mut capabilities = ServerCapabilities::default();
-        capabilities.tools = Some(ToolsCapability {
 
-            available_tools: tools_list,
+        capabilities.tools = Some(rmcp::model::ToolsCapability(tools_list, Some(true)));
 
-            list_changed: Some(true),
-            // No other tool capabilities like 'definition_provider' are being set here.
-        });
 
         if self.discovered_luau_tools.is_empty() {
             tracing::warn!("No Luau tools found in RBXStudioServer state during get_info. 'execute_discovered_luau_tool' might not list any specific scripts.");
