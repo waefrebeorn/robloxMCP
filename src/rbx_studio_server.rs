@@ -202,28 +202,21 @@ impl RBXStudioServer {
         // Operations holding this lock should ideally be very short.
 
         match tokio::time::timeout(LOCK_TIMEOUT, state_mutex.lock()).await {
-            Ok(lock_result) => { // Timeout did not occur, lock_result is Result<MutexGuard, PoisonError>
-                match lock_result {
-                    Ok(guard) => {
-                        // Successfully acquired the lock
-                        info!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "Acquired state lock.");
-                        Ok(guard)
-                    }
-                    Err(poisoned_error) => {
-                        // Mutex was poisoned
-                        error!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "AppState mutex is poisoned! Error: {}", poisoned_error.to_string());
-                        Err(McpError::internal_error(
-                            format!("Server state is corrupted (mutex poisoned: {})", poisoned_error.to_string()),
-                            None,
-                        ))
-                    }
-                }
+            Ok(Ok(guard)) => { // Timeout did not occur, lock successful
+                info!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "Acquired state lock.");
+                Ok(guard)
+            }
+            Ok(Err(poisoned_error)) => { // Timeout did not occur, mutex poisoned
+                error!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "AppState mutex is poisoned! Error: {}", poisoned_error.to_string());
+                Err(McpError::internal_error(
+                    format!("Server state is corrupted (mutex poisoned: {})", poisoned_error.to_string()),
+                    None,
+                ))
             }
             Err(_timeout_elapsed) => { // Timeout occurred
                 error!(target: "mcp_server::acquire_state_lock", request_id = %request_id, "Timeout acquiring AppState lock after {} seconds!", LOCK_TIMEOUT.as_secs());
                 Err(McpError::internal_error(
                     format!("Server busy or deadlocked (timeout acquiring AppState lock after {} seconds).", LOCK_TIMEOUT.as_secs()),
-
                     None,
                 ))
             }
@@ -260,7 +253,7 @@ impl RBXStudioServer {
          info!(target: "mcp_server::generic_tool_run", request_id = %request_id, "Queueing command for plugin");
          debug!(target: "mcp_server::generic_tool_run", request_id = %request_id, args = ?tool_arguments_with_id.args, "Command details");
 
-         let (response_sender, mut response_receiver) = mpsc::unbounded_channel::<Result<String, McpError>>(); // Renamed tx, rx
+         let (response_sender, response_receiver) = mpsc::unbounded_channel::<Result<String, McpError>>(); // Renamed tx, rx
 
 
          let trigger = Self::queue_command_and_get_trigger(
