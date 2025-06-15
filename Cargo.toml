@@ -11,7 +11,9 @@ gemini_python_broker = []
 
 [dependencies]
 
+
 rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", rev = "abf7c7af0815c9c4ab293bc6142d195c35a7a642", package = "rmcp", features = ["server", "transport-io", "macros"] }
+
 
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
