@@ -321,7 +321,9 @@ impl RBXStudioServer {
                     error!(target: "mcp_server::generic_tool_run", request_id = %request_id, "Failed to send CleanupTaskOnTimeout to StateManager during tool execution timeout handling.");
                 }
 
-                Err(McpError::new(rmcp::model::ErrorCode::InternalServerError, format!("Tool execution timed out after {}s.", TOOL_EXECUTION_TIMEOUT.as_secs()), None))
+
+                Err(McpError::new(rmcp::model::ErrorCode::Internal, format!("Tool execution timed out after {}s.", TOOL_EXECUTION_TIMEOUT.as_secs()), None))
+
 
             }
         }
