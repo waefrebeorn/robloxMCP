@@ -358,19 +358,19 @@ impl ServerHandler for RBXStudioServer {
             props.insert("tool_arguments_str".to_string(), rmcp::serde_json::json!({"type": "string", "description": "A JSON string representing arguments for the Luau tool."}));
             props
         };
-        let exec_tool_params = rmcp::model::Parameters {
-            r#type: "object".to_string(),
-            properties: exec_tool_params_props,
-            required: vec!["tool_name".to_string(), "tool_arguments_str".to_string()],
-        };
+        let mut exec_tool_input_schema_map = rmcp::serde_json::Map::new();
+        exec_tool_input_schema_map.insert("type".to_string(), rmcp::serde_json::json!("object"));
+        exec_tool_input_schema_map.insert("properties".to_string(), rmcp::serde_json::Value::Object(exec_tool_params_props));
+        exec_tool_input_schema_map.insert("required".to_string(), rmcp::serde_json::json!(["tool_name".to_string(), "tool_arguments_str".to_string()]));
+
         let exec_tool = rmcp::model::Tool {
-            name: "execute_discovered_luau_tool".to_string(),
+            name: "execute_discovered_luau_tool".to_string().into(),
             description: Some(format!(
                 "Executes a specific Luau tool script by its name. Available Luau tools: [{}]",
                 self.discovered_luau_tools.keys().cloned().collect::<Vec<String>>().join(", ")
-            )),
-            inputs: Some(rmcp::model::Schema::Object(exec_tool_params)),
-            outputs: None,
+            ).into()),
+            input_schema: std::sync::Arc::new(exec_tool_input_schema_map),
+            annotations: None,
         };
         tools_list.push(exec_tool);
 
@@ -380,16 +380,16 @@ impl ServerHandler for RBXStudioServer {
             props.insert("command".to_string(), rmcp::serde_json::json!({"type": "string", "description": "The Luau code to execute."}));
             props
         };
-        let run_cmd_params = rmcp::model::Parameters {
-            r#type: "object".to_string(),
-            properties: run_cmd_params_props,
-            required: vec!["command".to_string()],
-        };
+        let mut run_cmd_input_schema_map = rmcp::serde_json::Map::new();
+        run_cmd_input_schema_map.insert("type".to_string(), rmcp::serde_json::json!("object"));
+        run_cmd_input_schema_map.insert("properties".to_string(), rmcp::serde_json::Value::Object(run_cmd_params_props));
+        run_cmd_input_schema_map.insert("required".to_string(), rmcp::serde_json::json!(["command".to_string()]));
+
         let run_cmd_tool = rmcp::model::Tool {
-            name: "run_command".to_string(),
-            description: Some("Runs a raw Luau command string in Roblox Studio.".to_string()),
-            inputs: Some(rmcp::model::Schema::Object(run_cmd_params)),
-            outputs: None,
+            name: "run_command".to_string().into(),
+            description: Some("Runs a raw Luau command string in Roblox Studio.".to_string().into()),
+            input_schema: std::sync::Arc::new(run_cmd_input_schema_map),
+            annotations: None,
         };
         tools_list.push(run_cmd_tool);
 
@@ -399,24 +399,23 @@ impl ServerHandler for RBXStudioServer {
             props.insert("query".to_string(), rmcp::serde_json::json!({"type": "string", "description": "Query to search for the model."}));
             props
         };
-        let insert_model_params = rmcp::model::Parameters {
-            r#type: "object".to_string(),
-            properties: insert_model_params_props,
-            required: vec!["query".to_string()],
-        };
+        let mut insert_model_input_schema_map = rmcp::serde_json::Map::new();
+        insert_model_input_schema_map.insert("type".to_string(), rmcp::serde_json::json!("object"));
+        insert_model_input_schema_map.insert("properties".to_string(), rmcp::serde_json::Value::Object(insert_model_params_props));
+        insert_model_input_schema_map.insert("required".to_string(), rmcp::serde_json::json!(["query".to_string()]));
+
         let insert_model_tool = rmcp::model::Tool {
-            name: "insert_model".to_string(),
-            description: Some("Inserts a model from the Roblox marketplace into the workspace.".to_string()),
-            inputs: Some(rmcp::model::Schema::Object(insert_model_params)),
-            outputs: None,
+            name: "insert_model".to_string().into(),
+            description: Some("Inserts a model from the Roblox marketplace into the workspace.".to_string().into()),
+            input_schema: std::sync::Arc::new(insert_model_input_schema_map),
+            annotations: None,
         };
         tools_list.push(insert_model_tool);
 
         let mut capabilities = ServerCapabilities::default();
-        capabilities.tools = Some(ToolsCapability {
-            tools: tools_list,
+        capabilities.tools = Some(rmcp::model::ToolsCapability {
+            items: tools_list,
             list_changed: Some(true),
-            // No other tool capabilities like 'definition_provider' are being set here.
         });
 
         if self.discovered_luau_tools.is_empty() {
@@ -429,7 +428,7 @@ impl ServerHandler for RBXStudioServer {
             instructions: Some(
                 format!("Use 'execute_discovered_luau_tool' to run discovered Luau scripts by name. Discovered Luau tools: [{}]. Also available: run_command (direct Luau string), insert_model.",
                     self.discovered_luau_tools.keys().cloned().collect::<Vec<String>>().join(", ")
-                )
+                ).into()
             ),
             capabilities,
         }
