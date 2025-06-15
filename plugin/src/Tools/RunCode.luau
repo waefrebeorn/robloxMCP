@@ -1,8 +1,8 @@
 
--- Simplified RunCode.luau - Test: Further simplify toStrTable
+-- Simplified RunCode.luau - Test: Restore partial table serialization in toStrTable
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
--- HttpService is likely not needed anymore if JSONEncode is removed from toStrTable
+-- HttpService remains removed
 
 --[[
 
@@ -67,23 +67,46 @@ end
 --]]
 
 
--- Further simplified toStrTable
-local function toStrTable(t) -- Removed type hint for simplicity in this test
-    local strTable = {} -- Use a dynamic table
-    if t and t.n then -- Check if it looks like a packed table
+-- Modified toStrTable for one-level deep table string representation
+local function toStrTable(t) -- t is from table.pack
+    local strTable = {}
+    if t and t.n then -- Check if it looks like a packed table from table.pack
         for i = 1, t.n do
-            strTable[i] = tostring(t[i])
+            local val = t[i]
+            if type(val) == "table" then
+                local innerParts = {}
+                for k, v in pairs(val) do
+                    table.insert(innerParts, tostring(k) .. "=" .. tostring(v))
+                end
+                strTable[i] = "{ " .. table.concat(innerParts, ", ") .. " }"
+            else
+                strTable[i] = tostring(val)
+            end
         end
-    else -- Fallback for other table types, though not expected for current usage
-        for _, arg_elem in pairs(t) do -- Use pairs for general table iteration
-            table.insert(strTable, tostring(arg_elem))
-
+    elseif type(t) == "table" then -- Fallback if not a packed table (e.g. if toStrTable is called with a single table directly)
+        local fallbackParts = {}
+        for k,v in pairs(t) do
+             table.insert(fallbackParts, tostring(k) .. "=" .. tostring(v))
         end
+        -- This case should return a table of strings, so wrap the single string in a table
+        return {"{ " .. table.concat(fallbackParts, ", ") .. " }"}
+    else if t == nil then
+        return {"nil"} -- Handle nil input explicitly if it can occur
+    else
+        -- For any other non-table, non-nil type passed directly.
+        return {tostring(t)}
     end
-
     return strTable
 
 end
+
+-- Main function from previous step
+local function handleRunCode(args)
+    if type(args.command) ~= "string" then
+        return ToolHelpers.FormatErrorResult("Error: RunCode command argument is missing or not a string.")
+    end
+
+
 
 -- Main function from previous step
 local function handleRunCode(args)
@@ -104,8 +127,7 @@ local function handleRunCode(args)
             return
         end
 
-        -- Now uses the very simplified toStrTable
-
+        -- Now uses the toStrTable with one-level deep serialization
         local strResults = toStrTable(packedArgs)
         table.insert(output_parts, tag .. " " .. table.concat(strResults, "\t") .. "\n")
     end
