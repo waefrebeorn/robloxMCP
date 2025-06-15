@@ -189,18 +189,52 @@ local function connectWebSocket()
 					id = id, -- MCP Transaction ID, captured from the incoming message
 					response = jsonEncodedCallToolResultStr -- This is the JSON string of the CallToolResult-like table
 				}
+				print("[MCP Diagnostics] sendResponseOnce: payloadForRust before second JSONEncode. Content:")
+				safeDeepPrint(payloadForRust)
+				print("[MCP Diagnostics] sendResponseOnce: End of payloadForRust content.")
 
-				local finalJsonToSend, finalEncodeErr = pcall(HttpService.JSONEncode, HttpService, payloadForRust)
+				local successFinalEncode, resultOrErrorFinal = pcall(HttpService.JSONEncode, HttpService, payloadForRust)
+				local finalJsonToSend -- This will be the string to send to client:Send
 
-				if not finalEncodeErr then
-					log("[MCP] Sending response: " .. finalJsonToSend)
+				if successFinalEncode then
+					finalJsonToSend = resultOrErrorFinal
+					print("[MCP Diagnostics] sendResponseOnce: Successfully encoded final payloadForRust into finalJsonToSend.")
+					-- log("[MCP] Sending response: " .. finalJsonToSend) -- Keep original log call if it's preferred
+					print("[MCP] Sending response: " .. finalJsonToSend) -- Or use print for visibility
 					client:Send(finalJsonToSend)
 				else
-					log("[MCP] CRITICAL: Failed to encode the final payload for /response: " .. tostring(finalJsonToSend) .. " for original message id: " .. id)
-					-- Fallback for critical double encoding failure (extremely unlikely if first encode worked)
-					local criticalErrorCtResult = ToolHelpers.FormatErrorResult("Plugin critical error: Failed to construct final JSON response.")
-					local criticalErrorJson = HttpService:JSONEncode(criticalErrorCtResult)
-					client:Send(HttpService:JSONEncode({ id = id, response = criticalErrorJson }))
+					-- resultOrErrorFinal is the error message from encoding payloadForRust
+					local payloadEncodeErrorMsg = tostring(resultOrErrorFinal)
+					print("[MCP CRITICAL] Failed to encode the final payload (payloadForRust). Error: " .. payloadEncodeErrorMsg)
+
+					local criticalErrorMsg = "Plugin critical error: Failed to construct final JSON response. Error encoding payloadForRust: " .. payloadEncodeErrorMsg
+					local criticalErrorCtResult = ToolHelpers.FormatErrorResult(criticalErrorMsg)
+
+					local successCriticalEncode, jsonForCriticalError = pcall(HttpService.JSONEncode, HttpService, criticalErrorCtResult)
+					local responseContentForAgent
+
+					if successCriticalEncode then
+						responseContentForAgent = jsonForCriticalError
+					else
+						local criticalEncodeErrorMsg = tostring(jsonForCriticalError)
+						print("[MCP CRITICAL] Failed to encode even the criticalErrorCtResult. Error: " .. criticalEncodeErrorMsg)
+						-- Manually craft the JSON string for responseContentForAgent
+						responseContentForAgent = string.format("{\"content\":[{\"type\":\"text\",\"text\":\"Plugin meltdown. Cannot encode error responses. Initial error: %s. Fallback error: %s\"}],\"isError\":true}", HttpService:JSONEncode(payloadEncodeErrorMsg), HttpService:JSONEncode(criticalEncodeErrorMsg))
+					end
+
+					-- Now, construct the final payload string for the agent, ensuring this step is also safe
+					local finalPayloadTable = { id = id, response = responseContentForAgent }
+					local successUltimateEncode, ultimatePayloadString = pcall(HttpService.JSONEncode, HttpService, finalPayloadTable)
+
+					if successUltimateEncode then
+						client:Send(ultimatePayloadString)
+					else
+						local ultimateEncodeErrorMsg = tostring(ultimatePayloadString)
+						print("[MCP CRITICAL] Failed to encode the absolute final fallback payload. Error: " .. ultimateEncodeErrorMsg)
+						-- As a very last resort, send a completely hardcoded string if possible, though client:Send might expect specific structure
+						-- This situation indicates HttpService:JSONEncode is fundamentally broken or id is problematic.
+						client:Send(string.format("{\"id\":\"%s\",\"response\":\"{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"MELTDOWN (%s)\\\"}],\\\"isError\\\":true}\"}", tostring(id), HttpService:JSONEncode(ultimateEncodeErrorMsg)))
+					end
 				end
 			end
 		end
