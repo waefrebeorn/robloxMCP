@@ -6,7 +6,6 @@ use axum::response::IntoResponse;
 use axum::{extract::State, Json};
 // color_eyre is not directly used, McpError handles errors.
 
-use rmcp::handler::server::tool::Parameters; // This will likely be unused after refactor
 
 use rmcp::model::{
 
@@ -15,12 +14,8 @@ use rmcp::model::{
 };
 use rmcp::schemars;
 use rmcp::tool;
-use rmcp::tool::Schema;
 use rmcp::{Error as McpError, ServerHandler};
 
-// Corrected Schema imports
-use crate::rbx_studio_server::schemars::schema::Schema;
-use crate::rbx_studio_server::schemars::schema::SchemaObject;
 
 use std::collections::{HashMap, VecDeque};
 // use serde_json::Value; // Likely not needed if serde_json::Map and json! macro are used
@@ -435,7 +430,6 @@ impl ServerHandler for RBXStudioServer {
         let mut capabilities = ServerCapabilities::default();
 
         capabilities.tools = Some(rmcp::model::ToolsCapability {
-            items: tools_list,
             list_changed: Some(true),
         });
 
