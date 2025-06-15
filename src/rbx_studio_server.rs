@@ -5,12 +5,22 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{extract::State, Json};
 // color_eyre is not directly used, McpError handles errors.
+
+use rmcp::handler::server::tool::Parameters; // This will likely be unused after refactor
+
 use rmcp::model::{
+
     ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult,
+
 };
 use rmcp::schemars;
 use rmcp::tool;
+use rmcp::tool::Schema;
 use rmcp::{Error as McpError, ServerHandler};
+
+// Corrected Schema imports
+use crate::rbx_studio_server::schemars::schema::Schema;
+use crate::rbx_studio_server::schemars::schema::SchemaObject;
 
 use std::collections::{HashMap, VecDeque};
 // use serde_json::Value; // Likely not needed if serde_json::Map and json! macro are used
@@ -358,10 +368,12 @@ impl ServerHandler for RBXStudioServer {
             props.insert("tool_arguments_str".to_string(), rmcp::serde_json::json!({"type": "string", "description": "A JSON string representing arguments for the Luau tool."}));
             props
         };
+
         let mut exec_tool_input_schema_map = rmcp::serde_json::Map::new();
         exec_tool_input_schema_map.insert("type".to_string(), rmcp::serde_json::json!("object"));
         exec_tool_input_schema_map.insert("properties".to_string(), rmcp::serde_json::Value::Object(exec_tool_params_props));
         exec_tool_input_schema_map.insert("required".to_string(), rmcp::serde_json::json!(["tool_name".to_string(), "tool_arguments_str".to_string()]));
+
 
         let exec_tool = rmcp::model::Tool {
             name: "execute_discovered_luau_tool".to_string().into(),
@@ -369,8 +381,10 @@ impl ServerHandler for RBXStudioServer {
                 "Executes a specific Luau tool script by its name. Available Luau tools: [{}]",
                 self.discovered_luau_tools.keys().cloned().collect::<Vec<String>>().join(", ")
             ).into()),
+
             input_schema: Some(std::sync::Arc::new(exec_tool_input_schema_map)),
             annotations: None,
+
         };
         tools_list.push(exec_tool);
 
@@ -380,6 +394,7 @@ impl ServerHandler for RBXStudioServer {
             props.insert("command".to_string(), rmcp::serde_json::json!({"type": "string", "description": "The Luau code to execute."}));
             props
         };
+
         let mut run_cmd_input_schema_map = rmcp::serde_json::Map::new();
         run_cmd_input_schema_map.insert("type".to_string(), rmcp::serde_json::json!("object"));
         run_cmd_input_schema_map.insert("properties".to_string(), rmcp::serde_json::Value::Object(run_cmd_params_props));
@@ -390,6 +405,7 @@ impl ServerHandler for RBXStudioServer {
             description: Some("Runs a raw Luau command string in Roblox Studio.".to_string().into()),
             input_schema: Some(std::sync::Arc::new(run_cmd_input_schema_map)),
             annotations: None,
+
         };
         tools_list.push(run_cmd_tool);
 
@@ -399,6 +415,7 @@ impl ServerHandler for RBXStudioServer {
             props.insert("query".to_string(), rmcp::serde_json::json!({"type": "string", "description": "Query to search for the model."}));
             props
         };
+
         let mut insert_model_input_schema_map = rmcp::serde_json::Map::new();
         insert_model_input_schema_map.insert("type".to_string(), rmcp::serde_json::json!("object"));
         insert_model_input_schema_map.insert("properties".to_string(), rmcp::serde_json::Value::Object(insert_model_params_props));
@@ -409,12 +426,15 @@ impl ServerHandler for RBXStudioServer {
             description: Some("Inserts a model from the Roblox marketplace into the workspace.".to_string().into()),
             input_schema: Some(std::sync::Arc::new(insert_model_input_schema_map)),
             annotations: None,
+
         };
         tools_list.push(insert_model_tool);
 
         let mut capabilities = ServerCapabilities::default();
+
         capabilities.tools = Some(tools_list);
         capabilities.list_changed = Some(true); // Speculative: Add if ServerCapabilities has this field
+
 
         if self.discovered_luau_tools.is_empty() {
             tracing::warn!("No Luau tools found in RBXStudioServer state during get_info. 'execute_discovered_luau_tool' might not list any specific scripts.");
