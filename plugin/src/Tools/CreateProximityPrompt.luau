@@ -35,22 +35,20 @@ local function execute(args)
                     -- The parent is determined by parent_part_path, not this property.
                     -- Could warn or ignore. For now, ignoring to prevent error if user includes it.
                     print("CreateProximityPrompt: 'Parent' property in 'properties' table is ignored. Use 'parent_part_path' argument.")
-                    goto continue_loop
-                end
-
-                -- Use JsonToRobloxValue for each property value, as it might be a JSON representation of a Roblox type
-                local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, "ProximityPrompt."..propName)
-                if convertError then
-                     table.insert(propertyErrors, ("Property '%s': Failed to convert input value: %s"):format(propName, convertError))
                 else
-                    local setSuccess, setError = pcall(function()
-                        prompt[propName] = convertedValue
-                    end)
-                    if not setSuccess then
-                         table.insert(propertyErrors, ("Property '%s': Error setting value: %s"):format(propName, setError))
+                    -- Use JsonToRobloxValue for each property value, as it might be a JSON representation of a Roblox type
+                    local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, "ProximityPrompt."..propName)
+                    if convertError then
+                        table.insert(propertyErrors, ("Property '%s': Failed to convert input value: %s"):format(propName, convertError))
+                    else
+                        local setSuccess, setError = pcall(function()
+                            prompt[propName] = convertedValue
+                        end)
+                        if not setSuccess then
+                            table.insert(propertyErrors, ("Property '%s': Error setting value: %s"):format(propName, setError))
+                        end
                     end
                 end
-                ::continue_loop::
             end
         end
 
