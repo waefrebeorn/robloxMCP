@@ -1,8 +1,10 @@
 -- GetTeams.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 local TeamsService = game:GetService("Teams")
 
 local function execute(args)
+    -- This tool does not currently take any specific arguments from the 'args' table.
     local success, pcall_result = pcall(function()
         if not TeamsService then
             return ToolHelpers.FormatErrorResult("TeamsService not available.")
@@ -15,15 +17,16 @@ local function execute(args)
             table.insert(teamsData, {
                 name = team.Name,
                 path = team:GetFullName(),
-                team_color = tostring(team.TeamColor),
+                team_color_brickcolor_string = team.TeamColor.Name, -- More standard way to represent BrickColor as string
+                team_color_rgb = {R=team.TeamColor.Color.R, G=team.TeamColor.Color.G, B=team.TeamColor.Color.B},
                 auto_assignable = team.AutoAssignable,
-                -- Add other properties if needed, e.g., number of players
-                -- player_count = #team:GetPlayers()
+                player_count = #team:GetPlayers() -- Added player count
             })
         end
 
         return ToolHelpers.FormatSuccessResult({
             message = ("Retrieved %d teams."):format(#teamsData),
+            team_count = #teamsData,
             teams = teamsData
         })
     end)

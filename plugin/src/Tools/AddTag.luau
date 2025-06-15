@@ -1,8 +1,10 @@
 -- AddTag.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 local CollectionService = game:GetService("CollectionService")
 
 local function execute(args)
+    -- Arguments are now expected directly on args, e.g. args.instance_path
     local success, pcall_result = pcall(function()
         local instancePath = args.instance_path
         local tagName = args.tag_name

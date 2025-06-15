@@ -1,8 +1,10 @@
 -- AddDebrisItem.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 local DebrisService = game:GetService("Debris")
 
 local function execute(args)
+    -- Arguments are now expected directly on args, e.g. args.instance_path
     local success, pcall_result = pcall(function()
         local instancePath = args.instance_path
         local lifetime = args.lifetime
@@ -34,8 +36,10 @@ local function execute(args)
     end)
 
     if success then
+        -- pcall_result is the table returned from inside the pcall'd function
         return pcall_result
     else
+        -- pcall_result is the error message string here
         return ToolHelpers.FormatErrorResult("Internal error in AddDebrisItem: " .. tostring(pcall_result))
     end
 end

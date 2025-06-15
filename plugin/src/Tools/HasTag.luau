@@ -1,8 +1,10 @@
 -- HasTag.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 local CollectionService = game:GetService("CollectionService")
 
 local function execute(args)
+    -- Arguments are expected directly on args table
     local success, pcall_result = pcall(function()
         local instancePath = args.instance_path
         local tagName = args.tag_name
@@ -25,7 +27,7 @@ local function execute(args)
             message = ("Instance %s %s the tag '%s'."):format(instancePath, hasTag and "has" or "does not have", tagName),
             instance_path = instancePath,
             tag_name = tagName,
-            has_tag = hasTag
+            has_tag = hasTag -- boolean
         })
     end)
 

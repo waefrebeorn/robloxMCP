@@ -1,7 +1,9 @@
 -- GetDescendantsOfInstance.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 
 local function execute(args)
+    -- Arguments are now expected directly on args table
     local success, pcall_result = pcall(function()
         local instancePath = args.instance_path
 
@@ -15,16 +17,20 @@ local function execute(args)
         end
 
         local descendants = instance:GetDescendants()
-        local descendantPaths = {}
+        local descendantsInfo = {}
 
         for _, descendant in ipairs(descendants) do
-            table.insert(descendantPaths, descendant:GetFullName())
+            table.insert(descendantsInfo, {
+                name = descendant.Name,
+                path = descendant:GetFullName(),
+                class_name = descendant.ClassName
+            })
         end
 
         return ToolHelpers.FormatSuccessResult({
-            message = ("Found %d descendants for instance %s."):format(#descendantPaths, instancePath),
+            message = ("Found %d descendants for instance %s."):format(#descendantsInfo, instancePath),
             instance_path = instancePath,
-            descendant_paths = descendantPaths
+            descendants = descendantsInfo
         })
     end)
 

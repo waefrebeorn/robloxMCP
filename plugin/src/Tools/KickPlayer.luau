@@ -1,5 +1,6 @@
 -- KickPlayer.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 local PlayersService = game:GetService("Players")
 
 local function find_player(pathOrName)
@@ -11,6 +12,7 @@ local function find_player(pathOrName)
         end
     end
     -- Try finding by name among players
+    -- This is case-sensitive. For case-insensitive, use string.lower on both.
     for _, player in ipairs(PlayersService:GetPlayers()) do
         if player.Name == pathOrName then
             return player
@@ -20,9 +22,10 @@ local function find_player(pathOrName)
 end
 
 local function execute(args)
-    local success, result = pcall(function()
+    -- Arguments are expected directly on args table
+    local success, pcall_result = pcall(function()
         local playerPathOrName = args.player_path_or_name
-        local kickMessage = args.kick_message or "You have been kicked from the game by an admin." -- Default message
+        local kickMessage = args.kick_message or "You have been kicked from the game." -- Default message
 
         if not playerPathOrName or type(playerPathOrName) ~= "string" then
             return ToolHelpers.FormatErrorResult("'player_path_or_name' is required and must be a string.")
@@ -37,24 +40,24 @@ local function execute(args)
             return ToolHelpers.FormatErrorResult(("Player '%s' not found."):format(playerPathOrName))
         end
 
-        local kickSuccess, kickError = pcall(function()
-            playerToKick:Kick(kickMessage)
-        end)
+        -- player:Kick() can error if, for example, the player is already leaving.
+        local kickActualSuccess, kickActualError = pcall(playerToKick.Kick, playerToKick, kickMessage)
 
-        if not kickSuccess then
-            return ToolHelpers.FormatErrorResult(("Failed to kick player '%s': %s"):format(playerPathOrName, tostring(kickError)))
+        if not kickActualSuccess then
+            return ToolHelpers.FormatErrorResult(("Failed to kick player '%s': %s"):format(playerPathOrName, tostring(kickActualError)))
         end
 
         return ToolHelpers.FormatSuccessResult({
-            message = ("Successfully kicked player %s with message: %s"):format(playerToKick.Name, kickMessage),
-            kicked_player_name = playerToKick.Name
+            message = ("Successfully kicked player %s with message: \"%s\""):format(playerToKick.Name, kickMessage),
+            kicked_player_name = playerToKick.Name,
+            kick_message_used = kickMessage
         })
     end)
 
     if success then
-        return result
+        return pcall_result
     else
-        return ToolHelpers.FormatErrorResult("Internal error in KickPlayer: " .. tostring(result))
+        return ToolHelpers.FormatErrorResult("Internal error in KickPlayer: " .. tostring(pcall_result))
     end
 end
 

@@ -1,11 +1,13 @@
 -- FindFirstChildMatching.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 
 local function execute(args)
+    -- Arguments are now expected directly on args table
     local success, pcall_result = pcall(function()
         local parentPath = args.parent_path
         local childName = args.child_name
-        local recursive = args.recursive or false -- Default to false (immediate children)
+        local recursive = args.recursive == nil and false or args.recursive
 
         if not parentPath or type(parentPath) ~= "string" or parentPath == "" then
             return ToolHelpers.FormatErrorResult("'parent_path' is required and must be a non-empty string.")
@@ -14,7 +16,7 @@ local function execute(args)
             return ToolHelpers.FormatErrorResult("'child_name' is required and must be a non-empty string.")
         end
         if type(recursive) ~= "boolean" then
-            return ToolHelpers.FormatErrorResult("'recursive' must be a boolean if provided.")
+            return ToolHelpers.FormatErrorResult("'recursive' must be a boolean.")
         end
 
         local parentInstance, err = ToolHelpers.FindInstanceByPath(parentPath)
@@ -31,7 +33,7 @@ local function execute(args)
                 child_name_searched = childName,
                 recursive_search = recursive,
                 found_child_path = foundChild:GetFullName(),
-                found_child_type = foundChild:GetClass()
+                found_child_class_name = foundChild.ClassName
             })
         else
             return ToolHelpers.FormatSuccessResult({
@@ -39,7 +41,8 @@ local function execute(args)
                 parent_path = parentPath,
                 child_name_searched = childName,
                 recursive_search = recursive,
-                found_child_path = nil
+                found_child_path = nil,
+                found_child_class_name = nil
             })
         end
     end)

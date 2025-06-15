@@ -1,16 +1,19 @@
 -- GetMouseHitCFrame.luau
-local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
+local Main = script:FindFirstAncestor("MCPStudioPlugin")
+local ToolHelpers = require(Main.ToolHelpers)
 local UserInputService = game:GetService("UserInputService")
 
 local function execute(args)
+    -- args.camera_path is optional
     local success, pcall_result = pcall(function()
-        local cameraPath = args.camera_path -- Optional
+        local cameraPath = args.camera_path
 
         if cameraPath ~= nil and type(cameraPath) ~= "string" then
             return ToolHelpers.FormatErrorResult("'camera_path' must be a string if provided.")
         end
 
         if not UserInputService then
+            -- This case should be rare in a Studio plugin context where UserInputService is usually available.
             return ToolHelpers.FormatErrorResult("UserInputService not available in this context.")
         end
 
@@ -20,7 +23,7 @@ local function execute(args)
             if foundCam and foundCam:IsA("Camera") then
                 cameraToUse = foundCam
             else
-                return ToolHelpers.FormatErrorResult(("Camera at path '%s' not found or invalid. %s"):format(cameraPath, err or ""))
+                return ToolHelpers.FormatErrorResult(("Camera at path '%s' not found or invalid. %s"):format(cameraPath, err or "Ensure path is correct."))
             end
         end
 
@@ -29,50 +32,43 @@ local function execute(args)
         end
 
         local mouseLocation = UserInputService:GetMouseLocation()
-        -- ViewportPointToRay takes X, Y, and an optional depth (0 is fine for mouse picking)
         local unitRay = cameraToUse:ViewportPointToRay(mouseLocation.X, mouseLocation.Y, 0)
 
-        -- Raycast parameters: origin, direction * length, RaycastParams (optional)
         local raycastParams = RaycastParams.new()
         raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-        -- Potentially add items to FilterDescendantsInstances if needed, e.g., player's character, accessories.
-        -- raycastParams.FilterDescendantsInstances = { game:GetService("Players").LocalPlayer.Character }
+        -- Example: Exclude player's character if needed
+        -- local player = game:GetService("Players").LocalPlayer
+        -- if player and player.Character then
+        --    raycastParams.FilterDescendantsInstances = {player.Character}
+        -- end
 
-        local raycastResult = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams) -- 1000 is max distance
+        local raycastResult = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
 
-        if raycastResult then
+        if raycastResult and raycastResult.Instance then
             local hitPosition = raycastResult.Position
             local hitNormal = raycastResult.Normal
-            -- Construct a CFrame. The orientation part is tricky.
-            -- For many use cases, just the position is needed, or a CFrame looking from hit towards camera.
-            -- A simple CFrame at the hit point with default orientation:
-            -- local hitCFrame = CFrame.new(hitPosition)
-            -- Or, a CFrame oriented with the surface normal:
             local hitCFrame = CFrame.lookAt(hitPosition, hitPosition + hitNormal)
 
-
             return ToolHelpers.FormatSuccessResult({
-                message = "Mouse hit position retrieved.",
+                message = "Mouse hit CFrame retrieved.",
                 instance_hit_path = raycastResult.Instance:GetFullName(),
-                position = ToolHelpers.RobloxValueToJson(hitCFrame.Position), -- Just position for simplicity
-                cframe = ToolHelpers.RobloxValueToJson(hitCFrame) -- Full CFrame
+                position = ToolHelpers.RobloxValueToJson(hitCFrame.Position),
+                cframe_components = ToolHelpers.RobloxValueToJson(hitCFrame) -- Full CFrame components
             })
         else
             return ToolHelpers.FormatSuccessResult({
-                message = "Mouse is not pointing at any object in 3D space or object is too far.",
+                message = "Mouse is not currently pointing at any object in 3D space within 1000 studs, or the object is ignored by raycast.",
                 instance_hit_path = nil,
                 position = nil,
-                cframe = nil
+                cframe_components = nil
             })
         end
     end)
 
     if success then
-        return pcall_result
+        return pcall_result -- This is already a ToolHelpers formatted table
     else
-         if string.find(tostring(pcall_result), "UserInputService not available") or string.find(tostring(pcall_result), "No valid camera available") then
-             return ToolHelpers.FormatErrorResult(tostring(pcall_result))
-        end
+        -- pcall_result contains the error message string
         return ToolHelpers.FormatErrorResult("Internal error in GetMouseHitCFrame: " .. tostring(pcall_result))
     end
 end
