@@ -1,10 +1,13 @@
+
 -- Simplified RunCode.luau - Step 1 of reintroducing functionality
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 
+
 local function handleRunCode(args)
     if type(args.command) ~= "string" then
         return ToolHelpers.FormatErrorResult("Error: RunCode command argument is missing or not a string.")
+
     end
 
     local command = args.command
@@ -84,6 +87,7 @@ local function handleRunCode(args)
             final_output_str = "Command executed successfully with no output or return values."
         end
         return ToolHelpers.FormatSuccessResult({ output = final_output_str })
+
     end
 end
 
