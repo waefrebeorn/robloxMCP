@@ -9,7 +9,9 @@ use axum::{extract::State, Json};
 use rmcp::handler::server::tool::Parameters; // This will likely be unused after refactor
 
 use rmcp::model::{
-    ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult, ToolsCapability, Schema, SchemaObject,
+
+    ServerCapabilities, ServerInfo, ProtocolVersion, Implementation, Content, CallToolResult,
+
 };
 use rmcp::schemars;
 use rmcp::tool;
@@ -367,43 +369,12 @@ impl ServerHandler for RBXStudioServer {
             props
         };
 
-        let exec_tool_schema_object_data = SchemaObject {
-            properties: exec_tool_params_props.into_iter().map(|(k, v)| {
-                let schema_val: Schema = rmcp::serde_json::from_value(v).expect("Failed to deserialize property JSON into Schema");
-                (k, schema_val)
-            }).collect(),
-            required: vec!["tool_name".to_string(), "tool_arguments_str".to_string()],
+        let mut exec_tool_input_schema_map = rmcp::serde_json::Map::new();
+        exec_tool_input_schema_map.insert("type".to_string(), rmcp::serde_json::json!("object"));
+        exec_tool_input_schema_map.insert("properties".to_string(), rmcp::serde_json::Value::Object(exec_tool_params_props));
+        exec_tool_input_schema_map.insert("required".to_string(), rmcp::serde_json::json!(["tool_name".to_string(), "tool_arguments_str".to_string()]));
 
-            description: None,
-            default_value: None,
-            read_only: false,
-            write_only: false,
-            examples: None,
-            all_of: None,
-            any_of: None,
-            one_of: None,
-            not: None,
-            r#if: None,
-            then: None,
-            r#else: None,
-            format: None,
-            pattern: None,
-            max_length: None,
-            min_length: None,
-            max_items: None,
-            min_items: None,
-            unique_items: false,
-            max_properties: None,
-            min_properties: None,
-            multiple_of: None,
-            maximum: None,
-            exclusive_maximum: None,
-            minimum: None,
-            exclusive_minimum: None,
-            r#enum: None,
-            r#const: None,
 
-        };
         let exec_tool = rmcp::model::Tool {
             name: "execute_discovered_luau_tool".to_string().into(),
             description: Some(format!(
@@ -411,7 +382,7 @@ impl ServerHandler for RBXStudioServer {
                 self.discovered_luau_tools.keys().cloned().collect::<Vec<String>>().join(", ")
             ).into()),
 
-            input_schema: Some(Schema::Object(exec_tool_schema_object_data)),
+            input_schema: Some(std::sync::Arc::new(exec_tool_input_schema_map)),
             annotations: None,
 
         };
@@ -424,48 +395,15 @@ impl ServerHandler for RBXStudioServer {
             props
         };
 
-        let run_cmd_schema_object_data = SchemaObject {
-            properties: run_cmd_params_props.into_iter().map(|(k, v)| {
-                let schema_val: Schema = rmcp::serde_json::from_value(v).expect("Failed to deserialize property JSON into Schema");
-                (k, schema_val)
-            }).collect(),
-            required: vec!["command".to_string()],
+        let mut run_cmd_input_schema_map = rmcp::serde_json::Map::new();
+        run_cmd_input_schema_map.insert("type".to_string(), rmcp::serde_json::json!("object"));
+        run_cmd_input_schema_map.insert("properties".to_string(), rmcp::serde_json::Value::Object(run_cmd_params_props));
+        run_cmd_input_schema_map.insert("required".to_string(), rmcp::serde_json::json!(["command".to_string()]));
 
-            description: None,
-            default_value: None,
-            read_only: false,
-            write_only: false,
-            examples: None,
-            all_of: None,
-            any_of: None,
-            one_of: None,
-            not: None,
-            r#if: None,
-            then: None,
-            r#else: None,
-            format: None,
-            pattern: None,
-            max_length: None,
-            min_length: None,
-            max_items: None,
-            min_items: None,
-            unique_items: false,
-            max_properties: None,
-            min_properties: None,
-            multiple_of: None,
-            maximum: None,
-            exclusive_maximum: None,
-            minimum: None,
-            exclusive_minimum: None,
-            r#enum: None,
-            r#const: None,
-
-        };
         let run_cmd_tool = rmcp::model::Tool {
             name: "run_command".to_string().into(),
             description: Some("Runs a raw Luau command string in Roblox Studio.".to_string().into()),
-
-            input_schema: Some(Schema::Object(run_cmd_schema_object_data)),
+            input_schema: Some(std::sync::Arc::new(run_cmd_input_schema_map)),
             annotations: None,
 
         };
@@ -478,48 +416,15 @@ impl ServerHandler for RBXStudioServer {
             props
         };
 
-        let insert_model_schema_object_data = SchemaObject {
-            properties: insert_model_params_props.into_iter().map(|(k, v)| {
-                let schema_val: Schema = rmcp::serde_json::from_value(v).expect("Failed to deserialize property JSON into Schema");
-                (k, schema_val)
-            }).collect(),
-            required: vec!["query".to_string()],
+        let mut insert_model_input_schema_map = rmcp::serde_json::Map::new();
+        insert_model_input_schema_map.insert("type".to_string(), rmcp::serde_json::json!("object"));
+        insert_model_input_schema_map.insert("properties".to_string(), rmcp::serde_json::Value::Object(insert_model_params_props));
+        insert_model_input_schema_map.insert("required".to_string(), rmcp::serde_json::json!(["query".to_string()]));
 
-            description: None,
-            default_value: None,
-            read_only: false,
-            write_only: false,
-            examples: None,
-            all_of: None,
-            any_of: None,
-            one_of: None,
-            not: None,
-            r#if: None,
-            then: None,
-            r#else: None,
-            format: None,
-            pattern: None,
-            max_length: None,
-            min_length: None,
-            max_items: None,
-            min_items: None,
-            unique_items: false,
-            max_properties: None,
-            min_properties: None,
-            multiple_of: None,
-            maximum: None,
-            exclusive_maximum: None,
-            minimum: None,
-            exclusive_minimum: None,
-            r#enum: None,
-            r#const: None,
-
-        };
         let insert_model_tool = rmcp::model::Tool {
             name: "insert_model".to_string().into(),
             description: Some("Inserts a model from the Roblox marketplace into the workspace.".to_string().into()),
-
-            input_schema: Some(Schema::Object(insert_model_schema_object_data)),
+            input_schema: Some(std::sync::Arc::new(insert_model_input_schema_map)),
             annotations: None,
 
         };
@@ -527,7 +432,8 @@ impl ServerHandler for RBXStudioServer {
 
         let mut capabilities = ServerCapabilities::default();
 
-        capabilities.tools = Some(rmcp::model::ToolsCapability(tools_list, Some(true)));
+        capabilities.tools = Some(tools_list);
+        capabilities.list_changed = Some(true); // Speculative: Add if ServerCapabilities has this field
 
 
         if self.discovered_luau_tools.is_empty() {
