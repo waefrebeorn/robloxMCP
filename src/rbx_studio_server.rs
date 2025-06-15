@@ -231,6 +231,7 @@ impl RBXStudioServer {
         }
     }
 
+
     // Helper function to queue a command and prepare for its response.
     // This encapsulates the logic of modifying the shared state (process_queue, output_map).
     async fn queue_command_and_get_trigger(
@@ -252,6 +253,7 @@ impl RBXStudioServer {
         Ok(cloned_trigger)
         // state_guard is dropped here, releasing the lock.
     }
+
 
     async fn generic_tool_run(&self, args_values: ToolArgumentValues) -> Result<CallToolResult, McpError> {
          let (tool_arguments_with_id, request_id) = ToolArguments::new_with_id(args_values); // Renamed command_with_wrapper_id and id
@@ -457,6 +459,7 @@ pub async fn response_handler(
                 }
                 app_state_locked.waiter.clone()
             };
+
 
             // Wait for a signal that the process_queue might have new items, or that the server is shutting down.
             if waiter.changed().await.is_err() {
