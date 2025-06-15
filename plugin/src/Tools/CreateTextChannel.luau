@@ -35,22 +35,20 @@ local function execute(args)
                 if string.lower(propName) == "parent" then
                     -- TextChannels are always parented to TextChatService.
                     print("CreateTextChannel: 'Parent' property in 'properties' table is ignored.")
-                    goto continue_loop
-                end
-
-                -- Use JsonToRobloxValue for each property value
-                local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, "TextChannel."..propName)
-                if convertError then
-                    table.insert(propertyErrors, ("Property '%s': Failed to convert input value: %s"):format(propName, convertError))
                 else
-                    local setSuccess, setError = pcall(function()
-                        newChannel[propName] = convertedValue
-                    end)
-                    if not setSuccess then
-                        table.insert(propertyErrors, ("Property '%s': Error setting value: %s"):format(propName, setError))
+                    -- Use JsonToRobloxValue for each property value
+                    local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, "TextChannel."..propName)
+                    if convertError then
+                        table.insert(propertyErrors, ("Property '%s': Failed to convert input value: %s"):format(propName, convertError))
+                    else
+                        local setSuccess, setError = pcall(function()
+                            newChannel[propName] = convertedValue
+                        end)
+                        if not setSuccess then
+                            table.insert(propertyErrors, ("Property '%s': Error setting value: %s"):format(propName, setError))
+                        end
                     end
                 end
-                ::continue_loop::
             end
         end
 
