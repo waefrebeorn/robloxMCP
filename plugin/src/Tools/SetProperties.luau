@@ -54,24 +54,22 @@ local function execute(args)
                     original_value = propValueInput
                 })
                 print(("SetProperties: Error converting value for property '%s' on instance '%s': %s"):format(propName, path, convertError))
-                goto continue_loop
-            end
-
-            local setSuccess, setError = pcall(function()
-                instance[propName] = convertedValue
-            end)
-
-            if setSuccess then
-                table.insert(appliedProperties, propName)
             else
-                table.insert(failedProperties, {
-                    name = propName,
-                    error = tostring(setError),
-                    value_tried = convertedValue
-                })
-                print(("SetProperties: Error setting property '%s' on instance '%s': %s"):format(propName, path, setError))
+                local setSuccess, setError = pcall(function()
+                    instance[propName] = convertedValue
+                end)
+
+                if setSuccess then
+                    table.insert(appliedProperties, propName)
+                else
+                    table.insert(failedProperties, {
+                        name = propName,
+                        error = tostring(setError),
+                        value_tried = convertedValue
+                    })
+                    print(("SetProperties: Error setting property '%s' on instance '%s': %s"):format(propName, path, setError))
+                end
             end
-            ::continue_loop::
         end
 
         if #failedProperties > 0 then
