@@ -125,6 +125,7 @@ local function runCodeWithOutput(command: string): (string, boolean)
 			addToOutput("[WARNING]", ...)
 		end
 
+
 		local oldError = chunkfenv.error or error
 		local function customErrorForChunk(...)
 			anErrorOccurred = true
@@ -154,6 +155,7 @@ local function runCodeWithOutput(command: string): (string, boolean)
             end
 			addToOutput("[RETURNED]", table.unpack(unpackedResults, 1, results.n))
 		end
+
 	end
 
 	-- The main pcall for executeCode itself (though internal execution is also pcalled now)

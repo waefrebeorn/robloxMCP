@@ -44,6 +44,7 @@ local function loadToolFunctions()
     else
         print("[MCP Diagnostics] Main is nil, cannot access Main.Tools.")
     end
+
     if script:FindFirstChild("Tools") then
         print("[MCP Diagnostics] script.Tools is: " .. tostring(script.Tools) .. " (" .. script.Tools:GetFullName() .. ")")
     else
@@ -76,12 +77,14 @@ local function loadToolFunctions()
         end
     else
         print("[MCP Diagnostics] Error: Tools folder not found or resolved to nil.")
+
     end
 
     local loadedToolNames = {}
     for name, _ in pairs(toolModules) do
         table.insert(loadedToolNames, name)
     end
+
     print("[MCP Diagnostics] Finished loading tools. Loaded tool names: {" .. table.concat(loadedToolNames, ", ") .. "}")
 
     return toolModules
@@ -177,6 +180,7 @@ local function connectWebSocket()
 					end
 				else
 					print("[MCP Diagnostics] sendResponseOnce: First JSONEncode pcall SUCCEEDED.")
+
 					jsonEncodedCallToolResultStr = resultOrError
 				end
 
