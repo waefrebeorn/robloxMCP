@@ -1,8 +1,9 @@
 
--- Simplified RunCode.luau - Step 2 of reintroducing functionality (Table Serialization)
+-- Simplified RunCode.luau - Test 1: Isolate deepClone
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
-local HttpService = game:GetService("HttpService") -- Added for toStrTable
+local HttpService = game:GetService("HttpService")
+
 
 -- Helper functions from the original script
 local function getTableType(arg)
@@ -36,6 +37,7 @@ local function serializeTable(arg)
 	return arg
 end
 
+--[[
 local function deepClone(t, cache)
     cache = cache or {}
 	local clone = {}
@@ -61,13 +63,19 @@ local function deepClone(t, cache)
 	end
 	return clone
 end
+--]]
 
 local function toStrTable(t: { any }): { string }
     local clonedTable = {}
-    local cloneSuccess, result = pcall(deepClone, t, {})
-    if cloneSuccess then
+
+    -- Bypassing deepClone for testing parser issue
+    local cloneSuccess, result = true, t -- Bypass deepClone, work directly on t
+
+    if cloneSuccess then -- This will always be true now for the direct assignment
         clonedTable = result
     else
+        -- This 'else' block is effectively dead code for this test, but kept for structure.
+
         local strTableMinimal = table.create(#t)
         for i, arg_elem in ipairs(t) do
             strTableMinimal[i] = tostring(arg_elem)
@@ -86,7 +94,9 @@ local function toStrTable(t: { any }): { string }
 	return strTable
 end
 
--- Main function from previous step, with modified addToOutput
+
+-- Main function from previous step
+
 local function handleRunCode(args)
     if type(args.command) ~= "string" then
         return ToolHelpers.FormatErrorResult("Error: RunCode command argument is missing or not a string.")
@@ -96,17 +106,14 @@ local function handleRunCode(args)
     local output_parts = {}
     local an_error_occurred_in_command = false
 
-    -- Modified addToOutput to use toStrTable
     local function addToOutput(tag, ...)
         local packedArgs = table.pack(...)
         if packedArgs.n == 0 then
-            table.insert(output_parts, tag .. "\n") -- Keep simple for no-arg calls
+            table.insert(output_parts, tag .. "\n")
             return
         end
-        -- Use the reintroduced toStrTable
         local strResults = toStrTable(packedArgs)
         table.insert(output_parts, tag .. " " .. table.concat(strResults, "\t") .. "\n")
-
     end
 
     local pcall_success, execution_result = pcall(function()
@@ -115,7 +122,6 @@ local function handleRunCode(args)
             an_error_occurred_in_command = true
             addToOutput("[LOADSTRING ERROR]", load_err or "Unknown loadstring error")
             return
-
         end
 
         local chunkfenv = getfenv(func)
@@ -150,7 +156,7 @@ local function handleRunCode(args)
             addToOutput("[RUNTIME ERROR]", returned_values_from_command[1])
         else
             if #returned_values_from_command > 0 then
-                -- addToOutput will now use toStrTable for these returned values
+
                 addToOutput("[RETURNED]", table.unpack(returned_values_from_command))
             end
         end
@@ -160,10 +166,8 @@ local function handleRunCode(args)
     local final_output_str = table.concat(output_parts, "")
 
     if not pcall_success then
-
         final_output_str = final_output_str .. "[CRITICAL TOOL ERROR] " .. tostring(execution_result) .. "\n"
         an_error_occurred_in_command = true
-
         return ToolHelpers.FormatErrorResult(final_output_str)
     elseif an_error_occurred_in_command then
         return ToolHelpers.FormatErrorResult(final_output_str)
@@ -171,9 +175,6 @@ local function handleRunCode(args)
         if final_output_str == "" then
             final_output_str = "Command executed successfully with no output or return values."
         end
-
-        -- The structure of FormatSuccessResult might need adjustment if it expects specific fields
-        -- For now, assuming it can take a generic table with an 'output' field.
         return ToolHelpers.FormatSuccessResult({ output = final_output_str })
 
     end
