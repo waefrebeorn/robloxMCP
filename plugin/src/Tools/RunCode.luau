@@ -125,17 +125,18 @@ local function runCodeWithOutput(command: string): (string, boolean)
 			addToOutput("[WARNING]", ...)
 		end
 
-		local oldError = chunkfenv.error or error -- getfenv might not have 'error' if it's a global
-		chunkfenv.error = function(...)
+
+		local oldError = chunkfenv.error or error
+		local function customErrorForChunk(...)
 			anErrorOccurred = true
+			addToOutput("[ERROR]", ...)
             -- No need to call oldError here as it would halt execution;
             -- The error is captured by addToOutput.
-			addToOutput("[ERROR]", ...)
             -- Unlike the original, we don't call the actual error() here to allow script to continue
             -- and capture more output if possible, or let pcall handle the halt.
             -- For true halting behavior, the pcall below is the primary catcher.
-
-		end -- Added missing 'end'
+		end
+		chunkfenv.error = customErrorForChunk
 
 		-- Execute the chunk
         local success, results = pcall(chunk) -- Use pcall here for safety
