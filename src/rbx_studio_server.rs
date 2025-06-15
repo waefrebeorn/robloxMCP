@@ -158,6 +158,7 @@ impl StateManager {
         info!("State Manager stopped.");
     }
 
+
     fn handle_add_task(&mut self, args: ToolArguments, response_channel_tx: oneshot::Sender<Result<String, McpError>>) {
         let task_id = args.id.expect("TaskArguments must have an ID when added by AddTask");
         info!(target: "state_manager", task_id = %task_id, "Handling AddTask.");
@@ -206,6 +207,25 @@ impl StateManager {
         debug!(target: "state_manager", task_id = %task_id, "Handling CleanupTaskOnTimeout.");
         if self.output_map.remove(&task_id).is_none() {
             warn!(target: "state_manager", task_id = %task_id, "CleanupTaskOnTimeout requested for task_id not in output_map.");
+
+        }
+    }
+
+    fn handle_post_response(&mut self, task_id: Uuid, result: Result<String, McpError>) {
+        info!(target: "state_manager", task_id = %task_id, "Handling PostResponse.");
+        if let Some(response_channel_tx) = self.output_map.remove(&task_id) {
+            if response_channel_tx.send(result).is_err() {
+                warn!(target: "state_manager", task_id = %task_id, "Failed to send result to original requester; receiver was dropped (likely timed out).");
+            }
+        } else {
+            warn!(target: "state_manager", task_id = %task_id, "Received response for task_id not in output_map (already cleaned up or unknown).");
+        }
+    }
+
+    fn handle_cleanup_task_on_timeout(&mut self, task_id: Uuid) {
+        debug!(target: "state_manager", task_id = %task_id, "Handling CleanupTaskOnTimeout.");
+        if self.output_map.remove(&task_id).is_none() {
+            warn!(target: "state_manager", task_id = %task_id, "CleanupTaskOnTimeout requested for task_id not in output_map.");
         }
     }
 }
@@ -214,6 +234,13 @@ impl StateManager {
 pub struct AxumSharedState {
     pub sm_command_tx: tokio::sync::mpsc::Sender<StateManagerCommand>,
 }
+
+
+#[derive(Clone)]
+pub struct AxumSharedState {
+    pub sm_command_tx: tokio::sync::mpsc::Sender<StateManagerCommand>,
+}
+
 
 // AppState struct and ::new() - REMOVED
 // pub type PackedState = Arc<Mutex<AppState>>; - REMOVED
@@ -271,6 +298,7 @@ impl RBXStudioServer {
 
     // Helper function to acquire the AppState lock with a timeout.
     // This function abstracts the locking mechanism, including timeout and error handling.
+
     async fn generic_tool_run(&self, args_values: ToolArgumentValues) -> Result<CallToolResult, McpError> {
         let (tool_arguments_with_id, request_id) = ToolArguments::new_with_id(args_values.clone()); // Clone args_values if needed by new_with_id
 
@@ -284,6 +312,7 @@ impl RBXStudioServer {
             response_channel_tx: response_tx,
         };
 
+
         if self.sm_command_tx.send(command).await.is_err() {
             error!(target: "mcp_server::generic_tool_run", request_id = %request_id, "Failed to send AddTask to StateManager. It might have stopped.");
             return Err(McpError::internal_error("StateManager unavailable.", None));
@@ -296,12 +325,14 @@ impl RBXStudioServer {
             Ok(Ok(Ok(response_string))) => { // Timeout didn't occur, oneshot received, Result is Ok(String)
                 debug!(target: "mcp_server::generic_tool_run", request_id = %request_id, response_len = response_string.len(), "Received successful response from plugin.");
                 Ok(CallToolResult::success(vec![Content::text(response_string)])) // Ensure Content is known
+
             }
             Ok(Ok(Err(mcp_error_from_plugin))) => { // Timeout didn't occur, oneshot received, Result is Err(McpError)
                 error!(target: "mcp_server::generic_tool_run", request_id = %request_id, error = ?mcp_error_from_plugin, "Received error response from plugin.");
                 // Ok(CallToolResult::error(vec![Content::text(mcp_error_from_plugin.to_string())])) // Original
                 Err(mcp_error_from_plugin) // Propagate the McpError directly
             }
+
             Ok(Err(_oneshot_recv_err)) => { // Timeout didn't occur, but oneshot channel was dropped (StateManager issue)
                 error!(target: "mcp_server::generic_tool_run", request_id = %request_id, "Oneshot channel for response dropped by StateManager.");
                 Err(McpError::internal_error("StateManager failed to provide response.", None))
@@ -313,7 +344,9 @@ impl RBXStudioServer {
                 if self.sm_command_tx.send(cleanup_cmd).await.is_err() {
                     error!(target: "mcp_server::generic_tool_run", request_id = %request_id, "Failed to send CleanupTaskOnTimeout to StateManager during tool execution timeout handling.");
                 }
+
                 Err(McpError::new(rmcp::model::ErrorCode::InternalError, format!("Tool execution timed out after {}s.", TOOL_EXECUTION_TIMEOUT.as_secs()), None))
+
             }
         }
     }
@@ -335,10 +368,14 @@ impl ServerHandler for RBXStudioServer {
         // Access discovered_luau_tools from self
         for (tool_name, _) in self.discovered_luau_tools.iter() {
             tracing::info!("Discovered Luau tool (from RBXStudioServer state, not added to capabilities.tools due to API limitations): {}", tool_name);
+
         }
         if self.discovered_luau_tools.is_empty() {
             tracing::warn!("No Luau tools found in RBXStudioServer state during get_info.");
+
         }
+
+
 
 
         // base_capabilities.tools will remain as initialized by ServerCapabilities::builder().enable_tools().build();
@@ -405,7 +442,9 @@ impl RBXStudioServer {
 }
 
 // pub async fn response_handler(State(state): State<PackedState>, Json(payload): Json<RunCommandResponse>) -> Result<impl IntoResponse, StatusCode> { // OLD
+
 pub async fn response_handler(State(axum_state): State<AxumSharedState>, Json(payload): Json<RunCommandResponse>) -> impl IntoResponse { // NEW
+
     debug!(target: "mcp_server::response_handler", request_id = %payload.id, "Received reply from studio plugin via /response");
 
     let command = StateManagerCommand::PostResponse {
@@ -416,6 +455,7 @@ pub async fn response_handler(State(axum_state): State<AxumSharedState>, Json(pa
     if axum_state.sm_command_tx.send(command).await.is_err() {
         error!(target: "mcp_server::response_handler", request_id = %payload.id, "Failed to send PostResponse command to StateManager. StateManager might have stopped.");
         // Return an error response to the plugin, as its response cannot be processed.
+
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(rmcp::serde_json::json!({
             "type": "internal_server_error",
             "message": "Server failed to process response: StateManager unavailable.",
@@ -441,6 +481,7 @@ pub async fn request_handler(State(axum_state): State<AxumSharedState>) -> Resul
             "message": "Failed to communicate with StateManager.",
         }))).into_response());
     }
+
 
     // Wait for LONG_POLL_DURATION for the StateManager to give us a task
     // Apply long poll timeout waiting for StateManager to provide a task.
