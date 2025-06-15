@@ -1,58 +1,93 @@
--- Simplified RunCode.luau
+
+-- Simplified RunCode.luau - Step 1 of reintroducing functionality
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
-local ToolHelpers = require(Main.ToolHelpers) -- Assuming ToolHelpers is still needed for FormatErrorResult/FormatSuccessResult
+local ToolHelpers = require(Main.ToolHelpers)
+
 
 local function handleRunCode(args)
     if type(args.command) ~= "string" then
         return ToolHelpers.FormatErrorResult("Error: RunCode command argument is missing or not a string.")
+
     end
 
     local command = args.command
-    local output_text = ""
-    local is_error = false
+    local output_parts = {} -- Reintroduce output_parts
+    local an_error_occurred_in_command = false
 
+    -- Simplified addToOutput for this step
+    local function addToOutput(tag, ...)
+        local parts = {tag}
+        for i = 1, select("#", ...) do
+            table.insert(parts, tostring(select(i, ...)))
+        end
+        table.insert(output_parts, table.concat(parts, " ") .. "\n")
+    end
 
-    local success, result = pcall(function()
-        local func, err = loadstring(command)
+    local pcall_success, execution_result = pcall(function()
+        local func, load_err = loadstring(command)
         if not func then
-            return { message = "LOADSTRING ERROR: " .. tostring(err), is_error = true }
-
+            an_error_occurred_in_command = true
+            addToOutput("[LOADSTRING ERROR]", load_err or "Unknown loadstring error")
+            return -- Important: return from this anonymous function
         end
 
-        local results = {pcall(func)} -- Execute and capture results
+        local chunkfenv = getfenv(func)
+        local oldPrint = chunkfenv.print or print
+        chunkfenv.print = function(...)
+            if oldPrint then oldPrint(...) end -- Call original print
+            addToOutput("[OUTPUT]", ...)
+        end
 
+        local oldWarn = chunkfenv.warn or warn
+        chunkfenv.warn = function(...)
+            if oldWarn then oldWarn(...) end -- Call original warn
+            addToOutput("[WARNING]", ...)
+        end
+
+        -- Capture errors without halting, record them via addToOutput
+        local oldError = chunkfenv.error
+        chunkfenv.error = function(...)
+            an_error_occurred_in_command = true
+            addToOutput("[ERROR]", ...)
+            -- Do not call oldError here to prevent script halt if possible,
+            -- error is recorded. For critical errors, pcall below handles it.
+        end
+
+        -- Execute the user's code
+        local results = {pcall(func)}
         local run_success = results[1]
-        local return_values = {}
+        local returned_values_from_command = {}
         for i = 2, #results do
-            table.insert(return_values, results[i])
+            table.insert(returned_values_from_command, results[i])
         end
 
         if not run_success then
-            return { message = "RUNTIME ERROR: " .. tostring(return_values[1]), is_error = true }
+            an_error_occurred_in_command = true
+            -- The error from pcall(func) is in returned_values_from_command[1]
+            addToOutput("[RUNTIME ERROR]", returned_values_from_command[1])
         else
-            local output_parts = {}
-            for i, val in ipairs(return_values) do
-                table.insert(output_parts, tostring(val))
-            end
-            if #output_parts > 0 then
-                 return { message = "Output: " .. table.concat(output_parts, "\t"), is_error = false }
-            else
-                return { message = "Command executed successfully with no return value.", is_error = false }
+            if #returned_values_from_command > 0 then
+                addToOutput("[RETURNED]", table.unpack(returned_values_from_command))
             end
         end
-    end)
+    end) -- End of main pcall for execution
 
-    if not success then
-        -- This is an error in the pcall wrapping loadstring/execution itself
-        output_text = "CRITICAL EXECUTION ERROR: " .. tostring(result)
-        is_error = true
-        return ToolHelpers.FormatErrorResult(output_text)
-    elseif result.is_error then
-        -- Error from loadstring or runtime
-        return ToolHelpers.FormatErrorResult(result.message)
+    local final_output_str = table.concat(output_parts, "")
+
+    if not pcall_success then
+        -- This is a critical error in the Lua code of this tool itself (e.g. in addToOutput, etc.)
+        -- This should ideally not happen with this simplified version.
+        final_output_str = final_output_str .. "[CRITICAL TOOL ERROR] " .. tostring(execution_result) .. "\n"
+        an_error_occurred_in_command = true -- Mark as error
+        return ToolHelpers.FormatErrorResult(final_output_str)
+    elseif an_error_occurred_in_command then
+        return ToolHelpers.FormatErrorResult(final_output_str)
     else
-        -- Success from execution
-        return ToolHelpers.FormatSuccessResult({ output = result.message })
+        if final_output_str == "" then
+            final_output_str = "Command executed successfully with no output or return values."
+        end
+        return ToolHelpers.FormatSuccessResult({ output = final_output_str })
+
     end
 end
 
