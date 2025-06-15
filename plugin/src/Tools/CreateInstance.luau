@@ -53,7 +53,7 @@ local function execute(args)
         for propName, propValueInput in pairs(properties) do
             if string.lower(propName) ~= "parent" then
                 -- Use JsonToRobloxValue for each property value, as it might be a JSON representation of a Roblox type
-                local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, newInstance:GetClass().."."..propName)
+                local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, newInstance.ClassName.."."..propName)
                 if convertError then
                     table.insert(propertyErrors, ("Property '%s': Failed to convert input value: %s"):format(propName, convertError))
                 else
