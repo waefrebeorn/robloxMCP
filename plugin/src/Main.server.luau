@@ -319,9 +319,24 @@ local function connectWebSocket()
 			return
 		end
 
-        local toolFunc = toolFunctions[toolNameForExecution]
+		-- ADD DIAGNOSTICS HERE
+		print("[MCP Diagnostics] MessageReceived: Attempting to find tool. toolNameForExecution = '" .. tostring(toolNameForExecution) .. "'")
+		local currentToolKeys = {}
+		for k, _ in pairs(toolFunctions) do
+			table.insert(currentToolKeys, "'" .. tostring(k) .. "'")
+		end
+		print("[MCP Diagnostics] MessageReceived: Current keys in toolFunctions: {" .. table.concat(currentToolKeys, ", ") .. "}")
+		-- Check explicitly if the key exists
+		if toolFunctions[toolNameForExecution] then
+			print("[MCP Diagnostics] MessageReceived: toolFunctions[toolNameForExecution] IS found. Type: " .. type(toolFunctions[toolNameForExecution]))
+		else
+			print("[MCP Diagnostics] MessageReceived: toolFunctions[toolNameForExecution] IS NIL.")
+		end
+
+		local toolFunc = toolFunctions[toolNameForExecution]
 		if not toolFunc then
-			local errorResultTable = ToolHelpers.FormatErrorResult("Tool function not found in toolFunctions map: " .. toolNameForExecution)
+            -- This is the path currently taken for RunCode
+			local errorResultTable = ToolHelpers.FormatErrorResult("Tool function not found in toolFunctions map: " .. tostring(toolNameForExecution))
 			sendResponseOnce(errorResultTable, originalToolNameToRespondWith)
 			return
 		end
