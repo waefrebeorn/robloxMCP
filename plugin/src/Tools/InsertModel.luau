@@ -163,7 +163,7 @@ local function handleInsertModel(args: Types.InsertModelArgs)
     if pcall_ok then
         -- Check if the pcall'd function returned our custom error table (e.g. from arg validation)
         if primary_return and primary_return.__isError then
-            return ToolHelpers.FormatErrorResult(primary_return.message); -- MODIFIED LINE
+            return ToolHelpers.FormatErrorResult(primary_return.message) -- MODIFIED LINE
         else
             -- If not a custom error, then primary_return is the first value from performInsert (data or nil)
             -- and secondary_return is the second value from performInsert (errorString or nil)

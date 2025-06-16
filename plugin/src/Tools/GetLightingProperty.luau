@@ -33,12 +33,15 @@ local function execute(args: Types.GetLightingPropertyArgs) -- Type annotation a
     end)
 
     if success then
-        if type(resultOrError) == "string" then
+		if type(resultOrError) == "string" then -- An error message string was returned
             return ToolHelpers.FormatErrorResult(resultOrError)
-        else
+		elseif resultOrError == nil then
+			return ToolHelpers.FormatErrorResult("GetLightingProperty returned nil unexpectedly.")
+		else -- A resultData table was returned
             return ToolHelpers.FormatSuccessResult(resultOrError)
         end
     else
+		-- pcall itself failed
         return ToolHelpers.FormatErrorResult("Internal error in GetLightingProperty: " .. tostring(resultOrError))
     end
 end

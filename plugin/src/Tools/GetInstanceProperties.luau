@@ -127,7 +127,7 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 			message = message .. (" Encountered %d errors retrieving some requested properties."):format(ToolHelpers.TableLength(accessErrors))
 		end
 
-		local resultData = { -- MODIFIED LINE: Removed type annotation
+		local resultData = {
 			message = message,
 			instance_path = path,
 			properties = retrievedProperties,
