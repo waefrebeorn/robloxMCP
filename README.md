@@ -84,6 +84,16 @@ To use the Gemini agent with Roblox Studio:
 
 Type your prompts into the Python agent's console. It will interact with Gemini and relay actions to Roblox Studio via the Rust MCP server.
 
+## Known Issues
+
+### Tool Execution Timeouts in Persistent Sessions
+
+-   **Symptom**: Luau tools executed via the Python agent (e.g., `delete_instance`, `RunCode`, `GetInstanceProperties`) may consistently time out after approximately 20 seconds when `main.py` is run with the `--test_file` argument. This mode keeps the MCP server and its connection to the Python agent alive across multiple commands.
+-   **Associated MCP Server Log**: When these timeouts occur, the `rbx-studio-mcp.exe` (Rust server) console often displays a critical error message in its STDERR output similar to: `Client that was waiting for task is gone. Task was not queued as it was consumed by send attempt.`
+-   **Hypothesis**: This behavior suggests a potential issue within the Rust-based MCP server's task management, state handling, or client communication logic when dealing with multiple, sequential requests from a single, persistent client session (the Python agent). The linkage between the Luau script execution (initiated by the plugin) and the MCP server task awaiting its response might be prematurely lost or mishandled for subsequent commands in a session.
+-   **Impact**: This issue prevents the reliable execution of command sequences when using the `--test_file` feature or any other mode that relies on a persistent session between the Python agent and the MCP server for multiple tool calls. Individual commands run via `--test_command` (which restart the agent and thus establish a new, brief MCP session) or single commands in interactive mode might appear to work more reliably regarding this specific timeout, but this is inefficient for sequences.
+-   **Workaround/Current Status**: The previous behavior of the system, where each command effectively restarted the Python agent (e.g., running `python main.py --test_command "some command"` repeatedly via a batch script for each command), did not exhibit this specific 20-second timeout for each tool call. However, that approach is significantly slower due to the overhead of restarting the Python agent and re-establishing the MCP session for every command. The timeout issue became prominent after `main.py` was modified to keep the MCP session alive for processing multiple commands from a file or in a prolonged interactive session. Further investigation into the MCP server's handling of persistent client sessions and task lifecycles is needed.
+
 ## Legacy / Alternative Setups (Claude, Cursor, Manual)
 
 The following sections describe older setup methods, primarily for integrating with Claude Desktop or Cursor, or for manual configuration.

@@ -324,6 +324,7 @@ async def main_loop():
 
                 console.print(f"\n[bold {'green' if file_command_errors == 0 else 'red'}]>>> Test file processing complete. {file_command_total - file_command_errors}/{file_command_total} commands succeeded. <<<[/bold {'green' if file_command_errors == 0 else 'red'}]")
 
+
             except FileNotFoundError:
                 logger.error(f"Test file not found: {args.test_file}")
                 console.print(f"[bold red]Error: Test file '{args.test_file}' not found.[/bold red]")
