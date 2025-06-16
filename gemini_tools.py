@@ -117,8 +117,8 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
             )
         ),
         types.FunctionDeclaration(
-            name="get_instance_properties",
-            description="Retrieves specified properties of an existing Roblox instance. Returns a dictionary of property names and their values. Complex types will be returned in their described dictionary/string formats.",
+            name="GetInstanceProperties",
+            description="Retrieves properties of an existing Roblox instance. If 'property_names' is provided, only those are fetched. Otherwise, many common scriptable properties are returned. Returns a dictionary of property names and their values. Complex types will be returned in their described dictionary/string formats.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
@@ -126,10 +126,10 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
                     "property_names": types.Schema(
                         type=types.Type.ARRAY,
                         items=types.Schema(type=types.Type.STRING),
-                        description="List of property names to retrieve (e.g., ['Size', 'Color', 'CFrame', 'Material'])."
+                        description="Optional. List of property names to retrieve (e.g., ['Size', 'Color', 'CFrame', 'Material']). If omitted, common properties are fetched."
                     )
                 },
-                required=["path", "property_names"]
+                required=["path"] # property_names is now optional
             )
         ),
         types.FunctionDeclaration(
@@ -161,7 +161,7 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
             )
         ),
         types.FunctionDeclaration(
-            name="select_instances",
+            name="SelectInstances",
             description="Sets the current selection in Roblox Studio to the specified instances. Pass an empty list to clear the selection.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
@@ -204,7 +204,7 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
             )
         ),
         types.FunctionDeclaration(
-            name="get_lighting_property",
+            name="GetLightingProperty",
             description="Gets a property of the Lighting service. Returns value in its appropriate dict/string/primitive format.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
@@ -215,7 +215,7 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
             )
         ),
         types.FunctionDeclaration(
-            name="play_sound_id",
+            name="PlaySoundId",
             description="Creates a Sound instance, sets its SoundId, parents it (defaults to Workspace), optionally sets properties (Volume, Looping), and plays it. Returns path to Sound instance or error.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
@@ -999,11 +999,10 @@ class ToolDispatcher:
                 raw_mcp_result = mcp_response["result"]
                 if original_tool_name == "get_selection":
                     try:
-                        # First level parse
-                        parsed_outer_result = json.loads(raw_mcp_result)
-                        if isinstance(parsed_outer_result, dict) and parsed_outer_result.get("content"):
+                        # raw_mcp_result is already a dict here
+                        if isinstance(raw_mcp_result, dict) and raw_mcp_result.get("content"):
                             # Second level parse (the text part of the content)
-                            inner_json_str = parsed_outer_result["content"][0]["text"]
+                            inner_json_str = raw_mcp_result["content"][0]["text"]
                             parsed_inner_result = json.loads(inner_json_str)
                             if isinstance(parsed_inner_result, dict) and \
                                "selected_instances" in parsed_inner_result and \
@@ -1031,8 +1030,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result) # Or a specific error message
                 elif original_tool_name == "FindFirstChildMatching":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1051,8 +1050,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "GetChildrenOfInstance":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         children_list = data.get("children", [])
                         output_content_dict = {
@@ -1069,8 +1068,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "GetDescendantsOfInstance":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         descendants_list = data.get("descendants", [])
                         output_content_dict = {
@@ -1087,8 +1086,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "GetInstancesWithTag":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         instances_list = data.get("instances", [])
                         output_content_dict = {
@@ -1105,8 +1104,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "HasTag":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1122,8 +1121,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "CreateInstance":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1138,8 +1137,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "DeleteInstance":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         path_not_found = data.get("path_not_found")
                         output_content_dict = {
@@ -1156,8 +1155,8 @@ class ToolDispatcher:
                 # --- Start of new comprehensive handlers ---
                 elif original_tool_name in ["GetProperties", "GetInstanceProperties"]:
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1173,8 +1172,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "GetLightingProperty":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1189,8 +1188,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "GetWorkspaceProperty":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1205,8 +1204,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "GetMouseHitCFrame":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1222,8 +1221,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "GetMousePosition":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1239,8 +1238,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "GetPlayersInTeam":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         players_list = data.get("players", [])
                         output_content_dict = {
@@ -1258,8 +1257,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "GetProductInfo":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1275,8 +1274,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "GetTeams":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1291,8 +1290,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "GetTeleportData":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1307,8 +1306,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "AddDebrisItem":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1323,8 +1322,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "AddTag":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1339,8 +1338,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "CallInstanceMethod":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1354,8 +1353,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "CreateGuiElement":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1371,8 +1370,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "CreateProximityPrompt":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1389,8 +1388,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "CreateTeam":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1407,8 +1406,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "CreateTextChannel":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1423,8 +1422,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "IncrementData":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1441,8 +1440,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "IsKeyDown":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1457,8 +1456,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "IsMouseButtonDown":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1473,8 +1472,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "KickPlayer":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1489,8 +1488,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "LoadAssetById":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1506,8 +1505,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "LoadData":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1523,8 +1522,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "PlaySoundId":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1542,8 +1541,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "PromptPurchase":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1559,8 +1558,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "RemoveData":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1575,8 +1574,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "RunScript": # Corresponds to CreateScriptResultData
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1592,8 +1591,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "SaveData":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1608,8 +1607,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "SelectInstances":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1625,8 +1624,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "SendChatMessage":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1642,8 +1641,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name in ["SetInstanceProperties", "SetProperties"]:
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1658,8 +1657,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "SetLightingProperty":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1674,8 +1673,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "SetWorkspaceProperty":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1690,8 +1689,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "TeleportPlayerToPlace": # This one might have a more complex Luau return
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str) # Assuming Luau returns a table with relevant fields
                         output_content_dict = {
                            "status": "success",
@@ -1708,8 +1707,8 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 elif original_tool_name == "TweenProperties":
                     try:
-                        parsed_outer = json.loads(raw_mcp_result)
-                        inner_json_str = parsed_outer["content"][0]["text"]
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
                         data = json.loads(inner_json_str)
                         output_content_dict = {
                            "status": "success",
@@ -1726,6 +1725,23 @@ class ToolDispatcher:
                         output_content_dict = {"status": "success", "output": raw_mcp_result, "parsing_error_in_python": str(e)}
                         ConsoleFormatter.print_tool_result(raw_mcp_result)
                 # --- End of new comprehensive handlers ---
+                elif original_tool_name == "RunCode":
+                    try:
+                        # raw_mcp_result is already a dict here
+                        inner_json_str = raw_mcp_result["content"][0]["text"]
+                        data = json.loads(inner_json_str)
+                        output_content_dict = {
+                            "status": "success",
+                            "tool_message": data.get("message", "Code executed.") + " The command has been processed and its output is included.",
+                            "explicit_completion_notice": "This RunCode command is now complete. Do not call it again unless the user makes a new request to run code.",
+                            "return_values": data.get("return_values"),
+                            "output": data.get("output")
+                        }
+                        ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message", "RunCode processed.")})
+                    except Exception as e:
+                        logger.error(f"Error parsing {original_tool_name} result: {e}")
+                        output_content_dict = {"status": "success", "output": raw_mcp_result, "parsing_error_in_python": str(e)}
+                        ConsoleFormatter.print_tool_result(raw_mcp_result)
                 else:
                     # For other tools, keep original behavior
                     output_content_dict = {"status": "success", "output": raw_mcp_result}
