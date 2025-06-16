@@ -233,7 +233,7 @@ pub enum ToolArgumentValues {
     InsertModel { query: String },
     ExecuteLuauByName {
         tool_name: String,
-        arguments_json: String,
+        arguments_luau: String, // Renamed from arguments_json
     }
 }
 
@@ -360,14 +360,16 @@ impl ServerHandler for RBXStudioServer {
         let exec_tool_params_props = {
             let mut props = rmcp::serde_json::Map::new();
             props.insert("tool_name".to_string(), rmcp::serde_json::json!({"type": "string", "description": "Name of the Luau tool file (without .luau extension) to execute."}));
-            props.insert("tool_arguments_str".to_string(), rmcp::serde_json::json!({"type": "string", "description": "A JSON string representing arguments for the Luau tool."}));
+            // Changed key and description
+            props.insert("tool_arguments_luau".to_string(), rmcp::serde_json::json!({"type": "string", "description": "A string representation of a Luau table containing arguments for the Luau tool (e.g., \"return { key = 'value' }\")."}));
             props
         };
 
         let mut exec_tool_input_schema_map = rmcp::serde_json::Map::new();
         exec_tool_input_schema_map.insert("type".to_string(), rmcp::serde_json::json!("object"));
         exec_tool_input_schema_map.insert("properties".to_string(), rmcp::serde_json::Value::Object(exec_tool_params_props));
-        exec_tool_input_schema_map.insert("required".to_string(), rmcp::serde_json::json!(["tool_name".to_string(), "tool_arguments_str".to_string()]));
+        // Changed required field
+        exec_tool_input_schema_map.insert("required".to_string(), rmcp::serde_json::json!(["tool_name".to_string(), "tool_arguments_luau".to_string()]));
 
 
         let exec_tool = rmcp::model::Tool {
@@ -477,9 +479,9 @@ impl RBXStudioServer {
     async fn execute_discovered_luau_tool(
         &self,
         #[tool(param)] #[schemars(description = "Name of the Luau tool file (without .luau extension) to execute.")] tool_name: String,
-        #[tool(param)] #[schemars(description = "A JSON string representing arguments for the Luau tool.")] tool_arguments_str: String,
+        #[tool(param)] #[schemars(description = "A string representing Luau table arguments for the Luau tool.")] tool_arguments_luau: String, // Renamed and updated description
     ) -> Result<CallToolResult, McpError> {
-        info!(target: "mcp_server::execute_luau", tool_name = %tool_name, args_json = %tool_arguments_str, "Executing Luau tool by name");
+        info!(target: "mcp_server::execute_luau", tool_name = %tool_name, args_luau = %tool_arguments_luau, "Executing Luau tool by name"); // Changed args_json to args_luau
 
         // Access discovered_luau_tools from self (Arc<HashMap<...>>)
         if !self.discovered_luau_tools.contains_key(&tool_name) {
@@ -493,7 +495,7 @@ impl RBXStudioServer {
 
         self.generic_tool_run(ToolArgumentValues::ExecuteLuauByName {
             tool_name,
-            arguments_json: tool_arguments_str,
+            arguments_luau: tool_arguments_luau, // Renamed field
         }).await
     }
 }

@@ -274,26 +274,60 @@ function ToolHelpers.RobloxValueToJson(robloxValue)
 end
 
 -- Standard response formatters
-function ToolHelpers.FormatSuccessResult(data)
-    local responseText
-    if type(data) == "string" then
-        responseText = data
-    elseif data == nil then
-        responseText = "" -- Represent nil data as empty string for TextContent part
-    else
-        -- Call SafeJsonEncode directly. It already uses pcall internally.
-        local encodedData, encodeError = ToolHelpers.SafeJsonEncode(data)
 
-        if encodeError then -- Check the error returned by SafeJsonEncode
-            -- SafeJsonEncode indicated an error during JSON encoding.
-            local errorContent = { { type = "text", text = "Error: Could not encode successful result data: " .. encodeError } }
-            return { content = errorContent, isError = true }
+local function FormatTableToStringRecursive(tbl, indentLevel)
+    local strParts = {}
+    local indentString = string.rep("  ", indentLevel)
+
+    if indentLevel > 3 then -- Limit recursion depth to prevent infinite loops with cyclic tables
+        table.insert(strParts, indentString .. "{ ...cyclic table... }")
+        return table.concat(strParts)
+    end
+
+    for k, v in pairs(tbl) do
+        local keyStr = tostring(k)
+        local valueStr
+        if type(v) == "table" then
+            valueStr = FormatTableToStringRecursive(v, indentLevel + 1)
+            if indentLevel == 0 then -- Add newline for top-level table elements if they are tables
+                 table.insert(strParts, indentString .. keyStr .. " = {\n" .. valueStr .. "\n" .. indentString .. "}")
+            else
+                 table.insert(strParts, indentString .. keyStr .. " = {\n" .. valueStr .. "\n" .. indentString .. "}")
+            end
+        elseif type(v) == "string" then
+            valueStr = "\"" .. tostring(v) .. "\""
+            table.insert(strParts, indentString .. keyStr .. " = " .. valueStr)
+        elseif type(v) == "Instance" then
+            valueStr = "\"" .. v:GetFullName() .. "\" (Instance)"
+            table.insert(strParts, indentString .. keyStr .. " = " .. valueStr)
         else
-            -- SafeJsonEncode was successful.
-            responseText = encodedData
+            valueStr = tostring(v)
+            table.insert(strParts, indentString .. keyStr .. " = " .. valueStr)
         end
     end
-    return { content = { { type = "text", text = responseText } }, isError = false }
+    if indentLevel == 0 then
+        return "{\n" .. table.concat(strParts, ",\n") .. "\n}"
+    else
+        return table.concat(strParts, ",\n")
+    end
+end
+
+function ToolHelpers.FormatSuccessResult(data)
+    local plain_string_representation
+    local dataType = type(data)
+
+    if dataType == "table" then
+        plain_string_representation = FormatTableToStringRecursive(data, 0)
+    elseif dataType == "string" or dataType == "number" or dataType == "boolean" then
+        plain_string_representation = tostring(data)
+    elseif data == nil then
+        plain_string_representation = "nil"
+    else
+        -- For other types like Instance, UserData, etc.
+        plain_string_representation = tostring(data)
+    end
+
+    return { content = { { type = "text", text = plain_string_representation } }, isError = false }
 end
 
 function ToolHelpers.FormatErrorResult(errorMessageString, _errorType) -- _errorType is not used in the new format
