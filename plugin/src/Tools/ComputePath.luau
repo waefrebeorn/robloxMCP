@@ -3,36 +3,65 @@ local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types)
 local PathfindingService = game:GetService("PathfindingService")
+local HttpService = game:GetService("HttpService") -- Added
 
 local function execute(args: Types.ComputePathArgs)
     -- Arguments are now expected directly on args table
     local success, pcall_result = pcall(function()
-        local startPos = args.start_position -- Expecting Vector3
-        local endPos = args.end_position     -- Expecting Vector3
-        local agentParamsJson = args.agent_parameters -- Optional. This is still a table, specific parsing for Costs below.
+        local startPosInput = args.start_position
+        local endPosInput = args.end_position
+        local agentParamsTable = args.agent_parameters -- Renamed for clarity from agentParamsJson
 
-        if not startPos or typeof(startPos) ~= "Vector3" then
-            return ToolHelpers.FormatErrorResult("'start_position' is required and must be a Vector3.")
+        local startPosFinal: Vector3
+        local endPosFinal: Vector3
+
+        -- Process start_position
+        if type(startPosInput) == "table" then
+            local converted, err = ToolHelpers.ConvertTableToRobloxType(startPosInput, "start_position", nil)
+            if err then
+                return ToolHelpers.FormatErrorResult(("Invalid 'start_position' table: %s. Original: %s"):format(err, HttpService:JSONEncode(startPosInput)))
+            end
+            if typeof(converted) == "Vector3" then
+                startPosFinal = converted
+            else
+                return ToolHelpers.FormatErrorResult(("'start_position' table did not convert to Vector3. Got %s."):format(typeof(converted)))
+            end
+        elseif typeof(startPosInput) == "Vector3" then
+            startPosFinal = startPosInput
+        else
+            return ToolHelpers.FormatErrorResult(("'start_position' must be a Vector3 or a table convertible to Vector3. Got %s."):format(typeof(startPosInput)))
         end
-        if not endPos or typeof(endPos) ~= "Vector3" then
-            return ToolHelpers.FormatErrorResult("'end_position' is required and must be a Vector3.")
+
+        -- Process end_position
+        if type(endPosInput) == "table" then
+            local converted, err = ToolHelpers.ConvertTableToRobloxType(endPosInput, "end_position", nil)
+            if err then
+                return ToolHelpers.FormatErrorResult(("Invalid 'end_position' table: %s. Original: %s"):format(err, HttpService:JSONEncode(endPosInput)))
+            end
+            if typeof(converted) == "Vector3" then
+                endPosFinal = converted
+            else
+                return ToolHelpers.FormatErrorResult(("'end_position' table did not convert to Vector3. Got %s."):format(typeof(converted)))
+            end
+        elseif typeof(endPosInput) == "Vector3" then
+            endPosFinal = endPosInput
+        else
+            return ToolHelpers.FormatErrorResult(("'end_position' must be a Vector3 or a table convertible to Vector3. Got %s."):format(typeof(endPosInput)))
         end
-        if agentParamsJson ~= nil and type(agentParamsJson) ~= "table" then
+
+        if agentParamsTable ~= nil and type(agentParamsTable) ~= "table" then
             return ToolHelpers.FormatErrorResult("'agent_parameters' must be a table if provided.")
         end
 
-        -- JsonToRobloxValue calls removed. startPos and endPos are used directly.
-        -- Redundant type checks also removed as they are covered by the initial checks.
-
         local agentParameters = {}
-        if agentParamsJson then
-            if agentParamsJson.AgentRadius then agentParameters.AgentRadius = agentParamsJson.AgentRadius end
-            if agentParamsJson.AgentHeight then agentParameters.AgentHeight = agentParamsJson.AgentHeight end
-            if agentParamsJson.AgentCanJump then agentParameters.AgentCanJump = agentParamsJson.AgentCanJump end
-            if agentParamsJson.WaypointSpacing then agentParameters.WaypointSpacing = agentParamsJson.WaypointSpacing end
-            if agentParamsJson.Costs then
+        if agentParamsTable then
+            if agentParamsTable.AgentRadius then agentParameters.AgentRadius = agentParamsTable.AgentRadius end
+            if agentParamsTable.AgentHeight then agentParameters.AgentHeight = agentParamsTable.AgentHeight end
+            if agentParamsTable.AgentCanJump then agentParameters.AgentCanJump = agentParamsTable.AgentCanJump end
+            if agentParamsTable.WaypointSpacing then agentParameters.WaypointSpacing = agentParamsTable.WaypointSpacing end
+            if agentParamsTable.Costs then
                 agentParameters.Costs = {}
-                for materialName, cost in pairs(agentParamsJson.Costs) do
+                for materialName, cost in pairs(agentParamsTable.Costs) do
                     local materialEnum = Enum.Material[materialName]
                     if materialEnum then
                         agentParameters.Costs[materialEnum] = cost
@@ -45,7 +74,7 @@ local function execute(args: Types.ComputePathArgs)
 
         local path = PathfindingService:CreatePath(agentParameters)
 
-        local computeSuccess, computeMessage = pcall(path.ComputeAsync, path, startPos, endPos)
+        local computeSuccess, computeMessage = pcall(path.ComputeAsync, path, startPosFinal, endPosFinal)
         if not computeSuccess then
             return ToolHelpers.FormatErrorResult("Path:ComputeAsync failed: " .. tostring(computeMessage))
         end
@@ -72,8 +101,8 @@ local function execute(args: Types.ComputePathArgs)
 
         local resultPayload = {
             status = tostring(status),
-            start_position_used = startPos, -- Store Roblox Vector3
-            end_position_used = endPos,     -- Store Roblox Vector3
+            start_position_used = startPosFinal, -- Store Roblox Vector3
+            end_position_used = endPosFinal,     -- Store Roblox Vector3
             -- waypoints will be added by success case
         }
 

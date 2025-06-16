@@ -112,12 +112,37 @@ local function connectWebSocket()
 		log("[MCP] Connection closed")
 	end)
 
-	client.MessageReceived:Connect(function(message)
+	client.MessageReceived:Connect(function(message: string) -- Ensured valid type annotation / corrected if malformed
 		log("[MCP] Message received")
 
-		local decodedSuccess, body = pcall(HttpService.JSONDecode, HttpService, message)
-		if not decodedSuccess or not body or type(body) ~= "table" then
-			print("[MCP] Error: Failed to decode JSON message or invalid format: " .. (body or message))
+		-- Check for empty or whitespace-only message
+		if message == nil or string.match(message, "^%s*$") then
+			-- More subdued log, not an "Error"
+			print(("[MCP Diagnostic] Received empty or whitespace-only message, ignoring. Raw message: [%s]"):format(tostring(message)))
+			return
+		end
+
+		local loadedFunction, loadError = loadstring(message)
+		if not loadedFunction then
+			print(("[MCP Error] Failed to load incoming message string as Luau code. Load Error: %s. Original raw message was: [%s]"):format(tostring(loadError), message))
+			-- Potentially send a formatted error response back to the server if expected
+			-- For now, just log and return, as the message is fundamentally unparsable as code.
+			-- local errResponse = ToolHelpers.FormatErrorResult("Plugin Error: Incoming message is not valid Luau code: " .. tostring(loadError))
+			-- sendResponseOnce(errResponse, "unknown_malformed_request") -- Need to define sendResponseOnce to handle this scenario if it can't get an ID
+			return
+		end
+
+		local successCall, resultOrError = pcall(loadedFunction)
+		if not successCall then
+			print(("[MCP Error] Failed to execute compiled Luau message. Execution Error: %s. Original raw message was: [%s]"):format(tostring(resultOrError), message))
+			-- Potentially send a formatted error response
+			return
+		end
+
+		local body = resultOrError
+		if type(body) ~= "table" then
+			print(("[MCP Error] Executed Luau message did not return a table. Returned type: %s. Original raw message was: [%s]"):format(type(body), message))
+			-- Potentially send a formatted error response
 			return
 		end
 
@@ -128,113 +153,78 @@ local function connectWebSocket()
 		end
 
 		local responseSent = false
-		local function sendResponseOnce(responseCallToolResultTable, originalToolNameForResponse) -- Removed isError param as it's in the table
+		local function sendResponseOnce(responseCallToolResultTable, originalToolNameForResponse)
 			if not responseSent then
 				responseSent = true
+				print("[MCP Diagnostics] sendResponseOnce: Attempting to serialize responseCallToolResultTable. Original Tool Name: " .. tostring(originalToolNameForResponse))
+				-- Optional: safeDeepPrint(responseCallToolResultTable) for debugging input table
 
-				-- responseCallToolResultTable is the Lua table like {content={{type="text",...}}, isError=...}
-				-- This is what needs to be JSON encoded and sent as the 'response' field of the body to /response
-				print("[MCP Diagnostics] sendResponseOnce: Attempting to encode responseCallToolResultTable. Content:")
-				-- Safe deep print of the table
-				local function safeDeepPrint(tbl, indent)
-					indent = indent or 0
-					if type(tbl) ~= "table" then
-						print(string.rep("  ", indent) .. "- " .. tostring(tbl))
-						return
-					end
-					if indent > 4 then -- Prevent excessively deep recursion for huge tables
-						 print(string.rep("  ", indent) .. "- Table (depth limit reached)")
-						return
-					end
-					for k, v in pairs(tbl) do
-						print(string.rep("  ", indent) .. tostring(k) .. ":")
-						safeDeepPrint(v, indent + 1)
-					end
-				end
-				safeDeepPrint(responseCallToolResultTable)
-				print("[MCP Diagnostics] sendResponseOnce: End of responseCallToolResultTable content.")
+				local responseLuauString, responseSerialError = ToolHelpers.TableToLuauString(responseCallToolResultTable)
 
-				local successEncode, resultOrError = pcall(HttpService.JSONEncode, HttpService, responseCallToolResultTable)
-				local jsonEncodedCallToolResultStr
+				if responseSerialError then
+					print(("[MCP CRITICAL] Failed to serialize tool's direct result table for tool '%s'. Error: %s"):format(tostring(originalToolNameForResponse), tostring(responseSerialError)))
+					local fallbackErrorTable = ToolHelpers.FormatErrorResult("Plugin critical error: Failed to serialize tool's result: " .. tostring(responseSerialError))
 
-				if not successEncode then
-					local errorMessageFromEncode = tostring(resultOrError) -- This is the error from JSONEncode
-					print("[MCP Diagnostics] sendResponseOnce: First JSONEncode pcall FAILED. Error: " .. errorMessageFromEncode)
-
-					local errorDetail = "Plugin internal error: Failed to JSON encode the tool's result structure: " .. errorMessageFromEncode
-					-- log("[MCP] CRITICAL: " .. errorDetail) -- Keep conditional log or change to print
-					print("[MCP CRITICAL] " .. errorDetail) -- Make it unconditional for now
-
-					local errorCtResultTable = ToolHelpers.FormatErrorResult(errorDetail)
-					print("[MCP Diagnostics] sendResponseOnce: Attempting to encode fallback errorCtResultTable. Content:")
-					safeDeepPrint(errorCtResultTable)
-					print("[MCP Diagnostics] sendResponseOnce: End of fallback errorCtResultTable content.")
-
-					local finalErrorJsonSuccess, finalErrorJsonOrMsg = pcall(HttpService.JSONEncode, HttpService, errorCtResultTable)
-					if finalErrorJsonSuccess then
-						jsonEncodedCallToolResultStr = finalErrorJsonOrMsg
+					-- Attempt to serialize the fallback error table itself
+					local fallbackLuauString, fallbackSerialError = ToolHelpers.TableToLuauString(fallbackErrorTable)
+					if fallbackSerialError then
+						print(("[MCP CRITICAL] Failed to serialize even the fallback error table for tool '%s'. Fallback Error: %s"):format(tostring(originalToolNameForResponse), tostring(fallbackSerialError)))
+						-- Manually craft a Luau string representing the innermost error, ensuring it's a valid "return ..." statement
+						responseLuauString = "return { content={{type='text',text='Plugin critical error: Result serialization failed catastrophically.'}}, isError=true }"
 					else
-						local fallbackEncodeErrorMessage = tostring(finalErrorJsonOrMsg)
-						print("[MCP CRITICAL] Failed to encode even the fallback error message! Fallback Encode Error: " .. fallbackEncodeErrorMessage)
-						jsonEncodedCallToolResultStr = "{\"content\":[{\"type\":\"text\",\"text\":\"Plugin critical error: Failed to construct final JSON response. Fallback encode error: " .. HttpService:JSONEncode(fallbackEncodeErrorMessage) .. "\"}],\"isError\":true}"
+						responseLuauString = fallbackLuauString
 					end
-				else
-					print("[MCP Diagnostics] sendResponseOnce: First JSONEncode pcall SUCCEEDED.")
-
-					jsonEncodedCallToolResultStr = resultOrError
 				end
 
-				local payloadForRust = { -- This is the body for the POST to the /response endpoint
-					id = id, -- MCP Transaction ID, captured from the incoming message
-					response = jsonEncodedCallToolResultStr -- This is the JSON string of the CallToolResult-like table
+				-- responseLuauString now holds a string like "return {content=..., isError=...}"
+
+				local outerPayloadTable = {
+					id = id, -- Captured from the incoming request's parsed body
+					response = responseLuauString -- This is a string that starts with "return ..."
 				}
-				print("[MCP Diagnostics] sendResponseOnce: payloadForRust before second JSONEncode. Content:")
-				safeDeepPrint(payloadForRust)
-				print("[MCP Diagnostics] sendResponseOnce: End of payloadForRust content.")
 
-				local successFinalEncode, resultOrErrorFinal = pcall(HttpService.JSONEncode, HttpService, payloadForRust)
-				local finalJsonToSend -- This will be the string to send to client:Send
+				print("[MCP Diagnostics] sendResponseOnce: Attempting to serialize outerPayloadTable.")
+				-- Optional: safeDeepPrint(outerPayloadTable) for debugging
 
-				if successFinalEncode then
-					finalJsonToSend = resultOrErrorFinal
-					print("[MCP Diagnostics] sendResponseOnce: Successfully encoded final payloadForRust into finalJsonToSend.")
-					-- log("[MCP] Sending response: " .. finalJsonToSend) -- Keep original log call if it's preferred
-					print("[MCP] Sending response: " .. finalJsonToSend) -- Or use print for visibility
-					client:Send(finalJsonToSend)
-				else
-					-- resultOrErrorFinal is the error message from encoding payloadForRust
-					local payloadEncodeErrorMsg = tostring(resultOrErrorFinal)
-					print("[MCP CRITICAL] Failed to encode the final payload (payloadForRust). Error: " .. payloadEncodeErrorMsg)
+				local finalLuauStringToSend, outerSerialError = ToolHelpers.TableToLuauString(outerPayloadTable)
 
-					local criticalErrorMsg = "Plugin critical error: Failed to construct final JSON response. Error encoding payloadForRust: " .. payloadEncodeErrorMsg
-					local criticalErrorCtResult = ToolHelpers.FormatErrorResult(criticalErrorMsg)
+				if outerSerialError then
+					print(("[MCP CRITICAL] Failed to serialize the final outer payload for ID '%s'. Error: %s"):format(tostring(id), tostring(outerSerialError)))
 
-					local successCriticalEncode, jsonForCriticalError = pcall(HttpService.JSONEncode, HttpService, criticalErrorCtResult)
-					local responseContentForAgent
-
-					if successCriticalEncode then
-						responseContentForAgent = jsonForCriticalError
-					else
-						local criticalEncodeErrorMsg = tostring(jsonForCriticalError)
-						print("[MCP CRITICAL] Failed to encode even the criticalErrorCtResult. Error: " .. criticalEncodeErrorMsg)
-						-- Manually craft the JSON string for responseContentForAgent
-						responseContentForAgent = string.format("{\"content\":[{\"type\":\"text\",\"text\":\"Plugin meltdown. Cannot encode error responses. Initial error: %s. Fallback error: %s\"}],\"isError\":true}", HttpService:JSONEncode(payloadEncodeErrorMsg), HttpService:JSONEncode(criticalEncodeErrorMsg))
+					-- Construct the ultimate fallback Luau string manually
+					-- The 'response' field needs to be a string that itself is a Luau return statement.
+					local ultimateFallbackResponseLuauStr, ultimateFallbackErr = ToolHelpers.TableToLuauString(
+						ToolHelpers.FormatErrorResult("PLUGIN MELTDOWN: Final payload serialization failed: " .. tostring(outerSerialError))
+					)
+					if ultimateFallbackErr then
+						-- If even serializing this simple error table fails, use a hardcoded string for the inner response
+						ultimateFallbackResponseLuauStr = "return {content={{type='text', text='PLUGIN MELTDOWN AND UNABLE TO SERIALIZE BASIC ERROR'}}, isError=true}"
 					end
 
-					-- Now, construct the final payload string for the agent, ensuring this step is also safe
-					local finalPayloadTable = { id = id, response = responseContentForAgent }
-					local successUltimateEncode, ultimatePayloadString = pcall(HttpService.JSONEncode, HttpService, finalPayloadTable)
-
-					if successUltimateEncode then
-						client:Send(ultimatePayloadString)
+					local idStringForFormatInFallback
+					if type(id) == "string" then
+						idStringForFormatInFallback = string.format("%q", id)
+					elseif type(id) == "number" then
+						idStringForFormatInFallback = tostring(id)
+					elseif type(id) == "boolean" then
+						idStringForFormatInFallback = tostring(id)
+					elseif id == nil then
+						idStringForFormatInFallback = "nil"
 					else
-						local ultimateEncodeErrorMsg = tostring(ultimatePayloadString)
-						print("[MCP CRITICAL] Failed to encode the absolute final fallback payload. Error: " .. ultimateEncodeErrorMsg)
-						-- As a very last resort, send a completely hardcoded string if possible, though client:Send might expect specific structure
-						-- This situation indicates HttpService:JSONEncode is fundamentally broken or id is problematic.
-						client:Send(string.format("{\"id\":\"%s\",\"response\":\"{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"MELTDOWN (%s)\\\"}],\\\"isError\\\":true}\"}", tostring(id), HttpService:JSONEncode(ultimateEncodeErrorMsg)))
+						-- Fallback for unexpected ID types, ensuring it's a valid string in the output table
+						idStringForFormatInFallback = string.format("%q", "INVALID_ID_TYPE:" .. tostring(id))
 					end
+
+					-- ToolHelpers.TableToLuauString(ultimateFallbackResponseLuauStr) correctly makes
+					-- the "return..." string into a string literal like ""return {...}""
+					finalLuauStringToSend = string.format("return { id = %s, response = %s }",
+						idStringForFormatInFallback,
+						ToolHelpers.TableToLuauString(ultimateFallbackResponseLuauStr)
+					)
 				end
+
+				print("[MCP] Sending response (as Luau code string): " .. finalLuauStringToSend)
+				client:Send(finalLuauStringToSend)
 			end
 		end
 

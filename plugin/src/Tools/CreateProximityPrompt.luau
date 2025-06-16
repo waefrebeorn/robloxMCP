@@ -2,6 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types) -- Added
+local HttpService = game:GetService("HttpService") -- Added
 
 local function execute(args: Types.CreateProximityPromptArgs) -- Type annotation added
     local success, resultOrError = pcall(function()
@@ -30,13 +31,37 @@ local function execute(args: Types.CreateProximityPromptArgs) -- Type annotation
             if string.lower(propName) == "parent" then
                 -- Parent is parentPartPath, ignore from properties
             else
-                -- No conversion needed, propValueInput is expected to be the correct Luau type.
-                -- ToolHelpers.JsonToRobloxValue call removed.
-                local setSuccess, setError = pcall(function()
-                    prompt[propName] = propValueInput -- Use propValueInput directly
-                end)
-                if not setSuccess then
-                    table.insert(propertyErrors, ("Property '%s': %s"):format(propName, setError))
+                local finalValueToSet = propValueInput
+                local conversionErrorMsg = nil
+
+                if type(propValueInput) == "table" then
+                    -- Pass prompt instance for context if needed by converter
+                    local converted_value, err_msg = ToolHelpers.ConvertTableToRobloxType(propValueInput, propName, prompt)
+                    if err_msg then
+                        conversionErrorMsg = err_msg
+                    else
+                        finalValueToSet = converted_value
+                    end
+                end
+
+                if conversionErrorMsg then
+                    table.insert(propertyErrors, ("Property '%s': Conversion error: %s. Original: %s"):format(
+                        propName,
+                        conversionErrorMsg,
+                        HttpService:JSONEncode(propValueInput)
+                    ))
+                else
+                    local setSuccess, setError = pcall(function()
+                        prompt[propName] = finalValueToSet
+                    end)
+                    if not setSuccess then
+                        table.insert(propertyErrors, ("Property '%s': Error setting value: %s. Original: %s, Attempted: %s"):format(
+                            propName,
+                            tostring(setError),
+                            HttpService:JSONEncode(propValueInput),
+                            HttpService:JSONEncode(finalValueToSet)
+                        ))
+                    end
                 end
             end
         end
