@@ -23,7 +23,8 @@ export type AddTagArgs = {
 	instance_path: string,
 	tag_name: string,
 }
-export type CallInstanceMethodArgs = { instance_path: string, method_name: string, arguments: {any}? } -- Original Placeholder
+
+
 
 export type ComputePathArgs = {
 	start_position: {x: number, y: number, z: number},
@@ -42,9 +43,7 @@ export type CreateInstanceArgs = {
 	properties: { [string]: any }?, -- JSON representation of properties
 	parent_path: string?, -- Optional path for the parent
 }
-export type DeleteInstanceArgs = { -- Original definition
-	instance_path: string,
-}
+
 
 export type FilterTextForPlayerArgs = {
 	text_to_filter: string,
@@ -59,6 +58,7 @@ export type GetInstancePropertiesArgs = { -- Original definition
 export type GetMouseHitCFrameArgs = {
 	camera_path: string?
 }
+
 
 export type GetMousePositionArgs = {
 	-- No arguments currently defined, but type is added for consistency
@@ -169,7 +169,6 @@ export type TweenPropertiesArgs = {
 }
 
 
--- ... (many more Arg types to be defined based on each tool's needs)
 
 
 --[[
@@ -205,11 +204,6 @@ export type DeleteInstanceResultData = {
 export type GetInstancePropertiesResultData = {
 	instance_path: string,
 	properties: { [string]: any }, -- JSON representation of fetched properties
-}
-export type SetInstancePropertiesResultData = {
-	message: string,
-	instance_path: string,
-	properties_set: { [string]: any }, -- Echo back the properties that were attempted to set
 }
 
 -- Placeholder for other tools
@@ -364,7 +358,7 @@ export type TweenPropertiesResultData = {
 	properties_goal: {[string]: any} -- The goal table after JsonToRobloxValue, then back to JSON via RobloxValueToJson
 }
 
--- ... (many more ResultData types to be defined)
+
 
 
 --[[
