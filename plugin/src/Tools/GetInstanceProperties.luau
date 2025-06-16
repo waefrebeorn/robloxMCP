@@ -124,21 +124,22 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 		end
 		-- ]] -- End of large comment
 
-		-- local messageText = ("Successfully retrieved %d properties for instance '%s'."):format(ToolHelpers.TableLength(retrievedProperties), path)
-		-- if accessErrors then
-		-- 	messageText = messageText .. (" Encountered %d errors retrieving some requested properties."):format(ToolHelpers.TableLength(accessErrors))
+
+		local messageText = ("Successfully retrieved %d properties for instance '%s'."):format(ToolHelpers.TableLength(retrievedProperties), path)
+		-- if accessErrors then -- Keep this commented out for now
+		--	messageText = messageText .. (" Encountered %d errors retrieving some requested properties."):format(ToolHelpers.TableLength(accessErrors))
 		-- end
 
-		-- local dataToReturn = {
-		-- 	message = messageText,
-		-- 	instance_path = path,
-		-- 	properties = retrievedProperties,
-		-- }
-		-- if accessErrors then
-		-- 	dataToReturn.errors = accessErrors
+		local dataToReturn = {
+			message = messageText,
+			instance_path = path,
+			properties = retrievedProperties, -- retrievedProperties will be {} if main logic was previously commented
+		}
+		-- if accessErrors then -- Keep this commented out for now
+		--	dataToReturn.errors = accessErrors
 		-- end
 
-		return { message = "Syntax test successful", simplified = true }
+		return dataToReturn
 
 
 	end)

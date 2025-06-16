@@ -324,5 +324,15 @@ function ToolHelpers.StringToEnum(enumString)
     end
 end
 
+function ToolHelpers.TableLength(t)
+    if type(t) ~= "table" then
+        return 0
+    end
+    local count = 0
+    for _ in pairs(t) do
+        count = count + 1
+    end
+    return count
+end
 
 return ToolHelpers
