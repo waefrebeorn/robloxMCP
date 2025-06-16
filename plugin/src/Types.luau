@@ -24,6 +24,8 @@ export type AddTagArgs = {
 	tag_name: string,
 }
 
+
+
 export type ComputePathArgs = {
 	start_position: {x: number, y: number, z: number},
 	end_position: {x: number, y: number, z: number},
@@ -42,6 +44,7 @@ export type CreateInstanceArgs = {
 	parent_path: string?, -- Optional path for the parent
 }
 
+
 export type FilterTextForPlayerArgs = {
 	text_to_filter: string,
 	player_path: string
@@ -55,6 +58,7 @@ export type GetInstancePropertiesArgs = { -- Original definition
 export type GetMouseHitCFrameArgs = {
 	camera_path: string?
 }
+
 
 export type GetMousePositionArgs = {
 	-- No arguments currently defined, but type is added for consistency
@@ -163,6 +167,7 @@ export type TweenPropertiesArgs = {
 	reverses: boolean?,
 	delay_time: number?
 }
+
 
 
 
@@ -352,6 +357,7 @@ export type TweenPropertiesResultData = {
 	easing_direction_used: string, -- Name of Enum.EasingDirection
 	properties_goal: {[string]: any} -- The goal table after JsonToRobloxValue, then back to JSON via RobloxValueToJson
 }
+
 
 
 
