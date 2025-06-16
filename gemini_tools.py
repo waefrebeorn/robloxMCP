@@ -1,6 +1,7 @@
 import json
 import logging
 import asyncio
+import re # For checking valid Luau identifiers
 from typing import Any, Dict, List # Added List for ROBLOX_MCP_TOOLS type hint if needed
 from google import genai # I.1
 from google.genai import types # I.2
@@ -959,6 +960,390 @@ class ToolDispatcher:
         return True, ""
 
     # II.2. Update execute_tool_call
+# --- Conversion function Python to Luau Table String ---
+def python_to_luau_table_string(py_obj: Any, indent_level: int = 0, is_top_level: bool = True) -> str:
+    """
+    Recursively converts a Python object (dict, list, str, int, float, bool, None)
+    into a Luau table constructor string.
+    """
+    indent = "  " * indent_level
+    next_indent = "  " * (indent_level + 1)
+    parts = []
+
+    if isinstance(py_obj, dict):
+        for key, value in py_obj.items():
+            key_str = ""
+            if isinstance(key, str) and re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", key):
+                key_str = key  # Valid Luau identifier
+            else:
+                # For non-identifier string keys or other types, use ['key'] format
+                # Recursively convert key if it's not a simple string/number
+                if isinstance(key, (str, int, float)): # Check if key is simple type for direct conversion
+                     key_lua_compatible_str = python_to_luau_table_string(key, 0, False)
+                     key_str = f"[{key_lua_compatible_str}]"
+                else: # Fallback for complex key types (e.g. tuple, another dict if used as key)
+                     # This case should be rare for typical tool arguments.
+                     # Convert to string and then represent as a Luau string key.
+                     complex_key_as_string = str(key)
+                     escaped_complex_key_str = complex_key_as_string.replace("\\", "\\\\").replace("'", "\\'")
+                     key_str = f"['{escaped_complex_key_str}']"
+
+
+            value_str = python_to_luau_table_string(value, indent_level + 1, False)
+            parts.append(f"{next_indent}{key_str} = {value_str}")
+        result = "{\n" + ",\n".join(parts) + "\n" + indent + "}"
+    elif isinstance(py_obj, list):
+        for item in py_obj:
+            parts.append(next_indent + python_to_luau_table_string(item, indent_level + 1, False))
+        result = "{\n" + ",\n".join(parts) + "\n" + indent + "}"
+    elif isinstance(py_obj, str):
+        # Escape single quotes and backslashes
+        escaped_str = py_obj.replace("\\", "\\\\").replace("'", "\\'")
+        result = f"'{escaped_str}'" # Use single quotes for Luau strings
+    elif isinstance(py_obj, bool):
+        result = "true" if py_obj else "false"
+    elif py_obj is None:
+        result = "nil"
+    elif isinstance(py_obj, (int, float)):
+        result = str(py_obj)
+    else:
+        # For other types, convert to string and quote it, or handle as error
+        logger.warning(f"Unsupported type for Luau conversion: {type(py_obj)}. Converting to string and quoting.")
+        escaped_str = str(py_obj).replace("\\", "\\\\").replace("'", "\\'")
+        result = f"'{escaped_str}'"
+
+    if is_top_level and isinstance(py_obj, (dict, list)):
+        return "return " + result
+    return result
+
+
+class ToolDispatcher:
+    """Validates and executes tool calls via the MCPClient."""
+    def __init__(self, mcp_client: MCPClient):
+        self.mcp_client = mcp_client
+
+    def _validate_args(self, tool_name: str, args: dict) -> tuple[bool, str]:
+        """Performs basic validation on tool arguments."""
+        if tool_name == "insert_model":
+            query = args.get("query")
+            if not isinstance(query, str) or not query.strip():
+                return False, "Invalid 'query'. It must be a non-empty string."
+
+        elif tool_name == "RunCode": # Changed from run_command to RunCode
+            command = args.get("command")
+            if not isinstance(command, str): # Allow empty string for RunCode
+                return False, "Invalid 'command'. Must be a string."
+        elif tool_name == "get_selection":
+            pass
+        # --- Core Instance Manipulation Tools ---
+        elif tool_name == "CreateInstance":
+            class_name = args.get("class_name")
+            properties = args.get("properties")
+            if not isinstance(class_name, str) or not class_name.strip():
+                return False, "Invalid 'class_name'. Must be a non-empty string."
+            if not isinstance(properties, dict): # 'properties' should at least be a dict
+                return False, "Invalid 'properties'. Must be a dictionary."
+        elif tool_name == "set_instance_properties":
+            path = args.get("path")
+            properties = args.get("properties")
+            if not isinstance(path, str) or not path.strip():
+                return False, "Invalid 'path'. Must be a non-empty string."
+            if not isinstance(properties, dict) or not properties:
+                return False, "Invalid 'properties'. Must be a non-empty dictionary."
+        elif tool_name == "GetInstanceProperties": # Corrected name
+            path = args.get("path")
+            property_names = args.get("property_names") # This is optional in the schema
+            if not isinstance(path, str) or not path.strip():
+                return False, "Invalid 'path'. Must be a non-empty string."
+            if property_names is not None: # Only validate if provided
+                if not isinstance(property_names, list): # Must be a list if provided
+                    return False, "Invalid 'property_names'. Must be a list of strings if provided."
+                # Allow empty list for property_names as per schema (means fetch common ones)
+                # if not property_names:
+                #     return False, "Invalid 'property_names'. List should not be empty if provided (or omit for all common properties)."
+                if not all(isinstance(p, str) and p.strip() for p in property_names if property_names): # check elements if list not empty
+                    return False, "Invalid 'property_names'. All items must be non-empty strings if list is not empty."
+
+
+        elif tool_name == "call_instance_method":
+            path = args.get("path")
+            method_name = args.get("method_name")
+            arguments = args.get("arguments")
+            if not isinstance(path, str) or not path.strip():
+                return False, "Invalid 'path'. Must be a non-empty string."
+            if not isinstance(method_name, str) or not method_name.strip():
+                return False, "Invalid 'method_name'. Must be a non-empty string."
+            if not isinstance(arguments, list): # arguments should be a list (can be empty)
+                return False, "Invalid 'arguments'. Must be a list."
+        elif tool_name == "delete_instance":
+            path = args.get("path")
+            if not isinstance(path, str) or not path.strip():
+                return False, "Invalid 'path'. Must be a non-empty string."
+        elif tool_name == "SelectInstances": # Corrected name
+            paths = args.get("paths")
+            if not isinstance(paths, list): # Can be an empty list to clear selection
+                return False, "Invalid 'paths'. Must be a list of strings."
+            if paths and not all(isinstance(p, str) and p.strip() for p in paths): # Check elements if list is not empty
+                 return False, "Invalid 'paths'. All items must be non-empty strings if list is not empty."
+
+        # --- Essential Service Tools ---
+        elif tool_name == "run_script":
+            parent_path = args.get("parent_path")
+            script_source = args.get("script_source") # Allow empty script source
+            script_name = args.get("script_name")
+            script_type = args.get("script_type")
+            if not isinstance(parent_path, str) or not parent_path.strip():
+                return False, "Invalid 'parent_path'. Must be a non-empty string."
+            if not isinstance(script_source, str):
+                return False, "Invalid 'script_source'. Must be a string."
+            if not isinstance(script_name, str) or not script_name.strip():
+                return False, "Invalid 'script_name'. Must be a non-empty string."
+            if script_type not in ["Script", "LocalScript"]:
+                return False, "Invalid 'script_type'. Must be 'Script' or 'LocalScript'."
+        elif tool_name == "set_lighting_property":
+            property_name = args.get("property_name")
+            # Value can be various types, so only check existence of key
+            if not isinstance(property_name, str) or not property_name.strip():
+                return False, "Invalid 'property_name'. Must be a non-empty string."
+            if "value" not in args: # Value itself will be converted to Luau, so its Python type is flexible here
+                return False, "'value' parameter is required."
+        elif tool_name == "GetLightingProperty": # Corrected name
+            property_name = args.get("property_name")
+            if not isinstance(property_name, str) or not property_name.strip():
+                return False, "Invalid 'property_name'. Must be a non-empty string."
+        elif tool_name == "PlaySoundId": # Corrected name
+            sound_id = args.get("sound_id")
+            if not isinstance(sound_id, str) or not sound_id.strip():
+                return False, "Invalid 'sound_id'. Must be a non-empty string."
+            # parent_path and properties are optional or have defaults
+            if "parent_path" in args and args.get("parent_path") is not None and (not isinstance(args.get("parent_path"), str) or not args.get("parent_path").strip()): # Check strip for parent_path too
+                return False, "Invalid 'parent_path'. Must be a non-empty string if provided."
+            if "properties" in args and args.get("properties") is not None and not isinstance(args.get("properties"), dict):
+                return False, "Invalid 'properties'. Must be a dictionary if provided."
+        elif tool_name == "set_workspace_property":
+            property_name = args.get("property_name")
+            if not isinstance(property_name, str) or not property_name.strip():
+                return False, "Invalid 'property_name'. Must be a non-empty string."
+            if "value" not in args: # Value itself will be converted to Luau
+                return False, "'value' parameter is required."
+        elif tool_name == "get_workspace_property":
+            property_name = args.get("property_name")
+            if not isinstance(property_name, str) or not property_name.strip():
+                return False, "Invalid 'property_name'. Must be a non-empty string."
+        elif tool_name == "kick_player":
+            player_path_or_name = args.get("player_path_or_name")
+            if not isinstance(player_path_or_name, str) or not player_path_or_name.strip():
+                return False, "Invalid 'player_path_or_name'. Must be a non-empty string."
+            if "kick_message" in args and args.get("kick_message") is not None and not isinstance(args.get("kick_message"), str): # Check None before isinstance
+                 return False, "Invalid 'kick_message'. Must be a string if provided."
+        elif tool_name == "create_team":
+            team_name = args.get("team_name")
+            team_color = args.get("team_color_brickcolor_string")
+            auto_assignable = args.get("auto_assignable") # Optional, defaults in schema
+            if not isinstance(team_name, str) or not team_name.strip():
+                return False, "Invalid 'team_name'. Must be a non-empty string."
+            if not isinstance(team_color, str) or not team_color.strip():
+                return False, "Invalid 'team_color_brickcolor_string'. Must be a non-empty string."
+            if "auto_assignable" in args and args.get("auto_assignable") is not None and not isinstance(auto_assignable, bool): # Check None
+                return False, "Invalid 'auto_assignable'. Must be a boolean if provided."
+
+        # --- Phase 2 Tools Validation ---
+        elif tool_name == "tween_properties":
+            if not isinstance(args.get("instance_path"), str) or not args.get("instance_path").strip():
+                return False, "Invalid 'instance_path'. Must be a non-empty string."
+            if not isinstance(args.get("duration"), (int, float)) or args.get("duration") <= 0:
+                return False, "Invalid 'duration'. Must be a positive number."
+            if not isinstance(args.get("easing_style"), str) or not args.get("easing_style").strip(): # Assuming Enum string format
+                return False, "Invalid 'easing_style'. Must be a non-empty string (e.g., 'Linear')."
+            if not isinstance(args.get("easing_direction"), str) or not args.get("easing_direction").strip(): # Assuming Enum string format
+                return False, "Invalid 'easing_direction'. Must be a non-empty string (e.g., 'In')."
+            if not isinstance(args.get("properties_to_tween"), dict) or not args.get("properties_to_tween"):
+                return False, "Invalid 'properties_to_tween'. Must be a non-empty dictionary."
+            # Optional fields with nullable=True in schema
+            if "repeat_count" in args and args.get("repeat_count") is not None and not isinstance(args.get("repeat_count"), int):
+                return False, "Invalid 'repeat_count'. Must be an integer if provided."
+            if "reverses" in args and args.get("reverses") is not None and not isinstance(args.get("reverses"), bool):
+                return False, "Invalid 'reverses'. Must be a boolean if provided."
+            if "delay_time" in args and args.get("delay_time") is not None and (not isinstance(args.get("delay_time"), (int, float)) or args.get("delay_time") < 0):
+                return False, "Invalid 'delay_time'. Must be a non-negative number if provided."
+
+        elif tool_name == "add_tag" or tool_name == "remove_tag" or tool_name == "has_tag":
+            if not isinstance(args.get("instance_path"), str) or not args.get("instance_path").strip():
+                return False, "Invalid 'instance_path'. Must be a non-empty string."
+            if not isinstance(args.get("tag_name"), str) or not args.get("tag_name").strip():
+                return False, "Invalid 'tag_name'. Must be a non-empty string."
+
+        elif tool_name == "get_instances_with_tag":
+            if not isinstance(args.get("tag_name"), str) or not args.get("tag_name").strip():
+                return False, "Invalid 'tag_name'. Must be a non-empty string."
+
+        elif tool_name == "compute_path": # Vector3 will be dicts
+            if not isinstance(args.get("start_position"), dict): # Basic check, detailed Vector3 check is too much here
+                return False, "Invalid 'start_position'. Must be a dictionary."
+            if not isinstance(args.get("end_position"), dict): # Basic check
+                return False, "Invalid 'end_position'. Must be a dictionary."
+            if "agent_parameters" in args and args.get("agent_parameters") is not None and not isinstance(args.get("agent_parameters"), dict):
+                return False, "Invalid 'agent_parameters'. Must be a dictionary if provided."
+
+        elif tool_name == "create_proximity_prompt":
+            if not isinstance(args.get("parent_part_path"), str) or not args.get("parent_part_path").strip():
+                return False, "Invalid 'parent_part_path'. Must be a non-empty string."
+            if "properties" in args and args.get("properties") is not None and not isinstance(args.get("properties"), dict):
+                return False, "Invalid 'properties'. Must be a dictionary if provided."
+
+        elif tool_name == "get_product_info":
+            if not isinstance(args.get("asset_id"), int) or args.get("asset_id") <= 0:
+                return False, "Invalid 'asset_id'. Must be a positive integer."
+            if not isinstance(args.get("info_type"), str) or not args.get("info_type").strip(): # Assuming Enum string format
+                return False, "Invalid 'info_type'. Must be a non-empty string (e.g., 'Asset')."
+
+        elif tool_name == "prompt_purchase":
+            if not isinstance(args.get("player_path"), str) or not args.get("player_path").strip():
+                return False, "Invalid 'player_path'. Must be a non-empty string."
+            if not isinstance(args.get("asset_id"), int) or args.get("asset_id") <= 0:
+                return False, "Invalid 'asset_id'. Must be a positive integer."
+
+        elif tool_name == "add_debris_item":
+            if not isinstance(args.get("instance_path"), str) or not args.get("instance_path").strip():
+                return False, "Invalid 'instance_path'. Must be a non-empty string."
+            if not isinstance(args.get("lifetime"), (int, float)) or args.get("lifetime") < 0:
+                return False, "Invalid 'lifetime'. Must be a non-negative number."
+
+        # --- Phase 3 Tools Validation (UI & Input) ---
+        elif tool_name == "create_gui_element": # UDim2 will be dicts
+            if not isinstance(args.get("element_type"), str) or not args.get("element_type").strip():
+                return False, "Invalid 'element_type'. Must be a non-empty string."
+            if "parent_path" in args and args.get("parent_path") is not None and (not isinstance(args.get("parent_path"), str) or not args.get("parent_path").strip()):
+                return False, "Invalid 'parent_path'. Must be a non-empty string if provided."
+            if "properties" in args and args.get("properties") is not None and not isinstance(args.get("properties"), dict):
+                return False, "Invalid 'properties'. Must be a dictionary if provided."
+
+        elif tool_name == "get_mouse_position":
+            pass # No arguments
+
+        elif tool_name == "get_mouse_hit_cframe": # Camera path is optional
+            if "camera_path" in args and args.get("camera_path") is not None and (not isinstance(args.get("camera_path"), str) or not args.get("camera_path").strip()):
+                 return False, "Invalid 'camera_path'. Must be a non-empty string if provided."
+
+        elif tool_name == "is_key_down": # KeyCode string
+            if not isinstance(args.get("key_code_string"), str) or not args.get("key_code_string").strip():
+                return False, "Invalid 'key_code_string'. Must be a non-empty string (e.g., 'E')."
+
+        elif tool_name == "is_mouse_button_down": # UserInputType string for mouse
+            if not isinstance(args.get("mouse_button_string"), str) or not args.get("mouse_button_string").strip():
+                return False, "Invalid 'mouse_button_string'. Must be a non-empty string (e.g., 'MouseButton1')."
+
+        # --- Phase 4 Tools Validation (DataStores) ---
+        elif tool_name == "save_data": # Data can be complex, just check presence
+            if not isinstance(args.get("store_name"), str) or not args.get("store_name").strip():
+                return False, "Invalid 'store_name'. Must be a non-empty string."
+            if not isinstance(args.get("key"), str) or not args.get("key").strip():
+                return False, "Invalid 'key'. Must be a non-empty string."
+            if "data" not in args: # The 'data' itself is a string in the schema, to be parsed by Luau
+                return False, "'data' parameter (JSON string) is required."
+            # The schema specifies data as a string (meant to be JSON).
+            # However, python_to_luau_table_string can handle various Python types directly.
+            # So, this validation might be too strict if we want to allow Gemini to send native Python dicts/lists for 'data'.
+            # For now, sticking to the schema's string requirement for 'data' at this validation stage.
+            # The conversion to Luau string will happen regardless.
+            if not isinstance(args.get("data"), str): # Ensure it's a string as per schema for this tool
+                return False, "Invalid 'data'. Tool schema expects a JSON string representation for 'data' for save_data tool."
+
+
+        elif tool_name == "load_data":
+            if not isinstance(args.get("store_name"), str) or not args.get("store_name").strip():
+                return False, "Invalid 'store_name'. Must be a non-empty string."
+            if not isinstance(args.get("key"), str) or not args.get("key").strip():
+                return False, "Invalid 'key'. Must be a non-empty string."
+
+        elif tool_name == "increment_data":
+            if not isinstance(args.get("store_name"), str) or not args.get("store_name").strip():
+                return False, "Invalid 'store_name'. Must be a non-empty string."
+            if not isinstance(args.get("key"), str) or not args.get("key").strip():
+                return False, "Invalid 'key'. Must be a non-empty string."
+            if not isinstance(args.get("increment_by"), (int, float)):
+                return False, "Invalid 'increment_by'. Must be a number."
+
+        elif tool_name == "remove_data":
+            if not isinstance(args.get("store_name"), str) or not args.get("store_name").strip():
+                return False, "Invalid 'store_name'. Must be a non-empty string."
+            if not isinstance(args.get("key"), str) or not args.get("key").strip():
+                return False, "Invalid 'key'. Must be a non-empty string."
+
+        # --- Phase 5 Tools Validation ---
+        elif tool_name == "teleport_player_to_place":
+            player_paths = args.get("player_paths")
+            if not isinstance(player_paths, list) or not player_paths:
+                return False, "Invalid 'player_paths'. Must be a non-empty list of strings."
+            if not all(isinstance(p, str) and p.strip() for p in player_paths):
+                return False, "All items in 'player_paths' must be non-empty strings."
+            if not isinstance(args.get("place_id"), int) or args.get("place_id") <= 0:
+                return False, "Invalid 'place_id'. Must be a positive integer."
+            if "job_id" in args and args.get("job_id") is not None and (not isinstance(args.get("job_id"), str) or not args.get("job_id").strip()):
+                return False, "Invalid 'job_id'. Must be a non-empty string if provided."
+            if "teleport_data" in args and args.get("teleport_data") is not None and not isinstance(args.get("teleport_data"), dict): # Should be JSON object
+                return False, "Invalid 'teleport_data'. Must be a dictionary if provided."
+            if "custom_loading_screen_gui_path" in args and args.get("custom_loading_screen_gui_path") is not None and \
+               (not isinstance(args.get("custom_loading_screen_gui_path"), str) or not args.get("custom_loading_screen_gui_path").strip()):
+                return False, "Invalid 'custom_loading_screen_gui_path'. Must be a non-empty string if provided."
+
+        elif tool_name == "get_teleport_data":
+            pass # No args
+
+        elif tool_name == "send_chat_message":
+            if not isinstance(args.get("message_text"), str):
+                 return False, "Invalid 'message_text'. Must be a string."
+            if "channel_name" in args and args.get("channel_name") is not None and (not isinstance(args.get("channel_name"), str) or not args.get("channel_name").strip()):
+                return False, "Invalid 'channel_name'. Must be a non-empty string if provided."
+            if "speaker_path" in args and args.get("speaker_path") is not None and (not isinstance(args.get("speaker_path"), str) or not args.get("speaker_path").strip()):
+                return False, "Invalid 'speaker_path'. Must be a non-empty string if provided."
+            if "target_player_path" in args and args.get("target_player_path") is not None and \
+               (not isinstance(args.get("target_player_path"), str) or not args.get("target_player_path").strip()):
+                return False, "Invalid 'target_player_path'. Must be a non-empty string if provided."
+
+        elif tool_name == "filter_text_for_player":
+            if not isinstance(args.get("text_to_filter"), str):
+                 return False, "Invalid 'text_to_filter'. Must be a string."
+            if not isinstance(args.get("player_path"), str) or not args.get("player_path").strip():
+                return False, "Invalid 'player_path'. Must be a non-empty string."
+
+        elif tool_name == "create_text_channel":
+            if not isinstance(args.get("channel_name"), str) or not args.get("channel_name").strip():
+                return False, "Invalid 'channel_name'. Must be a non-empty string."
+            if "properties" in args and args.get("properties") is not None and not isinstance(args.get("properties"), dict):
+                return False, "Invalid 'properties'. Must be a dictionary if provided."
+
+        elif tool_name == "get_teams":
+            pass # No args
+
+        elif tool_name == "get_players_in_team":
+            if not isinstance(args.get("team_path_or_name"), str) or not args.get("team_path_or_name").strip():
+                return False, "Invalid 'team_path_or_name'. Must be a non-empty string."
+
+        elif tool_name == "load_asset_by_id":
+            if not isinstance(args.get("asset_id"), int) or args.get("asset_id") <= 0:
+                return False, "Invalid 'asset_id'. Must be a positive integer."
+            if "parent_path" in args and args.get("parent_path") is not None and (not isinstance(args.get("parent_path"), str) or not args.get("parent_path").strip()):
+                return False, "Invalid 'parent_path'. Must be a non-empty string if provided."
+            if "desired_name" in args and args.get("desired_name") is not None and (not isinstance(args.get("desired_name"), str) or not args.get("desired_name").strip()):
+                return False, "Invalid 'desired_name'. Must be a non-empty string if provided."
+
+        elif tool_name == "get_children_of_instance" or tool_name == "get_descendants_of_instance":
+            if not isinstance(args.get("instance_path"), str) or not args.get("instance_path").strip():
+                return False, "Invalid 'instance_path'. Must be a non-empty string."
+
+        elif tool_name == "find_first_child_matching":
+            if not isinstance(args.get("parent_path"), str) or not args.get("parent_path").strip():
+                return False, "Invalid 'parent_path'. Must be a non-empty string."
+            if not isinstance(args.get("child_name"), str) or not args.get("child_name").strip():
+                return False, "Invalid 'child_name'. Must be a non-empty string."
+            if "recursive" in args and args.get("recursive") is not None and not isinstance(args.get("recursive"), bool):
+                return False, "Invalid 'recursive'. Must be a boolean if provided."
+
+
+        return True, ""
+
+    # II.2. Update execute_tool_call
     async def execute_tool_call(self, function_call: types.FunctionCall) -> Dict[str, Any]: # II.2. Input type hint and return type
         """Executes a single tool call and returns a dictionary for the new SDK."""
         original_tool_name = function_call.name
@@ -982,19 +1367,105 @@ class ToolDispatcher:
         else:
             # All other tools (CreateInstance, RunCode, GetSelection, etc.) are routed via execute_discovered_luau_tool
             mcp_tool_name = "execute_discovered_luau_tool"
-            # Serialize original_tool_args into a JSON string
-            tool_arguments_json_str = json.dumps(original_tool_args)
+            # Convert original_tool_args (Python dict) into a Luau table string
+            tool_arguments_luau_str = python_to_luau_table_string(original_tool_args) # NEW
             luau_tool_name_to_execute = original_tool_name
+            # Mapping for specific tools if their Python-side name differs from Luau script name
+            # This mapping should align with the Luau script file names in plugin/src/Tools/
             if original_tool_name == "set_instance_properties":
                 luau_tool_name_to_execute = "SetInstanceProperties"
-            # Add other mappings here if needed in the future
+            elif original_tool_name == "get_instance_properties":
+                luau_tool_name_to_execute = "GetInstanceProperties"
+            elif original_tool_name == "call_instance_method":
+                luau_tool_name_to_execute = "CallInstanceMethod"
+            elif original_tool_name == "delete_instance":
+                luau_tool_name_to_execute = "DeleteInstance"
+            elif original_tool_name == "select_instances": # Python: select_instances, Luau: SelectInstances.luau
+                luau_tool_name_to_execute = "SelectInstances"
+            elif original_tool_name == "run_script":
+                luau_tool_name_to_execute = "RunScript"
+            elif original_tool_name == "set_lighting_property":
+                luau_tool_name_to_execute = "SetLightingProperty"
+            elif original_tool_name == "get_lighting_property": # Python: get_lighting_property, Luau: GetLightingProperty.luau
+                luau_tool_name_to_execute = "GetLightingProperty"
+            elif original_tool_name == "play_sound_id": # Python: play_sound_id, Luau: PlaySoundId.luau
+                luau_tool_name_to_execute = "PlaySoundId"
+            elif original_tool_name == "set_workspace_property":
+                luau_tool_name_to_execute = "SetWorkspaceProperty"
+            elif original_tool_name == "get_workspace_property":
+                luau_tool_name_to_execute = "GetWorkspaceProperty"
+            elif original_tool_name == "kick_player":
+                luau_tool_name_to_execute = "KickPlayer"
+            elif original_tool_name == "create_team":
+                luau_tool_name_to_execute = "CreateTeam"
+            elif original_tool_name == "tween_properties":
+                luau_tool_name_to_execute = "TweenProperties"
+            elif original_tool_name == "add_tag":
+                luau_tool_name_to_execute = "AddTag"
+            elif original_tool_name == "remove_tag":
+                luau_tool_name_to_execute = "RemoveTag"
+            elif original_tool_name == "get_instances_with_tag": # Python: get_instances_with_tag, Luau: GetInstancesWithTag.luau
+                luau_tool_name_to_execute = "GetInstancesWithTag"
+            elif original_tool_name == "has_tag":
+                luau_tool_name_to_execute = "HasTag"
+            elif original_tool_name == "compute_path":
+                luau_tool_name_to_execute = "ComputePath"
+            elif original_tool_name == "create_proximity_prompt":
+                luau_tool_name_to_execute = "CreateProximityPrompt"
+            elif original_tool_name == "get_product_info": # Python: get_product_info, Luau: GetProductInfo.luau
+                luau_tool_name_to_execute = "GetProductInfo"
+            elif original_tool_name == "prompt_purchase":
+                luau_tool_name_to_execute = "PromptPurchase"
+            elif original_tool_name == "add_debris_item":
+                luau_tool_name_to_execute = "AddDebrisItem"
+            elif original_tool_name == "create_gui_element":
+                luau_tool_name_to_execute = "CreateGuiElement"
+            elif original_tool_name == "get_mouse_position": # Python: get_mouse_position, Luau: GetMousePosition.luau
+                luau_tool_name_to_execute = "GetMousePosition"
+            elif original_tool_name == "get_mouse_hit_cframe": # Python: get_mouse_hit_cframe, Luau: GetMouseHitCFrame.luau
+                luau_tool_name_to_execute = "GetMouseHitCFrame"
+            elif original_tool_name == "is_key_down":
+                luau_tool_name_to_execute = "IsKeyDown"
+            elif original_tool_name == "is_mouse_button_down":
+                luau_tool_name_to_execute = "IsMouseButtonDown"
+            elif original_tool_name == "save_data":
+                luau_tool_name_to_execute = "SaveData"
+            elif original_tool_name == "load_data":
+                luau_tool_name_to_execute = "LoadData"
+            elif original_tool_name == "increment_data":
+                luau_tool_name_to_execute = "IncrementData"
+            elif original_tool_name == "remove_data":
+                luau_tool_name_to_execute = "RemoveData"
+            elif original_tool_name == "teleport_player_to_place":
+                luau_tool_name_to_execute = "TeleportPlayerToPlace"
+            elif original_tool_name == "get_teleport_data": # Python: get_teleport_data, Luau: GetTeleportData.luau
+                luau_tool_name_to_execute = "GetTeleportData"
+            elif original_tool_name == "send_chat_message":
+                luau_tool_name_to_execute = "SendChatMessage"
+            elif original_tool_name == "filter_text_for_player":
+                luau_tool_name_to_execute = "FilterTextForPlayer"
+            elif original_tool_name == "create_text_channel":
+                luau_tool_name_to_execute = "CreateTextChannel"
+            elif original_tool_name == "get_teams":
+                luau_tool_name_to_execute = "GetTeams"
+            elif original_tool_name == "get_players_in_team": # Python: get_players_in_team, Luau: GetPlayersInTeam.luau
+                luau_tool_name_to_execute = "GetPlayersInTeam"
+            elif original_tool_name == "load_asset_by_id":
+                luau_tool_name_to_execute = "LoadAssetById"
+            elif original_tool_name == "get_children_of_instance": # Python: get_children_of_instance, Luau: GetChildrenOfInstance.luau
+                luau_tool_name_to_execute = "GetChildrenOfInstance"
+            elif original_tool_name == "get_descendants_of_instance": # Python: get_descendants_of_instance, Luau: GetDescendantsOfInstance.luau
+                luau_tool_name_to_execute = "GetDescendantsOfInstance"
+            elif original_tool_name == "find_first_child_matching": # Python: find_first_child_matching, Luau: FindFirstChildMatching.luau
+                luau_tool_name_to_execute = "FindFirstChildMatching"
+            # Default to original_tool_name if no specific mapping (should match Luau script name by convention)
+
+
             mcp_tool_args = {
-                "tool_name": luau_tool_name_to_execute, # Use the potentially corrected name
-                "tool_arguments_str": tool_arguments_json_str
+                "tool_name": luau_tool_name_to_execute,
+                "tool_arguments_luau": tool_arguments_luau_str # CHANGED KEY and VALUE
             }
-            # Update logger message to reflect the change if desired, or keep as is if original_tool_args is fine for logging.
-            # For clarity in logs, let's log what's actually being prepared for MCP:
-            logger.info(f"Dispatching ToolCall: '{original_tool_name}' via MCP tool '{mcp_tool_name}' for Luau script '{luau_tool_name_to_execute}'. Luau script args (as JSON string): {tool_arguments_json_str}")
+            logger.info(f"Dispatching ToolCall: '{original_tool_name}' via MCP tool '{mcp_tool_name}' for Luau script '{luau_tool_name_to_execute}'. Luau script args (as Luau table string): {{tool_arguments_luau_str}}") # UPDATED LOG
 
         output_content_dict = {}
         try:
@@ -1106,7 +1577,7 @@ class ToolDispatcher:
                                "tool_message": data.get("message"), "deleted_path": data.get("deleted_path"), "path_not_found": path_not_found
                             }
                             ConsoleFormatter.print_tool_result({"status": "success", "message": f"DeleteInstance processed: {data.get('message')}"})
-                        elif original_tool_name in ["GetProperties", "GetInstanceProperties"]:
+                        elif original_tool_name == "GetInstanceProperties": # Corrected from ["GetProperties", "GetInstanceProperties"]
                             output_content_dict = {
                                "status": "success", "tool_message": data.get("message", f"Properties fetched for {data.get('instance_path')}."),
                                "instance_path": data.get("instance_path"), "properties": data.get("properties"),"errors": data.get("errors")
@@ -1118,25 +1589,25 @@ class ToolDispatcher:
                                "property_name": data.get("property_name"), "value": data.get("value")
                             }
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": f"Lighting property {data.get('property_name')} fetched."})
-                        elif original_tool_name == "GetWorkspaceProperty":
+                        elif original_tool_name == "GetWorkspaceProperty": # Corrected name
                             output_content_dict = {
                                "status": "success", "tool_message": data.get("message", f"Workspace property {data.get('property_name')} fetched."),
                                "property_name": data.get("property_name"), "value": data.get("value")
                             }
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": f"Workspace property {data.get('property_name')} fetched."})
-                        elif original_tool_name == "GetMouseHitCFrame":
+                        elif original_tool_name == "GetMouseHitCFrame": # Corrected name
                             output_content_dict = {
                                "status": "success", "tool_message": data.get("message", "Mouse hit CFrame processed."),
                                "instance_hit_path": data.get("instance_hit_path"), "position": data.get("position"), "cframe_components": data.get("cframe_components")
                             }
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message", "Mouse hit CFrame processed.")})
-                        elif original_tool_name == "GetMousePosition":
+                        elif original_tool_name == "GetMousePosition": # Corrected name
                             output_content_dict = {
                                "status": "success", "tool_message": data.get("message", "Mouse position fetched."),
                                "x": data.get("x"), "y": data.get("y"), "viewport_size": data.get("viewport_size")
                             }
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message", "Mouse position fetched.")})
-                        elif original_tool_name == "GetPlayersInTeam":
+                        elif original_tool_name == "GetPlayersInTeam": # Corrected name
                             players_list = data.get("players", [])
                             output_content_dict = {
                                "status": "success", "tool_message": data.get("message", f"Players in team {data.get('team_name')} fetched."),
@@ -1144,88 +1615,88 @@ class ToolDispatcher:
                                "player_count": len(players_list), "players": players_list
                             }
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": f"Players in team {data.get('team_name')} fetched."})
-                        elif original_tool_name == "GetProductInfo":
+                        elif original_tool_name == "GetProductInfo": # Corrected name
                             output_content_dict = {
                                "status": "success", "tool_message": data.get("message", f"Product info for asset ID {data.get('asset_id')} fetched."),
                                "asset_id": data.get("asset_id"), "info_type_used": data.get("info_type_used"), "product_info": data.get("product_info")
                             }
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": f"Product info for asset ID {data.get('asset_id')} fetched."})
-                        elif original_tool_name == "GetTeams":
+                        elif original_tool_name == "GetTeams": # Corrected name
                             output_content_dict = {
                                "status": "success", "tool_message": data.get("message", "Teams fetched."),
                                "team_count": data.get("team_count"), "teams": data.get("teams")
                             }
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message", "Teams fetched.")})
-                        elif original_tool_name == "GetTeleportData":
+                        elif original_tool_name == "GetTeleportData": # Corrected name
                             output_content_dict = {
                                "status": "success", "tool_message": data.get("message", "Teleport data fetched."),
                                "teleport_data": data.get("teleport_data"), "source_place_id": data.get("source_place_id")
                             }
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message", "Teleport data fetched.")})
-                        elif original_tool_name == "AddDebrisItem":
+                        elif original_tool_name == "AddDebrisItem": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "instance_path": data.get("instance_path"), "lifetime": data.get("lifetime")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "AddTag":
+                        elif original_tool_name == "AddTag": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "instance_path": data.get("instance_path"), "tag_name": data.get("tag_name")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "CallInstanceMethod":
+                        elif original_tool_name == "CallInstanceMethod": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "results": data.get("results")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "CreateGuiElement":
+                        elif original_tool_name == "CreateGuiElement": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "element_path": data.get("element_path"), "element_type": data.get("element_type"), "parent_path_used": data.get("parent_path_used")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "CreateProximityPrompt":
+                        elif original_tool_name == "CreateProximityPrompt": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "prompt_path": data.get("prompt_path"), "action_text": data.get("action_text"), "object_text": data.get("object_text"), "max_activation_distance": data.get("max_activation_distance")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "CreateTeam":
+                        elif original_tool_name == "CreateTeam": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "team_name": data.get("team_name"), "team_color": data.get("team_color"), "auto_assignable": data.get("auto_assignable"), "team_path": data.get("team_path")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "CreateTextChannel":
+                        elif original_tool_name == "CreateTextChannel": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "channel_name": data.get("channel_name"), "channel_path": data.get("channel_path")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "IncrementData":
+                        elif original_tool_name == "IncrementData": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "store_name": data.get("store_name"), "key": data.get("key"), "new_value": data.get("new_value"), "incremented_by": data.get("incremented_by")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "IsKeyDown":
+                        elif original_tool_name == "IsKeyDown": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "key_code_used": data.get("key_code_used"), "is_down": data.get("is_down")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "IsMouseButtonDown":
+                        elif original_tool_name == "IsMouseButtonDown": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "mouse_button_checked": data.get("mouse_button_checked"), "is_down": data.get("is_down")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "KickPlayer":
+                        elif original_tool_name == "KickPlayer": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "kicked_player_name": data.get("kicked_player_name"), "kick_message_used": data.get("kick_message_used")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "LoadAssetById":
+                        elif original_tool_name == "LoadAssetById": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "asset_path": data.get("asset_path"), "asset_id": data.get("asset_id"), "asset_class_name": data.get("asset_class_name")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "LoadData":
+                        elif original_tool_name == "LoadData": # Corrected name
                              output_content_dict = {"status": "success", "tool_message": data.get("message"), "store_name": data.get("store_name"), "key": data.get("key"), "data": data.get("data")}
                              ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "PlaySoundId":
+                        elif original_tool_name == "PlaySoundId": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "sound_path": data.get("sound_path"), "sound_id": data.get("sound_id"), "is_playing": data.get("is_playing"), "duration": data.get("duration"), "details": data.get("details")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "PromptPurchase":
+                        elif original_tool_name == "PromptPurchase": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "player_name": data.get("player_name"), "asset_id": data.get("asset_id"), "purchase_type_prompted": data.get("purchase_type_prompted")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "RemoveData":
+                        elif original_tool_name == "RemoveData": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "store_name": data.get("store_name"), "key": data.get("key")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "RunScript":
+                        elif original_tool_name == "RunScript": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "script_path": data.get("script_path"), "script_type": data.get("script_type"), "initially_disabled": data.get("initially_disabled")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "SaveData":
+                        elif original_tool_name == "SaveData": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "store_name": data.get("store_name"), "key": data.get("key")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "SelectInstances":
+                        elif original_tool_name == "SelectInstances": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "selected_paths": data.get("selected_paths"), "selection_count": data.get("selection_count"), "errors_finding_paths": data.get("errors_finding_paths")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "SendChatMessage":
+                        elif original_tool_name == "SendChatMessage": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "message_sent": data.get("message_sent"), "channel_used": data.get("channel_used"), "speaker_used": data.get("speaker_used")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name in ["SetInstanceProperties", "SetProperties"]:
+                        elif original_tool_name == "set_instance_properties": # Corrected from ["SetInstanceProperties", "SetProperties"]
                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "instance_path": data.get("instance_path"), "results": data.get("results")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "SetLightingProperty":
+                        elif original_tool_name == "SetLightingProperty": # Corrected name
                             output_content_dict = {"status": "success", "tool_message": data.get("message", f"Lighting property {data.get('property_name')} set."), "property_name": data.get("property_name"), "new_value_set": data.get("new_value_set")}
                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": f"Lighting property {data.get('property_name')} set."})
                         elif original_tool_name == "SetWorkspaceProperty":
