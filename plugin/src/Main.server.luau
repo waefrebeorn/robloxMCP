@@ -115,11 +115,13 @@ local function connectWebSocket()
 	client.MessageReceived:Connect(function(message)
 		log("[MCP] Message received")
 
+
 		-- Check for empty or whitespace-only message
 		if message == nil or string.match(message, "^%s*$") then
 			print(("[MCP] Received empty or whitespace-only message, ignoring. Raw message: [%s]"):format(tostring(message)))
 			return
 		end
+
 
 		local decodedSuccess, resultOrError = pcall(HttpService.JSONDecode, HttpService, message)
 
