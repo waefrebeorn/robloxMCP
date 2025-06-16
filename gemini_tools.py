@@ -117,7 +117,9 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
             )
         ),
         types.FunctionDeclaration(
+
             name="GetInstanceProperties",
+
             description="Retrieves properties of an existing Roblox instance. If 'property_names' is provided, only those are fetched. Otherwise, many common scriptable properties are returned. Returns a dictionary of property names and their values. Complex types will be returned in their described dictionary/string formats.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
@@ -1035,6 +1037,7 @@ class ToolDispatcher:
                 else:
                     # No error flagged by Luau, so inner_text should be a JSON string.
                     try:
+
                         data = json.loads(inner_text)
                         # --- Start of specific tool success parsing ---
                         if original_tool_name == "get_selection":
@@ -1042,6 +1045,7 @@ class ToolDispatcher:
                                "selected_instances" in data and \
                                isinstance(data["selected_instances"], list) and \
                                not data["selected_instances"]:
+
                                 output_content_dict = {
                                     "status": "success",
                                     "message": "No instances are currently selected in Roblox Studio.",
@@ -1049,6 +1053,7 @@ class ToolDispatcher:
                                     "selected_instances_paths": []
                                 }
                                 ConsoleFormatter.print_tool_result({"status": "success", "message": "No instances selected (processed by Python agent)."})
+
                             else: # Assumes 'data' itself is the expected output if not empty selection.
                                 output_content_dict = {"status": "success", "output": data}
                                 ConsoleFormatter.print_tool_result(data)
@@ -1246,6 +1251,7 @@ class ToolDispatcher:
                         ConsoleFormatter.print_tool_error(output_content_dict)
 
             elif "error" in mcp_response: # Error from the MCP server itself (e.g. tool not found by MCP)
+
                 error_data = mcp_response["error"]
                 output_content_dict = {"status": "error", "details": error_data}
                 ConsoleFormatter.print_tool_error(error_data) # Pass the whole error_data dict
