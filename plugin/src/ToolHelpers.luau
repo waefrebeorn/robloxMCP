@@ -275,6 +275,7 @@ end
 
 -- Standard response formatters
 
+
 local ConvertLuaDataToReadableString
 function ConvertLuaDataToReadableString(value, indentLevel, visitedTables)
     indentLevel = indentLevel or 0
@@ -333,11 +334,13 @@ function ConvertLuaDataToReadableString(value, indentLevel, visitedTables)
         else
             if count == 0 then return "{}" end
             return "{ " .. table.concat(parts, ", ") .. " }"
+
         end
     else
         -- For other Roblox UserData types or unknown types
         return tostring(value) .. (" (type: %s)"):format(valueType)
     end
+
 end
 
 function ToolHelpers.FormatSuccessResult(data)
@@ -345,6 +348,7 @@ function ToolHelpers.FormatSuccessResult(data)
     -- indentLevel 0, and new visitedTables set for each top-level call.
     local responseText = ConvertLuaDataToReadableString(data, 0, {})
     return { content = { { type = "text", text = responseText } }, isError = false }
+
 end
 
 function ToolHelpers.FormatErrorResult(errorMessageString, _errorType) -- _errorType is not used in the new format

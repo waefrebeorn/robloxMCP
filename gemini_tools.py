@@ -1379,7 +1379,9 @@ class ToolDispatcher:
             elif original_tool_name == "call_instance_method":
                 luau_tool_name_to_execute = "CallInstanceMethod"
             elif original_tool_name == "delete_instance":
+
                 luau_tool_name_to_execute = "delete_instance" # Corrected mapping
+
             elif original_tool_name == "select_instances": # Python: select_instances, Luau: SelectInstances.luau
                 luau_tool_name_to_execute = "SelectInstances"
             elif original_tool_name == "run_script":
@@ -1510,12 +1512,14 @@ class ToolDispatcher:
                     output_content_dict = {"status": "error_from_luau_tool", "tool_message": inner_text.strip()}
                     ConsoleFormatter.print_tool_error({"luau_tool_error_message": inner_text.strip()})
                 else:
+
                     # Luau tool call was successful and inner_text contains the human-readable string.
                     # No JSON parsing needed.
                     # The 'response' field for FunctionResponse should be a Dict[str, Any].
                     # We will return the plain text output under the key "content" as per Gemini's recommended structure for simple text.
                     output_content_dict = {"content": inner_text.strip()}
                     ConsoleFormatter.print_tool_result({"status": "success", "text_output_from_luau": inner_text.strip()})
+
 
             elif "error" in mcp_response: # Error from the MCP server itself (e.g. tool not found by MCP)
 
