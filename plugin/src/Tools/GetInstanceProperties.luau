@@ -122,21 +122,21 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 			end
 		end
 
-		local message = ("Successfully retrieved %d properties for instance '%s'."):format(ToolHelpers.TableLength(retrievedProperties), path)
+		local messageText = ("Successfully retrieved %d properties for instance '%s'."):format(ToolHelpers.TableLength(retrievedProperties), path)
 		if accessErrors then
-			message = message .. (" Encountered %d errors retrieving some requested properties."):format(ToolHelpers.TableLength(accessErrors))
+			messageText = messageText .. (" Encountered %d errors retrieving some requested properties."):format(ToolHelpers.TableLength(accessErrors))
 		end
 
-		local resultData = {
-			message = message,
+		local dataToReturn = {
+			message = messageText,
 			instance_path = path,
 			properties = retrievedProperties,
 		}
-		if accessErrors then -- only include errors table if there are errors
-			resultData.errors = accessErrors
+		if accessErrors then
+			dataToReturn.errors = accessErrors
 		end
 
-		return resultData -- Removed semicolon and trailing comment
+		return dataToReturn
 
 	end)
 
@@ -152,7 +152,7 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 			message = "Internal script error in GetInstanceProperties: " .. tostring(resultOrError),
 			instance_path = args.path or "nil",
 			properties = {},
-			errors = { internal_error = tostring(resultOrRrror) }, -- Potential typo here: resultOrRrror should likely be resultOrError
+			errors = { internal_error = tostring(resultOrError) }, -- Potential typo here: resultOrRrror should likely be resultOrError
 		})
 	end
 end
