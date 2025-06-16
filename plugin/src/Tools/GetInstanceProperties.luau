@@ -127,7 +127,7 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 			message = message .. (" Encountered %d errors retrieving some requested properties."):format(ToolHelpers.TableLength(accessErrors))
 		end
 
-		local resultData: Types.GetInstancePropertiesResultData = {
+		local resultData = { -- MODIFIED LINE: Removed type annotation
 			message = message,
 			instance_path = path,
 			properties = retrievedProperties,
@@ -152,7 +152,7 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 			message = "Internal script error in GetInstanceProperties: " .. tostring(resultOrError),
 			instance_path = args.path or "nil",
 			properties = {},
-			errors = { internal_error = tostring(resultOrError) },
+			errors = { internal_error = tostring(resultOrRrror) },
 		})
 	end
 end
