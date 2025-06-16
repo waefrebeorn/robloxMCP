@@ -122,21 +122,22 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 			end
 		end
 
-		local message = ("Successfully retrieved %d properties for instance '%s'."):format(ToolHelpers.TableLength(retrievedProperties), path)
+		local messageText = ("Successfully retrieved %d properties for instance '%s'."):format(ToolHelpers.TableLength(retrievedProperties), path)
 		if accessErrors then
-			message = message .. (" Encountered %d errors retrieving some requested properties."):format(ToolHelpers.TableLength(accessErrors))
+			messageText = messageText .. (" Encountered %d errors retrieving some requested properties."):format(ToolHelpers.TableLength(accessErrors))
 		end
 
-		local resultData = {
-			message = message,
+		local dataToReturn = {
+			message = messageText,
 			instance_path = path,
 			properties = retrievedProperties,
 		}
-		if accessErrors then -- only include errors table if there are errors
-			resultData.errors = accessErrors
+		if accessErrors then
+			dataToReturn.errors = accessErrors
 		end
 
-		return resultData
+		return dataToReturn
+
 
 	end)
 
