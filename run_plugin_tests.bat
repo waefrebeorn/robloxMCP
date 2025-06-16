@@ -4,21 +4,10 @@ SETLOCAL ENABLEDELAYEDEXPANSION
 REM === Configuration ===
 SET "VENV_DIR=venv"
 SET "AGENT_SCRIPT=main.py"
-SET "ERROR_COUNT=0"
 
-REM === Define Test Commands ===
-SET "TEST_CMD_1=create a part named TestPartFromBatch"
+SET "TEST_COMMAND_FILE=test_commands.txt"
+SET "PYTHON_EXIT_CODE=0"
 
-SET "TEST_CMD_2=get the Name and Parent properties of Workspace.TestPartFromBatch"
-
-SET "TEST_CMD_3=run code print('Hello from Batch RunCode')"
-SET "TEST_CMD_4=select the part named TestPartFromBatch"
-SET "TEST_CMD_5=delete Workspace.TestPartFromBatch"
-SET "TEST_CMD_6=What is the current time of day in lighting?"
-
-SET "TEST_CMD_7=Create a sound in workspace with sound ID rbxassetid://1846473670 and name it ClickSound then play it and then delete it"
-
-SET "NUM_TEST_CMDS=7"
 
 REM === Main Logic ===
 CALL :ActivateVenv
@@ -30,49 +19,30 @@ IF !ERRORLEVEL! NEQ 0 (
 )
 
 ECHO.
-ECHO Starting Plugin Test Command Sequence...
+
+ECHO Starting Plugin Test Sequence from file: "%~dp0!TEST_COMMAND_FILE!"
 ECHO Agent Script: "%~dp0!AGENT_SCRIPT!"
 ECHO =====================================
 
-FOR /L %%I IN (1,1,%NUM_TEST_CMDS%) DO (
-
-    SET "CURRENT_COMMAND=!TEST_CMD_%%I!"
-
-
-    ECHO.
-    ECHO Running test %%I of %NUM_TEST_CMDS%: "!CURRENT_COMMAND!"
-    ECHO -------------------------------------------------
-
-    python "%~dp0!AGENT_SCRIPT!" --test_command "!CURRENT_COMMAND!"
-    SET "CMD_ERRORLEVEL=!ERRORLEVEL!"
-
-    IF !CMD_ERRORLEVEL! NEQ 0 (
-        ECHO WARNING: Test "!CURRENT_COMMAND!" failed with error code !CMD_ERRORLEVEL!.
-        SET /A ERROR_COUNT+=1
-    ) ELSE (
-        ECHO Test completed successfully.
-    )
-    ECHO -------------------------------------------------
-
-    IF %%I NEQ %NUM_TEST_CMDS% (
-        ECHO Waiting for 7 seconds...
-        TIMEOUT /T 7 /NOBREAK
-    )
-)
+python "%~dp0!AGENT_SCRIPT!" --test_file "%~dp0!TEST_COMMAND_FILE!"
+SET "PYTHON_EXIT_CODE=!ERRORLEVEL!"
 
 ECHO.
 ECHO =====================================
-ECHO ---- Test Run Summary ----
-IF !ERROR_COUNT! EQU 0 (
-    ECHO All %NUM_TEST_CMDS% tests passed successfully.
+ECHO Test Sequence Summary (from main.py execution above)
+IF !PYTHON_EXIT_CODE! NEQ 0 (
+    ECHO WARNING: main.py exited with error code !PYTHON_EXIT_CODE!. This may indicate issues with the test file execution or the script itself.
 ) ELSE (
-    ECHO !ERROR_COUNT! out of %NUM_TEST_CMDS% tests failed.
+    ECHO main.py completed. Review output above for specific command success/failure details.
+
 )
 ECHO =====================================
 ECHO.
 
 PAUSE
-ENDLOCAL & EXIT /B !ERROR_COUNT!
+
+ENDLOCAL & EXIT /B !PYTHON_EXIT_CODE!
+
 
 REM === Subroutines ===
 :ActivateVenv
