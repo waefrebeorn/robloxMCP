@@ -7,22 +7,21 @@ local Lighting = game:GetService("Lighting")
 local function execute(args: Types.SetLightingPropertyArgs) -- Type annotation added
     local success, resultOrError = pcall(function()
         local propertyName = args.property_name
-        local propertyValueJson = args.value
+        local propertyValue = args.value -- Expecting direct Luau value
 
         if not propertyName or type(propertyName) ~= "string" then
             return "'property_name' is required and must be a string."
         end
-        if propertyValueJson == nil then
+        if propertyValue == nil then
             return "'value' is required for the property."
         end
 
-        local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propertyValueJson, "Lighting."..propertyName)
-        if convertError then
-            return ("Invalid value format for Lighting property '%s': %s"):format(propertyName, convertError)
-        end
+        -- No conversion needed, propertyValue is expected to be the correct Luau type.
+        -- ToolHelpers.JsonToRobloxValue call removed.
+        -- convertError check removed.
 
         local setSuccess, setError = pcall(function()
-            Lighting[propertyName] = convertedValue
+            Lighting[propertyName] = propertyValue -- Use propertyValue directly
         end)
 
         if not setSuccess then

@@ -60,16 +60,13 @@ local function execute(args: Types.CreateInstanceArgs) -- Type annotation added
         for propName, propValueInput in pairs(properties) do
             local propNameLower = string.lower(propName)
             if propNameLower ~= "parent" then -- Parent is now fully handled by parentInstance logic above
-                local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, newInstance.ClassName.."."..propName)
-                if convertError then
-                    table.insert(propertyErrors, ("Property '%s': Failed to convert input value: %s"):format(propName, convertError))
-                else
-                    local setPropSuccess, setError = pcall(function()
-                        newInstance[propName] = convertedValue
-                    end)
-                    if not setPropSuccess then
-                        table.insert(propertyErrors, ("Property '%s': Error setting value: %s"):format(propName, setError))
-                    end
+                -- No conversion needed, propValueInput is expected to be the correct Luau type.
+                -- ToolHelpers.JsonToRobloxValue call removed.
+                local setPropSuccess, setError = pcall(function()
+                    newInstance[propName] = propValueInput -- Use propValueInput directly
+                end)
+                if not setPropSuccess then
+                    table.insert(propertyErrors, ("Property '%s': Error setting value: %s"):format(propName, setError))
                 end
             end
         end

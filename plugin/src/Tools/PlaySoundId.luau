@@ -67,16 +67,13 @@ local function execute(args: Types.PlaySoundIdArgs)
                     end
                 end
             else
-                local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, "Sound."..propName)
-                if convertError then
-                    table.insert(propertyErrors, ("Property '%s': Failed to convert input value: %s"):format(propName, convertError))
-                else
-                    local setSuccess, setError = pcall(function()
-                        soundInstance[propName] = convertedValue
-                    end)
-                    if not setSuccess then
-                        table.insert(propertyErrors, ("Property '%s': Error setting value: %s"):format(propName, setError))
-                    end
+                -- No conversion needed, propValueInput is expected to be the correct Luau type.
+                -- ToolHelpers.JsonToRobloxValue call removed.
+                local setSuccess, setError = pcall(function()
+                    soundInstance[propName] = propValueInput -- Use propValueInput directly
+                end)
+                if not setSuccess then
+                    table.insert(propertyErrors, ("Property '%s': Error setting value: %s"):format(propName, setError))
                 end
             end
         end
