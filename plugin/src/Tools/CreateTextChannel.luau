@@ -33,16 +33,13 @@ local function execute(args: Types.CreateTextChannelArgs) -- Type annotation add
             if string.lower(propName) == "parent" then
                 -- Parent is TextChatService
             else
-                local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, "TextChannel."..propName)
-                if convertError then
-                    table.insert(propertyErrors, ("Property '%s': %s"):format(propName, convertError))
-                else
-                    local setSuccess, setError = pcall(function()
-                        newChannel[propName] = convertedValue
-                    end)
-                    if not setSuccess then
-                        table.insert(propertyErrors, ("Property '%s': %s"):format(propName, setError))
-                    end
+                -- No conversion needed, propValueInput is expected to be the correct Luau type.
+                -- ToolHelpers.JsonToRobloxValue call removed.
+                local setSuccess, setError = pcall(function()
+                    newChannel[propName] = propValueInput -- Use propValueInput directly
+                end)
+                if not setSuccess then
+                    table.insert(propertyErrors, ("Property '%s': %s"):format(propName, setError))
                 end
             end
         end

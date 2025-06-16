@@ -61,24 +61,20 @@ local function execute(args: Types.TweenPropertiesArgs)
         )
 
         local propertiesGoal = {}
-        local conversionErrors = {}
+        -- local conversionErrors = {} -- Removed, direct assignment now
         for propName, propValueInput in pairs(propertiesToTween) do
-            -- Values in propertiesToTween are Lua values; JsonToRobloxValue converts tables to Color3/Vector3 etc.
-            local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, instance:GetClass().."."..propName)
-            if convertError then
-                table.insert(conversionErrors, ("Property '%s': Failed to convert input value: %s"):format(propName, convertError))
-            else
-                propertiesGoal[propName] = convertedValue
-            end
+            -- No conversion needed, propValueInput is expected to be the correct Luau type.
+            -- ToolHelpers.JsonToRobloxValue call removed.
+            -- Type errors will be caught by TweenService:Create if types are incompatible.
+            propertiesGoal[propName] = propValueInput -- Use propValueInput directly
         end
 
-        if #conversionErrors > 0 then
-            return ToolHelpers.FormatErrorResult("Error(s) converting property values for tween: " .. table.concat(conversionErrors, "; "))
-        end
-
+        -- Removed conversionErrors check. If propertiesToTween was empty, next(propertiesGoal) will be nil.
+        -- The original propertiesToTween emptiness check already covers this.
         if next(propertiesGoal) == nil then
-            -- This might happen if all properties had conversion errors
-            return ToolHelpers.FormatErrorResult("No valid properties to tween after conversion attempts.")
+            -- This check is technically redundant if the input 'properties_to_tween' cannot be empty (which it can't by an earlier check)
+            -- but kept for safety in case that input check changes.
+            return ToolHelpers.FormatErrorResult("No valid properties to tween (properties_to_tween was empty or became empty).")
         end
 
         local tweenCreateSuccess, tweenOrError = pcall(TweenService.Create, TweenService, instance, tweenInfo, propertiesGoal)
@@ -96,7 +92,7 @@ local function execute(args: Types.TweenPropertiesArgs)
             duration = duration,
             easing_style_used = easingStyleStr,
             easing_direction_used = easingDirectionStr,
-            properties_goal = ToolHelpers.RobloxValueToJson(propertiesGoal) -- Confirm the goal table used
+            properties_goal = propertiesGoal -- Pass the raw Lua table
         })
     end)
 

@@ -75,16 +75,13 @@ local function execute(args: Types.CreateGuiElementArgs) -- Type annotation adde
         local propertyErrors = {}
         for propName, propValueInput in pairs(propertiesJson) do
             if string.lower(propName) ~= "parent" then
-                local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, (newElement :: Instance):GetClass().Name .. "." .. propName)
-                if convertError then
-                    table.insert(propertyErrors, ("Property '%s': %s"):format(propName, convertError))
-                else
-                    local setSuccess, setError = pcall(function()
-                        (newElement :: Instance)[propName] = convertedValue
-                    end)
-                    if not setSuccess then
-                        table.insert(propertyErrors, ("Property '%s': %s"):format(propName, setError))
-                    end
+                -- No conversion needed, propValueInput is expected to be the correct Luau type.
+                -- ToolHelpers.JsonToRobloxValue call removed.
+                local setSuccess, setError = pcall(function()
+                    (newElement :: Instance)[propName] = propValueInput -- Use propValueInput directly
+                end)
+                if not setSuccess then
+                    table.insert(propertyErrors, ("Property '%s': %s"):format(propName, setError))
                 end
             end
         end

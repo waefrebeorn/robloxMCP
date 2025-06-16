@@ -30,16 +30,13 @@ local function execute(args: Types.CreateProximityPromptArgs) -- Type annotation
             if string.lower(propName) == "parent" then
                 -- Parent is parentPartPath, ignore from properties
             else
-                local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, "ProximityPrompt."..propName)
-                if convertError then
-                    table.insert(propertyErrors, ("Property '%s': %s"):format(propName, convertError))
-                else
-                    local setSuccess, setError = pcall(function()
-                        prompt[propName] = convertedValue
-                    end)
-                    if not setSuccess then
-                        table.insert(propertyErrors, ("Property '%s': %s"):format(propName, setError))
-                    end
+                -- No conversion needed, propValueInput is expected to be the correct Luau type.
+                -- ToolHelpers.JsonToRobloxValue call removed.
+                local setSuccess, setError = pcall(function()
+                    prompt[propName] = propValueInput -- Use propValueInput directly
+                end)
+                if not setSuccess then
+                    table.insert(propertyErrors, ("Property '%s': %s"):format(propName, setError))
                 end
             end
         end
