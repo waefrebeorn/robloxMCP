@@ -112,10 +112,10 @@ local function connectWebSocket()
 		log("[MCP] Connection closed")
 	end)
 
-	client.MessageReceived:Connect(function(message)
+	client.MessageReceived:Connect(function(message: string) -- Ensured valid type annotation / corrected if malformed
 		log("[MCP] Message received")
 
-<<<<<<< feature/targeted-deserialization-v2
+
 		-- Check for empty or whitespace-only message
 		if message == nil or string.match(message, "^%s*$") then
 			-- More subdued log, not an "Error"
@@ -144,27 +144,7 @@ local function connectWebSocket()
 		if type(body) ~= "table" then
 			print(("[MCP Error] Executed Luau message did not return a table. Returned type: %s. Original raw message was: [%s]"):format(type(body), message))
 			-- Potentially send a formatted error response
-=======
 
-		-- Check for empty or whitespace-only message
-		if message == nil or string.match(message, "^%s*$") then
-			print(("[MCP] Received empty or whitespace-only message, ignoring. Raw message: [%s]"):format(tostring(message)))
-			return
-		end
-
-
-		local decodedSuccess, resultOrError = pcall(HttpService.JSONDecode, HttpService, message)
-
-		if not decodedSuccess then
-			-- 'resultOrError' here is the error message from JSONDecode
-			print(("[MCP] Error: Failed to decode JSON. Decode Error: %s. Original raw message was: [%s]"):format(tostring(resultOrError), message))
-			return
-		end
-
-		local body = resultOrError -- If decodedSuccess is true, resultOrError is the decoded body
-		if type(body) ~= "table" then
-			print(("[MCP] Error: Decoded JSON message is not a table. Type: %s. Original raw message was: [%s]"):format(type(body), message))
->>>>>>> main
 			return
 		end
 
@@ -198,6 +178,7 @@ local function connectWebSocket()
 					end
 				end
 
+
 				-- responseLuauString now holds a string like "return {content=..., isError=...}"
 
 				local outerPayloadTable = {
@@ -213,6 +194,7 @@ local function connectWebSocket()
 				if outerSerialError then
 					print(("[MCP CRITICAL] Failed to serialize the final outer payload for ID '%s'. Error: %s"):format(tostring(id), tostring(outerSerialError)))
 
+
 					-- Construct the ultimate fallback Luau string manually
 					-- The 'response' field needs to be a string that itself is a Luau return statement.
 					local ultimateFallbackResponseLuauStr, ultimateFallbackErr = ToolHelpers.TableToLuauString(
@@ -224,13 +206,36 @@ local function connectWebSocket()
 					end
 
 					-- Serialize the 'id' safely into the outer return statement
-					local idLuauString, idSerialErr = ToolHelpers.TableToLuauString(id)
+
+					local idValueStr
+					local idFullReturnStr, idSerialErr = ToolHelpers.TableToLuauString(id)
 					if idSerialErr then
-						-- This is extremely unlikely for a string or number ID, but as a last resort
-						idLuauString = string.format("%q", "ID_SERIALIZATION_FAILED_" .. tostring(id))
+						idValueStr = string.format("%q", "ID_SERIALIZATION_FAILED_" .. tostring(id))
+					else
+						-- Workaround: Strip "return " from the string returned by TableToLuauString
+						-- Assumes TableToLuauString always prepends "return "
+						if string.sub(idFullReturnStr, 1, #"return ") == "return " then
+							idValueStr = string.sub(idFullReturnStr, #"return " + 1)
+						else
+							-- This case implies TableToLuauString didn't prepend "return " or returned something unexpected.
+							-- For safety, serialize the raw idFullReturnStr as a string literal if it wasn't an error.
+							-- However, _serializeValueForLuauString would be the ideal call here.
+							-- As a robust fallback if stripping failed or wasn't applicable, treat idFullReturnStr as a literal string.
+							local tempSerializedId, tempErr = ToolHelpers.TableToLuauString(idFullReturnStr)
+							if tempErr then
+								idValueStr = string.format("%q", "ID_SERIALIZATION_COMPLEX_ISSUE")
+							else
+								if string.sub(tempSerializedId, 1, #"return ") == "return " then
+									idValueStr = string.sub(tempSerializedId, #"return " + 1)
+								else
+									idValueStr = tempSerializedId -- Should be a quoted string now
+								endif
+							end
+						end
 					end
 
-					finalLuauStringToSend = string.format("return { id = %s, response = %s }", idLuauString, ToolHelpers.TableToLuauString(ultimateFallbackResponseLuauStr))
+					finalLuauStringToSend = string.format("return { id = %s, response = %s }", idValueStr, ToolHelpers.TableToLuauString(ultimateFallbackResponseLuauStr))
+
 					-- The above ToolHelpers.TableToLuauString(ultimateFallbackResponseLuauStr) is critical:
 					-- ultimateFallbackResponseLuauStr is already "return {...}", so it needs to become a string literal like "\"return {...}\""
 					-- This is handled by TableToLuauString when it encounters a string value.

@@ -427,17 +427,14 @@ function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instance
         else
             return inputTable, "For PhysicalProperties, provide 'material_enum_name' OR custom properties (density, friction, elasticity, friction_weight, elasticity_weight)."
         end
-<<<<<<< feature/targeted-deserialization-v2
-=======
 
->>>>>>> main
     end
 
     -- If no specific conversion rule matched, return the original table
     return inputTable, nil
 end
 
-<<<<<<< feature/targeted-deserialization-v2
+
 -- Forward declaration for the recursive helper
 local _serializeValueForLuauString
 
@@ -548,6 +545,5 @@ _serializeValueForLuauString = function(value, visitedTables)
     end
 end
 
-=======
->>>>>>> main
+
 return ToolHelpers
