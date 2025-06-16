@@ -1,9 +1,10 @@
 -- GetTeleportData.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types)
 local PlayersService = game:GetService("Players")
 
-local function execute(args)
+local function execute(args: Types.GetTeleportDataArgs)
     -- This tool does not take arguments from the 'args' table for its core logic.
     local success, pcall_result = pcall(function()
         local localPlayer = PlayersService.LocalPlayer

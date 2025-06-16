@@ -1,9 +1,10 @@
 -- SaveData.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types)
 local DataStoreService = game:GetService("DataStoreService")
 
-local function execute(args)
+local function execute(args: Types.SaveDataArgs)
     -- Arguments are expected directly on args table
     local success, pcall_result = pcall(function()
         local storeName = args.store_name

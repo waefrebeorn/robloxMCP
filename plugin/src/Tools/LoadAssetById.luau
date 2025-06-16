@@ -1,9 +1,10 @@
 -- LoadAssetById.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types)
 local InsertService = game:GetService("InsertService")
 
-local function execute(args)
+local function execute(args: Types.LoadAssetByIdArgs)
     -- Arguments are expected directly on args table
     local success, pcall_result = pcall(function()
         local assetId = args.asset_id

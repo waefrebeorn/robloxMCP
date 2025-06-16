@@ -1,9 +1,10 @@
 -- IsKeyDown.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types)
 local UserInputService = game:GetService("UserInputService")
 
-local function execute(args)
+local function execute(args: Types.IsKeyDownArgs)
     -- Arguments are expected directly on args table
     local success, pcall_result = pcall(function()
         local keyCodeString = args.key_code_string -- e.g., "E", "Space", "LeftShift"

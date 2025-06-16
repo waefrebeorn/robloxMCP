@@ -1,9 +1,10 @@
 -- GetProductInfo.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types)
 local MarketplaceService = game:GetService("MarketplaceService")
 
-local function execute(args)
+local function execute(args: Types.GetProductInfoArgs)
     local success, pcall_result = pcall(function()
         local assetId = args.asset_id
         local infoTypeStr = args.info_type -- String like "Asset" or "Product"

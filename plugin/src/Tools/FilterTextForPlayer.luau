@@ -1,10 +1,11 @@
 -- FilterTextForPlayer.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types)
 local TextService = game:GetService("TextService")
 local PlayersService = game:GetService("Players")
 
-local function execute(args)
+local function execute(args: Types.FilterTextForPlayerArgs)
     -- Arguments are now expected directly on args table
     local success, pcall_result = pcall(function()
         local textToFilter = args.text_to_filter

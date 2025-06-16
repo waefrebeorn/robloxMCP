@@ -1,9 +1,10 @@
 -- ComputePath.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types)
 local PathfindingService = game:GetService("PathfindingService")
 
-local function execute(args)
+local function execute(args: Types.ComputePathArgs)
     -- Arguments are now expected directly on args table
     local success, pcall_result = pcall(function()
         local startPosJson = args.start_position

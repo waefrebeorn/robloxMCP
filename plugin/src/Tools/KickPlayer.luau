@@ -1,6 +1,7 @@
 -- KickPlayer.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types)
 local PlayersService = game:GetService("Players")
 
 local function find_player(pathOrName)
@@ -21,7 +22,7 @@ local function find_player(pathOrName)
     return nil
 end
 
-local function execute(args)
+local function execute(args: Types.KickPlayerArgs)
     -- Arguments are expected directly on args table
     local success, pcall_result = pcall(function()
         local playerPathOrName = args.player_path_or_name

@@ -1,6 +1,7 @@
 -- PromptPurchase.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types)
 local MarketplaceService = game:GetService("MarketplaceService")
 local PlayersService = game:GetService("Players")
 
@@ -20,7 +21,7 @@ local function find_player(pathOrName)
     return nil
 end
 
-local function execute(args)
+local function execute(args: Types.PromptPurchaseArgs)
     -- Arguments are expected directly on args table
     local success, pcall_result = pcall(function()
         local playerPath = args.player_path

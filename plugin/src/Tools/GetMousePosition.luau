@@ -1,9 +1,10 @@
 -- GetMousePosition.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types)
 local UserInputService = game:GetService("UserInputService")
 
-local function execute(args)
+local function execute(args: Types.GetMousePositionArgs)
     -- This tool typically doesn't take arguments, but args table is passed anyway.
     local success, pcall_result = pcall(function()
         if not UserInputService then

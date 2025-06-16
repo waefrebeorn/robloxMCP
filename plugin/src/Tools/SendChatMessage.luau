@@ -1,10 +1,11 @@
 -- SendChatMessage.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types)
 local TextChatService = game:GetService("TextChatService")
 local PlayersService = game:GetService("Players")
 
-local function execute(args)
+local function execute(args: Types.SendChatMessageArgs)
     -- Arguments are expected directly on args table
     local success, pcall_result = pcall(function()
         local messageText = args.message_text
