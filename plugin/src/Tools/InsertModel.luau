@@ -171,7 +171,7 @@ local function handleInsertModel(args: Types.InsertModelArgs)
                 return ToolHelpers.FormatErrorResult(secondary_return)
             else -- No errorString from performInsert, so primary_return should be valid data
 
-                return ToolHelpers.FormatSuccessResult(primary_return)
+                return (ToolHelpers.FormatSuccessResult(primary_return))
 
             end
         end
