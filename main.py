@@ -296,6 +296,7 @@ async def main_loop():
 
         console.print("Type your commands for Roblox Studio, or 'exit' to quit.", style="dim")
 
+
         parser = argparse.ArgumentParser(description="Roblox Studio Gemini Broker")
         parser.add_argument("--test_command", type=str, help="Execute a single test command and exit.")
         parser.add_argument('--test_file', type=str, help='Path to a file containing a list of test commands, one per line.')

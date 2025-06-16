@@ -4,8 +4,10 @@ SETLOCAL ENABLEDELAYEDEXPANSION
 REM === Configuration ===
 SET "VENV_DIR=venv"
 SET "AGENT_SCRIPT=main.py"
+
 SET "TEST_COMMAND_FILE=test_commands.txt"
 SET "PYTHON_EXIT_CODE=0"
+
 
 REM === Main Logic ===
 CALL :ActivateVenv
@@ -17,6 +19,7 @@ IF !ERRORLEVEL! NEQ 0 (
 )
 
 ECHO.
+
 ECHO Starting Plugin Test Sequence from file: "%~dp0!TEST_COMMAND_FILE!"
 ECHO Agent Script: "%~dp0!AGENT_SCRIPT!"
 ECHO =====================================
@@ -31,12 +34,15 @@ IF !PYTHON_EXIT_CODE! NEQ 0 (
     ECHO WARNING: main.py exited with error code !PYTHON_EXIT_CODE!. This may indicate issues with the test file execution or the script itself.
 ) ELSE (
     ECHO main.py completed. Review output above for specific command success/failure details.
+
 )
 ECHO =====================================
 ECHO.
 
 PAUSE
+
 ENDLOCAL & EXIT /B !PYTHON_EXIT_CODE!
+
 
 REM === Subroutines ===
 :ActivateVenv
