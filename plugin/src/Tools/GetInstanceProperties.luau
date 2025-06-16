@@ -138,6 +138,7 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 
 		return dataToReturn
 
+
 	end)
 
 	if success then
