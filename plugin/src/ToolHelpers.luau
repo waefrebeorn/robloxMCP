@@ -294,6 +294,7 @@ function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instance
         else
             return inputTable, "Missing min_value or max_value for NumberRange."
         end
+
     elseif string.find(lowerPropName, "brickcolor") or string.find(lowerPropName, "teamcolor") then
         if inputTable.name and type(inputTable.name) == "string" then
             local success, result = pcall(BrickColor.new, inputTable.name)
@@ -426,11 +427,13 @@ function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instance
         else
             return inputTable, "For PhysicalProperties, provide 'material_enum_name' OR custom properties (density, friction, elasticity, friction_weight, elasticity_weight)."
         end
+
     end
 
     -- If no specific conversion rule matched, return the original table
     return inputTable, nil
 end
+
 
 -- Forward declaration for the recursive helper
 local _serializeValueForLuauString
@@ -541,5 +544,6 @@ _serializeValueForLuauString = function(value, visitedTables)
         return string.format("%q", "<" .. valueType .. " (" .. tostring(value) .. ")>")
     end
 end
+
 
 return ToolHelpers

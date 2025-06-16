@@ -115,6 +115,7 @@ local function connectWebSocket()
 	client.MessageReceived:Connect(function(message: string) -- Ensured valid type annotation / corrected if malformed
 		log("[MCP] Message received")
 
+
 		-- Check for empty or whitespace-only message
 		if message == nil or string.match(message, "^%s*$") then
 			-- More subdued log, not an "Error"
@@ -143,6 +144,7 @@ local function connectWebSocket()
 		if type(body) ~= "table" then
 			print(("[MCP Error] Executed Luau message did not return a table. Returned type: %s. Original raw message was: [%s]"):format(type(body), message))
 			-- Potentially send a formatted error response
+
 			return
 		end
 
@@ -176,6 +178,7 @@ local function connectWebSocket()
 					end
 				end
 
+
 				-- responseLuauString now holds a string like "return {content=..., isError=...}"
 
 				local outerPayloadTable = {
@@ -191,6 +194,7 @@ local function connectWebSocket()
 				if outerSerialError then
 					print(("[MCP CRITICAL] Failed to serialize the final outer payload for ID '%s'. Error: %s"):format(tostring(id), tostring(outerSerialError)))
 
+
 					-- Construct the ultimate fallback Luau string manually
 					-- The 'response' field needs to be a string that itself is a Luau return statement.
 					local ultimateFallbackResponseLuauStr, ultimateFallbackErr = ToolHelpers.TableToLuauString(
@@ -200,6 +204,7 @@ local function connectWebSocket()
 						-- If even serializing this simple error table fails, use a hardcoded string for the inner response
 						ultimateFallbackResponseLuauStr = "return {content={{type='text', text='PLUGIN MELTDOWN AND UNABLE TO SERIALIZE BASIC ERROR'}}, isError=true}"
 					end
+
 
 					local idStringForFormatInFallback
 					if type(id) == "string" then
@@ -221,6 +226,7 @@ local function connectWebSocket()
 						idStringForFormatInFallback,
 						ToolHelpers.TableToLuauString(ultimateFallbackResponseLuauStr)
 					)
+
 				end
 
 				print("[MCP] Sending response (as Luau code string): " .. finalLuauStringToSend)
