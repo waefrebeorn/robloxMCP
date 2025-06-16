@@ -40,12 +40,17 @@ local function execute(args: Types.DeleteInstanceArgs) -- Type annotation added
     end)
 
     if success then
-        if type(resultOrError) == "string" then -- Error string returned from pcall function
+		if type(resultOrError) == "string" then -- An error message string was returned
             return ToolHelpers.FormatErrorResult(resultOrError)
-        else -- Data table returned
+		elseif resultOrError == nil then
+			return ToolHelpers.FormatErrorResult("delete_instance returned nil unexpectedly.")
+		else -- A resultData table was returned
+			-- Check if the returned table is one of the "path_not_found" custom success payloads
+			-- or a genuine success payload. Both should be handled by FormatSuccessResult.
             return ToolHelpers.FormatSuccessResult(resultOrError)
         end
     else
+		-- pcall itself failed
         return ToolHelpers.FormatErrorResult("Internal error in DeleteInstance: " .. tostring(resultOrError))
     end
 end
