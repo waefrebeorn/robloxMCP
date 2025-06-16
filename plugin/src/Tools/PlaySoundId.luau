@@ -35,7 +35,16 @@ local function execute(args: Types.PlaySoundIdArgs)
         end
 
         local soundInstance = Instance.new("Sound")
-        soundInstance.SoundId = soundId
+        -- soundInstance.SoundId = soundId -- Original line to be wrapped
+
+        local assignIdSuccess, assignIdError = pcall(function()
+            soundInstance.SoundId = soundId
+        end)
+
+        if not assignIdSuccess then
+            soundInstance:Destroy() -- Clean up the created sound instance
+            return ToolHelpers.FormatErrorResult(("Failed to assign SoundId '%s': %s"):format(tostring(soundId), tostring(assignIdError)))
+        end
 
         local propertyErrors = {}
         for propName, propValueInput in pairs(properties) do

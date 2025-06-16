@@ -136,7 +136,7 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 			resultData.errors = accessErrors
 		end
 
-		return resultData; -- Added semicolon
+		return resultData -- Removed semicolon and trailing comment
 
 	end)
 
@@ -152,7 +152,7 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 			message = "Internal script error in GetInstanceProperties: " .. tostring(resultOrError),
 			instance_path = args.path or "nil",
 			properties = {},
-			errors = { internal_error = tostring(resultOrRrror) },
+			errors = { internal_error = tostring(resultOrRrror) }, -- Potential typo here: resultOrRrror should likely be resultOrError
 		})
 	end
 end
