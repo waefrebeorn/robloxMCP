@@ -205,40 +205,28 @@ local function connectWebSocket()
 						ultimateFallbackResponseLuauStr = "return {content={{type='text', text='PLUGIN MELTDOWN AND UNABLE TO SERIALIZE BASIC ERROR'}}, isError=true}"
 					end
 
-					-- Serialize the 'id' safely into the outer return statement
 
-					local idValueStr
-					local idFullReturnStr, idSerialErr = ToolHelpers.TableToLuauString(id)
-					if idSerialErr then
-						idValueStr = string.format("%q", "ID_SERIALIZATION_FAILED_" .. tostring(id))
+					local idStringForFormatInFallback
+					if type(id) == "string" then
+						idStringForFormatInFallback = string.format("%q", id)
+					elseif type(id) == "number" then
+						idStringForFormatInFallback = tostring(id)
+					elseif type(id) == "boolean" then
+						idStringForFormatInFallback = tostring(id)
+					elseif id == nil then
+						idStringForFormatInFallback = "nil"
 					else
-						-- Workaround: Strip "return " from the string returned by TableToLuauString
-						-- Assumes TableToLuauString always prepends "return "
-						if string.sub(idFullReturnStr, 1, #"return ") == "return " then
-							idValueStr = string.sub(idFullReturnStr, #"return " + 1)
-						else
-							-- This case implies TableToLuauString didn't prepend "return " or returned something unexpected.
-							-- For safety, serialize the raw idFullReturnStr as a string literal if it wasn't an error.
-							-- However, _serializeValueForLuauString would be the ideal call here.
-							-- As a robust fallback if stripping failed or wasn't applicable, treat idFullReturnStr as a literal string.
-							local tempSerializedId, tempErr = ToolHelpers.TableToLuauString(idFullReturnStr)
-							if tempErr then
-								idValueStr = string.format("%q", "ID_SERIALIZATION_COMPLEX_ISSUE")
-							else
-								if string.sub(tempSerializedId, 1, #"return ") == "return " then
-									idValueStr = string.sub(tempSerializedId, #"return " + 1)
-								else
-									idValueStr = tempSerializedId -- Should be a quoted string now
-								endif
-							end
-						end
+						-- Fallback for unexpected ID types, ensuring it's a valid string in the output table
+						idStringForFormatInFallback = string.format("%q", "INVALID_ID_TYPE:" .. tostring(id))
 					end
 
-					finalLuauStringToSend = string.format("return { id = %s, response = %s }", idValueStr, ToolHelpers.TableToLuauString(ultimateFallbackResponseLuauStr))
+					-- ToolHelpers.TableToLuauString(ultimateFallbackResponseLuauStr) correctly makes
+					-- the "return..." string into a string literal like ""return {...}""
+					finalLuauStringToSend = string.format("return { id = %s, response = %s }",
+						idStringForFormatInFallback,
+						ToolHelpers.TableToLuauString(ultimateFallbackResponseLuauStr)
+					)
 
-					-- The above ToolHelpers.TableToLuauString(ultimateFallbackResponseLuauStr) is critical:
-					-- ultimateFallbackResponseLuauStr is already "return {...}", so it needs to become a string literal like "\"return {...}\""
-					-- This is handled by TableToLuauString when it encounters a string value.
 				end
 
 				print("[MCP] Sending response (as Luau code string): " .. finalLuauStringToSend)
