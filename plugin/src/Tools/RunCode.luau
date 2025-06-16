@@ -1,3 +1,4 @@
+
 -- RunCode.luau - Rewritten from scratch
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
@@ -24,7 +25,10 @@ local function toStrTableInternal(val: any): string
     else
         return tostring(val)
     end
+
 end
+--]]
+
 
 -- Helper function to process variadic arguments for addToOutput
 local function processVariadicArgsForOutput(...: any): string
@@ -37,13 +41,46 @@ local function processVariadicArgsForOutput(...: any): string
         table.insert(argStrings, toStrTableInternal(select(i, ...)))
     end
     return table.concat(argStrings, "\t")
+
 end
+--]]
+
+
+-- Modified toStrTable for one-level deep table string representation
+local function toStrTable(t) -- t is from table.pack
+    local strTable = {}
+    if t and t.n then -- Check if it looks like a packed table from table.pack
+        for i = 1, t.n do
+            local val = t[i]
+            if type(val) == "table" then
+                local innerParts = {}
+                for k, v in pairs(val) do
+                    table.insert(innerParts, tostring(k) .. "=" .. tostring(v))
+                end
+                strTable[i] = "{ " .. table.concat(innerParts, ", ") .. " }"
+            else
+                strTable[i] = tostring(val)
+            end
+        end
+    elseif type(t) == "table" then -- Fallback if not a packed table (e.g. if toStrTable is called with a single table directly)
+        local fallbackParts = {}
+        for k,v in pairs(t) do
+             table.insert(fallbackParts, tostring(k) .. "=" .. tostring(v))
+        end
+        -- This case should return a table of strings, so wrap the single string in a table
+        return {"{ " .. table.concat(fallbackParts, ", ") .. " }"}
+
+    elseif t == nil then -- Corrected 'else if' to 'elseif'
+
 
 -- Main handler function
 local function handleRunCode(args: {command: string}) -- : Types.CallToolResultTable (if Types module is used)
     if type(args) ~= "table" or type(args.command) ~= "string" then
         return ToolHelpers.FormatErrorResult("Error: RunCode command argument must be a table with a 'command' string.")
+
     end
+    return strTable
+
 
     local command: string = args.command
     local output_parts: {string} = {}
@@ -200,6 +237,7 @@ local function handleRunCode(args: {command: string}) -- : Types.CallToolResultT
     end
 
     return result_package
+
 end
 
 return handleRunCode
