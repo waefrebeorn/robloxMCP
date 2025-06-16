@@ -117,7 +117,9 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
             )
         ),
         types.FunctionDeclaration(
+
             name="GetInstanceProperties",
+
             description="Retrieves properties of an existing Roblox instance. If 'property_names' is provided, only those are fetched. Otherwise, many common scriptable properties are returned. Returns a dictionary of property names and their values. Complex types will be returned in their described dictionary/string formats.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,

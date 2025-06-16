@@ -296,6 +296,7 @@ async def main_loop():
 
         console.print("Type your commands for Roblox Studio, or 'exit' to quit.", style="dim")
 
+
         parser = argparse.ArgumentParser(description="Roblox Studio Gemini Broker")
         parser.add_argument("--test_command", type=str, help="Execute a single test command and exit.")
         parser.add_argument('--test_file', type=str, help='Path to a file containing a list of test commands, one per line.')
@@ -322,6 +323,7 @@ async def main_loop():
                         await asyncio.sleep(12)
 
                 console.print(f"\n[bold {'green' if file_command_errors == 0 else 'red'}]>>> Test file processing complete. {file_command_total - file_command_errors}/{file_command_total} commands succeeded. <<<[/bold {'green' if file_command_errors == 0 else 'red'}]")
+
 
             except FileNotFoundError:
                 logger.error(f"Test file not found: {args.test_file}")
