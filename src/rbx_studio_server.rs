@@ -242,17 +242,17 @@ fn format_tool_argument_values_to_luau_string(args: &ToolArgumentValues) -> Stri
     match args {
         ToolArgumentValues::ExecuteLuauByName { tool_name, arguments_luau } => {
             // Escape backslashes and then quotes for arguments_luau
-            let escaped_arguments_luau = arguments_luau.replace('\', "\\\\").replace('"', "\\\"");
+            let escaped_arguments_luau = arguments_luau.replace('\\', "\\\\").replace('"', "\\\"");
             format!("ExecuteLuauByName = {{ tool_name = \"{}\", arguments_luau = \"{}\" }}",
                     tool_name, escaped_arguments_luau)
         }
         ToolArgumentValues::RunCommand { command } => {
-            let escaped_command = command.replace('\', "\\\\").replace('"', "\\\"");
+            let escaped_command = command.replace('\\', "\\\\").replace('"', "\\\"");
             format!("RunCommand = {{ command = \"{}\" }}", escaped_command)
         }
         ToolArgumentValues::InsertModel { query } => {
             // Query for InsertModel is typically simpler, but escape for robustness.
-            let escaped_query = query.replace('\', "\\\\").replace('"', "\\\"");
+            let escaped_query = query.replace('\\', "\\\\").replace('"', "\\\"");
             format!("InsertModel = {{ query = \"{}\" }}", escaped_query)
         }
     }
