@@ -29,7 +29,7 @@ local function execute(args: Types.SetInstancePropertiesArgs) -- Type annotation
         local failedPropsCount = 0
 
         for propName, propValueInput in pairs(propertiesToSet) do
-            local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, instance:GetClass().Name.."."..propName)
+            local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, instance.ClassName.."."..propName)
 
             if convertError then
                 table.insert(propertyResults, {

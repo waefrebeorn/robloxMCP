@@ -252,35 +252,57 @@ local function connectWebSocket()
 		if taskArgs.ExecuteLuauByName and type(taskArgs.ExecuteLuauByName) == "table" then
 			toolNameForExecution = taskArgs.ExecuteLuauByName.tool_name
             originalToolNameToRespondWith = toolNameForExecution -- For Luau tools, this is the same.
-			local argumentsJson = taskArgs.ExecuteLuauByName.arguments_json
+			local argumentsLuau = taskArgs.ExecuteLuauByName.arguments_luau -- Changed from arguments_json
 
 			if type(toolNameForExecution) ~= "string" or string.len(toolNameForExecution) == 0 then
 				local errorResultTable = ToolHelpers.FormatErrorResult("ExecuteLuauByName: 'tool_name' is missing or invalid.")
-				sendResponseOnce(errorResultTable, toolNameForExecution or "ExecuteLuauByName")
+				sendResponseOnce(errorResultTable, originalToolNameToRespondWith or "ExecuteLuauByName") -- Use originalToolNameToRespondWith
 				return
 			end
-			if type(argumentsJson) ~= "string" then
-				local errorResultTable = ToolHelpers.FormatErrorResult("ExecuteLuauByName: 'arguments_json' is missing or not a string.")
-				sendResponseOnce(errorResultTable, toolNameForExecution)
+			if type(argumentsLuau) ~= "string" then -- Check argumentsLuau
+				local errorResultTable = ToolHelpers.FormatErrorResult("ExecuteLuauByName: 'arguments_luau' is missing or not a string.")
+				sendResponseOnce(errorResultTable, originalToolNameToRespondWith) -- Use originalToolNameToRespondWith
 				return
 			end
 
-			local decodeSuccess, decodedJsonArgs = pcall(HttpService.JSONDecode, HttpService, argumentsJson)
-			if decodeSuccess then
-				if type(decodedJsonArgs) == "table" then
-					toolInputArgs = decodedJsonArgs
-				else
-					-- If JSON decoded to a non-table (e.g. just a string or number), wrap it if necessary or handle error
-					print("[MCP] Warning: arguments_json for " .. toolNameForExecution .. " decoded to a non-table type: " .. type(decodedJsonArgs) .. ". Using as is or wrapping might be needed.")
-					toolInputArgs = decodedJsonArgs -- Assuming tool can handle it or it's a simple value call
-				end
-			else
-				print("[MCP] Error: Failed to JSONDecode arguments_json for tool " .. toolNameForExecution .. ": " .. tostring(decodedJsonArgs)) -- decodedJsonArgs is error msg here
-				local errorResultTable = ToolHelpers.FormatErrorResult("ExecuteLuauByName: Failed to decode 'arguments_json': " .. tostring(decodedJsonArgs))
-				sendResponseOnce(errorResultTable, toolNameForExecution)
+			-- Load and execute the Luau string for arguments
+			local func, load_err = loadstring(argumentsLuau)
+			if not func then
+				print("[MCP] Error: Failed to load 'arguments_luau' string for tool " .. toolNameForExecution .. ": " .. tostring(load_err))
+				local errorResultTable = ToolHelpers.FormatErrorResult("ExecuteLuauByName: Failed to load 'arguments_luau' string: " .. tostring(load_err))
+				sendResponseOnce(errorResultTable, originalToolNameToRespondWith)
 				return
 			end
-			log("[MCP] Task Type: ExecuteLuauByName for tool: " .. toolNameForExecution)
+
+			local success_call, result_args = pcall(func)
+			if not success_call then
+				print("[MCP] Error: Failed to execute 'arguments_luau' function for tool " .. toolNameForExecution .. ": " .. tostring(result_args))
+				local errorResultTable = ToolHelpers.FormatErrorResult("ExecuteLuauByName: Failed to execute 'arguments_luau' function: " .. tostring(result_args))
+				sendResponseOnce(errorResultTable, originalToolNameToRespondWith)
+				return
+			end
+
+			-- Ensure result_args is a table, as toolFunc expects it.
+			-- If the loaded string returns multiple values, they are packed into a table by pcall if success_call is true and result_args is the first value.
+			-- However, loadstring itself returns a function. When that function is called via pcall(func),
+			-- if func returns multiple values, result_args will be the first value, and subsequent values are lost unless func itself returns a table.
+			-- The requirement is that arguments_luau is a string like "return {foo='bar'}", so func() should return a table.
+			if type(result_args) ~= "table" then
+				print("[MCP] Warning: 'arguments_luau' function for " .. toolNameForExecution .. " did not return a table. Received type: " .. type(result_args) .. ". Wrapping in a table.")
+				-- This might not be what the tool expects if the string was not "return {...}".
+				-- However, tools are generally expected to receive a table of arguments.
+				-- If the string was e.g. "return 123", toolInputArgs becomes {123} which is likely not desired.
+				-- The contract is that arguments_luau is "return {arg1=val1, ...}"
+				-- If it's not, this is an issue with how arguments_luau was constructed.
+				-- For now, we will assign it directly, and tools must handle non-table args if that's a valid case,
+				-- or the calling side (Rust) must ensure arguments_luau returns a table.
+				-- Based on the prompt, result_args should be the Lua table.
+                toolInputArgs = result_args
+			else
+				toolInputArgs = result_args -- This is now the Lua table
+			end
+
+			log("[MCP] Task Type: ExecuteLuauByName for tool: " .. toolNameForExecution .. " with Luau arguments")
 
 		elseif taskArgs.RunCommand and type(taskArgs.RunCommand) == "table" then
 			-- This case is for the Rust `run_command` tool, which we map to `RunCode.luau`

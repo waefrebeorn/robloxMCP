@@ -274,25 +274,76 @@ function ToolHelpers.RobloxValueToJson(robloxValue)
 end
 
 -- Standard response formatters
-function ToolHelpers.FormatSuccessResult(data)
-    local responseText
-    if type(data) == "string" then
-        responseText = data
-    elseif data == nil then
-        responseText = "" -- Represent nil data as empty string for TextContent part
-    else
-        -- Call SafeJsonEncode directly. It already uses pcall internally.
-        local encodedData, encodeError = ToolHelpers.SafeJsonEncode(data)
 
-        if encodeError then -- Check the error returned by SafeJsonEncode
-            -- SafeJsonEncode indicated an error during JSON encoding.
-            local errorContent = { { type = "text", text = "Error: Could not encode successful result data: " .. encodeError } }
-            return { content = errorContent, isError = true }
-        else
-            -- SafeJsonEncode was successful.
-            responseText = encodedData
+local ConvertLuaDataToReadableString
+function ConvertLuaDataToReadableString(value, indentLevel, visitedTables)
+    indentLevel = indentLevel or 0
+    visitedTables = visitedTables or {}
+    local valueType = typeof(value) -- Use typeof for Roblox types
+
+    if value == nil then
+        return "nil"
+    elseif valueType == "string" then
+        return "\"" .. value .. "\"" -- Enclose strings in quotes for clarity
+    elseif valueType == "number" or valueType == "boolean" then
+        return tostring(value)
+    elseif valueType == "Instance" then
+        return ("Instance %s ('%s')"):format(value.ClassName, value.Name)
+    elseif valueType == "Vector3" then
+        return ("Vector3(%.2f, %.2f, %.2f)"):format(value.X, value.Y, value.Z)
+    elseif valueType == "Color3" then
+        return ("Color3(%.2f, %.2f, %.2f)"):format(value.R, value.G, value.B)
+    elseif valueType == "CFrame" then
+        local pos = value.Position
+        local ex, ey, ez = value:ToEulerAnglesXYZ()
+        return ("CFrame(Pos: (%.2f, %.2f, %.2f), OrientXYZ: (%.1f, %.1f, %.1f) deg)"):format(pos.X, pos.Y, pos.Z, math.deg(ex), math.deg(ey), math.deg(ez))
+    elseif valueType == "UDim2" then
+        return ("UDim2({%.1f, %d}, {%.1f, %d})"):format(value.X.Scale, value.X.Offset, value.Y.Scale, value.Y.Offset)
+     elseif string.match(valueType, "^Enum") then -- Matches Enum.Material, Enum.KeyCode, etc.
+        return tostring(value) -- Enums have a good tostring output e.g. "Enum.Material.Plastic"
+    elseif type(value) == "table" then -- Check Lua type for table
+        if visitedTables[value] then
+            return "[Cyclic Table]"
         end
+        visitedTables[value] = true
+
+        local parts = {}
+        local isArray = #value > 0 and value[1] ~= nil -- Basic array check
+        local count = 0
+        for k, v_val in pairs(value) do
+            count = count + 1
+            if indentLevel > 1 and count > 5 then -- Limit elements shown for deeply nested or large tables in summaries
+                 table.insert(parts, "...")
+                break
+            end
+            local keyStr
+            if isArray and type(k) == "number" then
+                keyStr = "" -- Don't show numeric indices for arrays in summary
+            else
+                keyStr = ConvertLuaDataToReadableString(k, indentLevel + 1, visitedTables) .. ": "
+            end
+            table.insert(parts, keyStr .. ConvertLuaDataToReadableString(v_val, indentLevel + 1, visitedTables))
+        end
+
+        visitedTables[value] = nil -- Remove after processing this table's scope
+
+        if isArray then
+            if count == 0 then return "{}" end
+            return "{ " .. table.concat(parts, ", ") .. (" } (%d items)"):format(count)
+        else
+            if count == 0 then return "{}" end
+            return "{ " .. table.concat(parts, ", ") .. " }"
+        end
+    else
+        -- For other Roblox UserData types or unknown types
+        return tostring(value) .. (" (type: %s)"):format(valueType)
     end
+end
+
+function ToolHelpers.FormatSuccessResult(data)
+    -- The goal is a human-readable summary, so ConvertLuaDataToReadableString is called at top level.
+    -- indentLevel 0, and new visitedTables set for each top-level call.
+    local responseText = ConvertLuaDataToReadableString(data, 0, {})
     return { content = { { type = "text", text = responseText } }, isError = false }
 end
 
