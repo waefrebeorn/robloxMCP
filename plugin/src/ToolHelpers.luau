@@ -190,4 +190,114 @@ function ToolHelpers.TableLength(t)
     return count
 end
 
+function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instance)
+    if type(inputTable) ~= "table" then
+        return inputTable, nil -- Not a table, no conversion needed
+    end
+
+    -- Infer type from property name (case-insensitive)
+    local lowerPropName = string.lower(propertyName)
+
+    if string.find(lowerPropName, "color") then -- Matches "Color", "BackgroundColor3", "TextColor3", etc.
+        if inputTable.r ~= nil and inputTable.g ~= nil and inputTable.b ~= nil then
+            local r, g, b = tonumber(inputTable.r), tonumber(inputTable.g), tonumber(inputTable.b)
+            if r and g and b then
+                return Color3.new(r, g, b), nil
+            else
+                return inputTable, "Invalid Color3 components: r, g, b must be numbers."
+            end
+        else
+            return inputTable, "Missing r, g, or b fields for Color3."
+        end
+    elseif lowerPropName == "position" or lowerPropName == "size" or string.find(lowerPropName, "vector3") then
+        -- Check if it's for a GUI object's Position/Size (UDim2) vs a Part's Position/Size (Vector3)
+        local isGui = false
+        if instance then
+            pcall(function() if instance:IsA("GuiObject") or instance:IsA("GuiBase2d") then isGui = true end end)
+        end
+
+        if isGui and (lowerPropName == "position" or lowerPropName == "size") then -- UDim2 for GuiObject
+            if inputTable.x_scale ~= nil and inputTable.x_offset ~= nil and inputTable.y_scale ~= nil and inputTable.y_offset ~= nil then
+                local xs, xo, ys, yo = tonumber(inputTable.x_scale), tonumber(inputTable.x_offset), tonumber(inputTable.y_scale), tonumber(inputTable.y_offset)
+                if xs and xo and ys and yo then
+                    return UDim2.new(xs, xo, ys, yo), nil
+                else
+                    return inputTable, "Invalid UDim2 components: x_scale, x_offset, y_scale, y_offset must be numbers."
+                end
+            else
+                return inputTable, "Missing x_scale, x_offset, y_scale, or y_offset for UDim2."
+            end
+        elseif not isGui and (lowerPropName == "position" or lowerPropName == "size" or string.find(lowerPropName, "vector3")) then -- Vector3
+            if inputTable.x ~= nil and inputTable.y ~= nil and inputTable.z ~= nil then
+                local x, y, z = tonumber(inputTable.x), tonumber(inputTable.y), tonumber(inputTable.z)
+                if x and y and z then
+                    return Vector3.new(x, y, z), nil
+                else
+                    return inputTable, "Invalid Vector3 components: x, y, z must be numbers."
+                end
+            else
+                return inputTable, "Missing x, y, or z fields for Vector3."
+            end
+        end
+    elseif string.find(lowerPropName, "vector2") then
+        if inputTable.x ~= nil and inputTable.y ~= nil then
+            local x, y = tonumber(inputTable.x), tonumber(inputTable.y)
+            if x and y then
+                return Vector2.new(x, y), nil
+            else
+                return inputTable, "Invalid Vector2 components: x, y must be numbers."
+            end
+        else
+            return inputTable, "Missing x or y fields for Vector2."
+        end
+    elseif string.find(lowerPropName, "udim2") then -- Explicit UDim2
+        if inputTable.x_scale ~= nil and inputTable.x_offset ~= nil and inputTable.y_scale ~= nil and inputTable.y_offset ~= nil then
+            local xs, xo, ys, yo = tonumber(inputTable.x_scale), tonumber(inputTable.x_offset), tonumber(inputTable.y_scale), tonumber(inputTable.y_offset)
+            if xs and xo and ys and yo then
+                return UDim2.new(xs, xo, ys, yo), nil
+            else
+                return inputTable, "Invalid UDim2 components: x_scale, x_offset, y_scale, y_offset must be numbers."
+            end
+        else
+            return inputTable, "Missing x_scale, x_offset, y_scale, or y_offset for UDim2."
+        end
+    elseif string.find(lowerPropName, "udim") then -- Catch UDim (single scale/offset)
+        if inputTable.scale ~= nil and inputTable.offset ~= nil then
+            local s, o = tonumber(inputTable.scale), tonumber(inputTable.offset)
+            if s and o then
+                return UDim.new(s, o), nil
+            else
+                return inputTable, "Invalid UDim components: scale, offset must be numbers."
+            end
+        else
+            return inputTable, "Missing scale or offset fields for UDim."
+        end
+    elseif string.find(lowerPropName, "rect") then
+         if inputTable.min_x ~= nil and inputTable.min_y ~= nil and inputTable.max_x ~= nil and inputTable.max_y ~= nil then
+            local minx, miny, maxx, maxy = tonumber(inputTable.min_x), tonumber(inputTable.min_y), tonumber(inputTable.max_x), tonumber(inputTable.max_y)
+            if minx and miny and maxx and maxy then
+                return Rect.new(minx, miny, maxx, maxy), nil
+            else
+                return inputTable, "Invalid Rect components: min_x, min_y, max_x, max_y must be numbers."
+            end
+        else
+            return inputTable, "Missing min_x, min_y, max_x, or max_y for Rect."
+        end
+    elseif string.find(lowerPropName, "numberrange") then
+        if inputTable.min_value ~= nil and inputTable.max_value ~= nil then
+            local minVal, maxVal = tonumber(inputTable.min_value), tonumber(inputTable.max_value)
+            if minVal and maxVal then
+                return NumberRange.new(minVal, maxVal), nil
+            else
+                return inputTable, "Invalid NumberRange components: min_value, max_value must be numbers."
+            end
+        else
+            return inputTable, "Missing min_value or max_value for NumberRange."
+        end
+    end
+
+    -- If no specific conversion rule matched, return the original table
+    return inputTable, nil
+end
+
 return ToolHelpers
