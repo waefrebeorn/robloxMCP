@@ -275,59 +275,80 @@ end
 
 -- Standard response formatters
 
-local function FormatTableToStringRecursive(tbl, indentLevel)
-    local strParts = {}
-    local indentString = string.rep("  ", indentLevel)
 
-    if indentLevel > 3 then -- Limit recursion depth to prevent infinite loops with cyclic tables
-        table.insert(strParts, indentString .. "{ ...cyclic table... }")
-        return table.concat(strParts)
-    end
+local ConvertLuaDataToReadableString
+function ConvertLuaDataToReadableString(value, indentLevel, visitedTables)
+    indentLevel = indentLevel or 0
+    visitedTables = visitedTables or {}
+    local valueType = typeof(value) -- Use typeof for Roblox types
 
-    for k, v in pairs(tbl) do
-        local keyStr = tostring(k)
-        local valueStr
-        if type(v) == "table" then
-            valueStr = FormatTableToStringRecursive(v, indentLevel + 1)
-            if indentLevel == 0 then -- Add newline for top-level table elements if they are tables
-                 table.insert(strParts, indentString .. keyStr .. " = {\n" .. valueStr .. "\n" .. indentString .. "}")
-            else
-                 table.insert(strParts, indentString .. keyStr .. " = {\n" .. valueStr .. "\n" .. indentString .. "}")
-            end
-        elseif type(v) == "string" then
-            valueStr = "\"" .. tostring(v) .. "\""
-            table.insert(strParts, indentString .. keyStr .. " = " .. valueStr)
-        elseif type(v) == "Instance" then
-            valueStr = "\"" .. v:GetFullName() .. "\" (Instance)"
-            table.insert(strParts, indentString .. keyStr .. " = " .. valueStr)
-        else
-            valueStr = tostring(v)
-            table.insert(strParts, indentString .. keyStr .. " = " .. valueStr)
+    if value == nil then
+        return "nil"
+    elseif valueType == "string" then
+        return "\"" .. value .. "\"" -- Enclose strings in quotes for clarity
+    elseif valueType == "number" or valueType == "boolean" then
+        return tostring(value)
+    elseif valueType == "Instance" then
+        return ("Instance %s ('%s')"):format(value.ClassName, value.Name)
+    elseif valueType == "Vector3" then
+        return ("Vector3(%.2f, %.2f, %.2f)"):format(value.X, value.Y, value.Z)
+    elseif valueType == "Color3" then
+        return ("Color3(%.2f, %.2f, %.2f)"):format(value.R, value.G, value.B)
+    elseif valueType == "CFrame" then
+        local pos = value.Position
+        local ex, ey, ez = value:ToEulerAnglesXYZ()
+        return ("CFrame(Pos: (%.2f, %.2f, %.2f), OrientXYZ: (%.1f, %.1f, %.1f) deg)"):format(pos.X, pos.Y, pos.Z, math.deg(ex), math.deg(ey), math.deg(ez))
+    elseif valueType == "UDim2" then
+        return ("UDim2({%.1f, %d}, {%.1f, %d})"):format(value.X.Scale, value.X.Offset, value.Y.Scale, value.Y.Offset)
+     elseif string.match(valueType, "^Enum") then -- Matches Enum.Material, Enum.KeyCode, etc.
+        return tostring(value) -- Enums have a good tostring output e.g. "Enum.Material.Plastic"
+    elseif type(value) == "table" then -- Check Lua type for table
+        if visitedTables[value] then
+            return "[Cyclic Table]"
         end
-    end
-    if indentLevel == 0 then
-        return "{\n" .. table.concat(strParts, ",\n") .. "\n}"
+        visitedTables[value] = true
+
+        local parts = {}
+        local isArray = #value > 0 and value[1] ~= nil -- Basic array check
+        local count = 0
+        for k, v_val in pairs(value) do
+            count = count + 1
+            if indentLevel > 1 and count > 5 then -- Limit elements shown for deeply nested or large tables in summaries
+                 table.insert(parts, "...")
+                break
+            end
+            local keyStr
+            if isArray and type(k) == "number" then
+                keyStr = "" -- Don't show numeric indices for arrays in summary
+            else
+                keyStr = ConvertLuaDataToReadableString(k, indentLevel + 1, visitedTables) .. ": "
+            end
+            table.insert(parts, keyStr .. ConvertLuaDataToReadableString(v_val, indentLevel + 1, visitedTables))
+        end
+
+        visitedTables[value] = nil -- Remove after processing this table's scope
+
+        if isArray then
+            if count == 0 then return "{}" end
+            return "{ " .. table.concat(parts, ", ") .. (" } (%d items)"):format(count)
+        else
+            if count == 0 then return "{}" end
+            return "{ " .. table.concat(parts, ", ") .. " }"
+
+        end
     else
-        return table.concat(strParts, ",\n")
+        -- For other Roblox UserData types or unknown types
+        return tostring(value) .. (" (type: %s)"):format(valueType)
     end
+
 end
 
 function ToolHelpers.FormatSuccessResult(data)
-    local plain_string_representation
-    local dataType = type(data)
+    -- The goal is a human-readable summary, so ConvertLuaDataToReadableString is called at top level.
+    -- indentLevel 0, and new visitedTables set for each top-level call.
+    local responseText = ConvertLuaDataToReadableString(data, 0, {})
+    return { content = { { type = "text", text = responseText } }, isError = false }
 
-    if dataType == "table" then
-        plain_string_representation = FormatTableToStringRecursive(data, 0)
-    elseif dataType == "string" or dataType == "number" or dataType == "boolean" then
-        plain_string_representation = tostring(data)
-    elseif data == nil then
-        plain_string_representation = "nil"
-    else
-        -- For other types like Instance, UserData, etc.
-        plain_string_representation = tostring(data)
-    end
-
-    return { content = { { type = "text", text = plain_string_representation } }, isError = false }
 end
 
 function ToolHelpers.FormatErrorResult(errorMessageString, _errorType) -- _errorType is not used in the new format

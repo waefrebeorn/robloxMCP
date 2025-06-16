@@ -1379,7 +1379,9 @@ class ToolDispatcher:
             elif original_tool_name == "call_instance_method":
                 luau_tool_name_to_execute = "CallInstanceMethod"
             elif original_tool_name == "delete_instance":
-                luau_tool_name_to_execute = "DeleteInstance"
+
+                luau_tool_name_to_execute = "delete_instance" # Corrected mapping
+
             elif original_tool_name == "select_instances": # Python: select_instances, Luau: SelectInstances.luau
                 luau_tool_name_to_execute = "SelectInstances"
             elif original_tool_name == "run_script":
@@ -1510,220 +1512,14 @@ class ToolDispatcher:
                     output_content_dict = {"status": "error_from_luau_tool", "tool_message": inner_text.strip()}
                     ConsoleFormatter.print_tool_error({"luau_tool_error_message": inner_text.strip()})
                 else:
-                    # No error flagged by Luau, so inner_text should be a JSON string.
-                    try:
 
-                        data = json.loads(inner_text)
-                        # --- Start of specific tool success parsing ---
-                        if original_tool_name == "get_selection":
-                            if isinstance(data, dict) and \
-                               "selected_instances" in data and \
-                               isinstance(data["selected_instances"], list) and \
-                               not data["selected_instances"]:
+                    # Luau tool call was successful and inner_text contains the human-readable string.
+                    # No JSON parsing needed.
+                    # The 'response' field for FunctionResponse should be a Dict[str, Any].
+                    # We will return the plain text output under the key "content" as per Gemini's recommended structure for simple text.
+                    output_content_dict = {"content": inner_text.strip()}
+                    ConsoleFormatter.print_tool_result({"status": "success", "text_output_from_luau": inner_text.strip()})
 
-                                output_content_dict = {
-                                    "status": "success",
-                                    "message": "No instances are currently selected in Roblox Studio.",
-                                    "selection_empty": True,
-                                    "selected_instances_paths": []
-                                }
-                                ConsoleFormatter.print_tool_result({"status": "success", "message": "No instances selected (processed by Python agent)."})
-
-                            else: # Assumes 'data' itself is the expected output if not empty selection.
-                                output_content_dict = {"status": "success", "output": data}
-                                ConsoleFormatter.print_tool_result(data)
-                        elif original_tool_name == "FindFirstChildMatching":
-                            output_content_dict = {
-                               "status": "success", "tool_message": data.get("message", ""),
-                               "parent_path": data.get("parent_path"), "child_name_searched": data.get("child_name_searched"),
-                               "recursive_search": data.get("recursive_search"), "child_found": bool(data.get("found_child_path")),
-                               "found_child_path": data.get("found_child_path"), "found_child_class_name": data.get("found_child_class_name")
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "message": f"FindFirstChildMatching processed: {data.get('message', '')}"})
-                        elif original_tool_name == "GetChildrenOfInstance":
-                            children_list = data.get("children", [])
-                            output_content_dict = {
-                               "status": "success", "tool_message": data.get("message", f"Found {len(children_list)} children for {data.get('instance_path')}."),
-                               "instance_path": data.get("instance_path"), "children_count": len(children_list), "children": children_list
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "message": f"GetChildrenOfInstance processed for {data.get('instance_path')}"})
-                        elif original_tool_name == "GetDescendantsOfInstance":
-                            descendants_list = data.get("descendants", [])
-                            output_content_dict = {
-                               "status": "success", "tool_message": data.get("message", f"Found {len(descendants_list)} descendants for {data.get('instance_path')}."),
-                               "instance_path": data.get("instance_path"), "descendants_count": len(descendants_list), "descendants": descendants_list
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "message": f"GetDescendantsOfInstance processed for {data.get('instance_path')}"})
-                        elif original_tool_name == "GetInstancesWithTag":
-                            instances_list = data.get("instances", [])
-                            output_content_dict = {
-                               "status": "success", "tool_message": data.get("message", f"Found {len(instances_list)} instances with tag '{data.get('tag_name')}'."),
-                               "tag_name": data.get("tag_name"), "instance_count": len(instances_list), "instances": instances_list
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "message": f"GetInstancesWithTag processed for tag {data.get('tag_name')}"})
-                        elif original_tool_name == "HasTag":
-                             output_content_dict = {
-                               "status": "success", "tool_message": data.get("message", f"Tag '{data.get('tag_name')}' on '{data.get('instance_path')}' is {data.get('has_tag')}."),
-                               "instance_path": data.get("instance_path"), "tag_name": data.get("tag_name"), "has_tag": data.get("has_tag")
-                            }
-                             ConsoleFormatter.print_tool_result({"status": "success", "message": f"HasTag processed for {data.get('instance_path')}"})
-                        elif original_tool_name == "CreateInstance":
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "instance_path": data.get("instance_path"), "class_name": data.get("class_name")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "message": f"CreateInstance processed: {data.get('message')}"})
-                        elif original_tool_name == "DeleteInstance":
-                            path_not_found = data.get("path_not_found")
-                            output_content_dict = {
-                               "status": "success_instance_not_found" if path_not_found else "success",
-                               "tool_message": data.get("message"), "deleted_path": data.get("deleted_path"), "path_not_found": path_not_found
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "message": f"DeleteInstance processed: {data.get('message')}"})
-                        elif original_tool_name == "GetInstanceProperties": # Corrected from ["GetProperties", "GetInstanceProperties"]
-                            output_content_dict = {
-                               "status": "success", "tool_message": data.get("message", f"Properties fetched for {data.get('instance_path')}."),
-                               "instance_path": data.get("instance_path"), "properties": data.get("properties"),"errors": data.get("errors")
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": f"Properties fetched for {data.get('instance_path')}"})
-                        elif original_tool_name == "GetLightingProperty":
-                            output_content_dict = {
-                               "status": "success", "tool_message": data.get("message", f"Lighting property {data.get('property_name')} fetched."),
-                               "property_name": data.get("property_name"), "value": data.get("value")
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": f"Lighting property {data.get('property_name')} fetched."})
-                        elif original_tool_name == "GetWorkspaceProperty": # Corrected name
-                            output_content_dict = {
-                               "status": "success", "tool_message": data.get("message", f"Workspace property {data.get('property_name')} fetched."),
-                               "property_name": data.get("property_name"), "value": data.get("value")
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": f"Workspace property {data.get('property_name')} fetched."})
-                        elif original_tool_name == "GetMouseHitCFrame": # Corrected name
-                            output_content_dict = {
-                               "status": "success", "tool_message": data.get("message", "Mouse hit CFrame processed."),
-                               "instance_hit_path": data.get("instance_hit_path"), "position": data.get("position"), "cframe_components": data.get("cframe_components")
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message", "Mouse hit CFrame processed.")})
-                        elif original_tool_name == "GetMousePosition": # Corrected name
-                            output_content_dict = {
-                               "status": "success", "tool_message": data.get("message", "Mouse position fetched."),
-                               "x": data.get("x"), "y": data.get("y"), "viewport_size": data.get("viewport_size")
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message", "Mouse position fetched.")})
-                        elif original_tool_name == "GetPlayersInTeam": # Corrected name
-                            players_list = data.get("players", [])
-                            output_content_dict = {
-                               "status": "success", "tool_message": data.get("message", f"Players in team {data.get('team_name')} fetched."),
-                               "team_name": data.get("team_name"), "team_path": data.get("team_path"),
-                               "player_count": len(players_list), "players": players_list
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": f"Players in team {data.get('team_name')} fetched."})
-                        elif original_tool_name == "GetProductInfo": # Corrected name
-                            output_content_dict = {
-                               "status": "success", "tool_message": data.get("message", f"Product info for asset ID {data.get('asset_id')} fetched."),
-                               "asset_id": data.get("asset_id"), "info_type_used": data.get("info_type_used"), "product_info": data.get("product_info")
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": f"Product info for asset ID {data.get('asset_id')} fetched."})
-                        elif original_tool_name == "GetTeams": # Corrected name
-                            output_content_dict = {
-                               "status": "success", "tool_message": data.get("message", "Teams fetched."),
-                               "team_count": data.get("team_count"), "teams": data.get("teams")
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message", "Teams fetched.")})
-                        elif original_tool_name == "GetTeleportData": # Corrected name
-                            output_content_dict = {
-                               "status": "success", "tool_message": data.get("message", "Teleport data fetched."),
-                               "teleport_data": data.get("teleport_data"), "source_place_id": data.get("source_place_id")
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message", "Teleport data fetched.")})
-                        elif original_tool_name == "AddDebrisItem": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "instance_path": data.get("instance_path"), "lifetime": data.get("lifetime")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "AddTag": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "instance_path": data.get("instance_path"), "tag_name": data.get("tag_name")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "CallInstanceMethod": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "results": data.get("results")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "CreateGuiElement": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "element_path": data.get("element_path"), "element_type": data.get("element_type"), "parent_path_used": data.get("parent_path_used")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "CreateProximityPrompt": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "prompt_path": data.get("prompt_path"), "action_text": data.get("action_text"), "object_text": data.get("object_text"), "max_activation_distance": data.get("max_activation_distance")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "CreateTeam": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "team_name": data.get("team_name"), "team_color": data.get("team_color"), "auto_assignable": data.get("auto_assignable"), "team_path": data.get("team_path")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "CreateTextChannel": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "channel_name": data.get("channel_name"), "channel_path": data.get("channel_path")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "IncrementData": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "store_name": data.get("store_name"), "key": data.get("key"), "new_value": data.get("new_value"), "incremented_by": data.get("incremented_by")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "IsKeyDown": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "key_code_used": data.get("key_code_used"), "is_down": data.get("is_down")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "IsMouseButtonDown": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "mouse_button_checked": data.get("mouse_button_checked"), "is_down": data.get("is_down")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "KickPlayer": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "kicked_player_name": data.get("kicked_player_name"), "kick_message_used": data.get("kick_message_used")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "LoadAssetById": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "asset_path": data.get("asset_path"), "asset_id": data.get("asset_id"), "asset_class_name": data.get("asset_class_name")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "LoadData": # Corrected name
-                             output_content_dict = {"status": "success", "tool_message": data.get("message"), "store_name": data.get("store_name"), "key": data.get("key"), "data": data.get("data")}
-                             ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "PlaySoundId": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "sound_path": data.get("sound_path"), "sound_id": data.get("sound_id"), "is_playing": data.get("is_playing"), "duration": data.get("duration"), "details": data.get("details")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "PromptPurchase": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "player_name": data.get("player_name"), "asset_id": data.get("asset_id"), "purchase_type_prompted": data.get("purchase_type_prompted")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "RemoveData": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "store_name": data.get("store_name"), "key": data.get("key")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "RunScript": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "script_path": data.get("script_path"), "script_type": data.get("script_type"), "initially_disabled": data.get("initially_disabled")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "SaveData": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "store_name": data.get("store_name"), "key": data.get("key")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "SelectInstances": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "selected_paths": data.get("selected_paths"), "selection_count": data.get("selection_count"), "errors_finding_paths": data.get("errors_finding_paths")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "SendChatMessage": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "message_sent": data.get("message_sent"), "channel_used": data.get("channel_used"), "speaker_used": data.get("speaker_used")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "set_instance_properties": # Corrected from ["SetInstanceProperties", "SetProperties"]
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "instance_path": data.get("instance_path"), "results": data.get("results")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "SetLightingProperty": # Corrected name
-                            output_content_dict = {"status": "success", "tool_message": data.get("message", f"Lighting property {data.get('property_name')} set."), "property_name": data.get("property_name"), "new_value_set": data.get("new_value_set")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": f"Lighting property {data.get('property_name')} set."})
-                        elif original_tool_name == "SetWorkspaceProperty":
-                            output_content_dict = {"status": "success", "tool_message": data.get("message", f"Workspace property {data.get('property_name')} set."), "property_name": data.get("property_name"), "new_value_set": data.get("new_value_set")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": f"Workspace property {data.get('property_name')} set."})
-                        elif original_tool_name == "TeleportPlayerToPlace":
-                            output_content_dict = {"status": "success", "tool_message": data.get("message", "Teleport initiated."), "players_teleported_paths": data.get("players_teleported_paths"), "place_id": data.get("place_id"), "job_id": data.get("job_id"), "teleport_data_sent": data.get("teleport_data_sent")}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message", "Teleport initiated.")})
-                        elif original_tool_name == "TweenProperties":
-                            output_content_dict = {"status": "success", "tool_message": data.get("message"), "instance_path": data.get("instance_path"), "duration": data.get("duration"), "easing_style_used": data.get("easing_style_used"), "easing_direction_used": data.get("easing_direction_used"), "properties_goal_summary": str(data.get("properties_goal"))}
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message")})
-                        elif original_tool_name == "RunCode":
-                            output_content_dict = {
-                                "status": "success",
-                                "tool_message": data.get("message", "Code executed.") + " The command has been processed and its output is included.",
-                                "explicit_completion_notice": "This RunCode command is now complete. Do not call it again unless the user makes a new request to run code.",
-                                "return_values": data.get("return_values"),
-                                "output": data.get("output")
-                            }
-                            ConsoleFormatter.print_tool_result({"status": "success", "tool_name": original_tool_name, "processed_message": data.get("message", "RunCode processed.")})
-                        else: # Default handler for tools that successfully return JSON but don't have specific parsing
-                            output_content_dict = {"status": "success", "data_from_tool": data}
-                            ConsoleFormatter.print_tool_result(output_content_dict)
-                    except json.JSONDecodeError as e:
-                        logger.error(f"Error parsing expected JSON for successful {original_tool_name} result: {e}. Content was: {inner_text}")
-                        output_content_dict = {"status": "error", "parsing_error_in_python": str(e), "raw_content": inner_text, "tool_message": "Tool returned success, but its JSON payload was malformed."}
-                        ConsoleFormatter.print_tool_error(output_content_dict)
 
             elif "error" in mcp_response: # Error from the MCP server itself (e.g. tool not found by MCP)
 
