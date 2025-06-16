@@ -296,6 +296,7 @@ async def main_loop():
 
         console.print("Type your commands for Roblox Studio, or 'exit' to quit.", style="dim")
 
+
     # genai.configure(api_key=GEMINI_API_KEY) # Old SDK
 
     # Initialize client and model resource name
@@ -345,6 +346,7 @@ async def main_loop():
         parser.add_argument("--test_command", type=str, help="Execute a single test command and exit.")
         parser.add_argument('--test_file', type=str, help='Path to a file containing a list of test commands, one per line.')
         args = parser.parse_args()
+
 
         if args.test_file:
             console.print(f"\n[bold yellow]>>> Test File Mode: '{args.test_file}' <<<[/bold yellow]")
