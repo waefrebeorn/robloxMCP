@@ -31,7 +31,9 @@ ECHO Agent Script: "%~dp0!AGENT_SCRIPT!"
 ECHO =====================================
 
 FOR /L %%I IN (1,1,%NUM_TEST_CMDS%) DO (
+
     SET "CURRENT_COMMAND=!TEST_CMD_%%I!"
+
 
     ECHO.
     ECHO Running test %%I of %NUM_TEST_CMDS%: "!CURRENT_COMMAND!"
