@@ -39,20 +39,23 @@ local function execute(args: Types.DeleteInstanceArgs) -- Type annotation added
         return resultData
     end)
 
+    local finalResult
     if success then
-		if type(resultOrError) == "string" then -- An error message string was returned
-            return ToolHelpers.FormatErrorResult(resultOrError)
-		elseif resultOrError == nil then
-			return ToolHelpers.FormatErrorResult("delete_instance returned nil unexpectedly.")
-		else -- A resultData table was returned
-			-- Check if the returned table is one of the "path_not_found" custom success payloads
-			-- or a genuine success payload. Both should be handled by FormatSuccessResult.
-            return ToolHelpers.FormatSuccessResult(resultOrError)
+		if type(resultOrError) == "string" then -- An error message string was returned from the pcall'd function
+            finalResult = ToolHelpers.FormatErrorResult(resultOrError)
+		elseif type(resultOrError) == "table" then -- A resultData table was returned from the pcall'd function
+			-- This handles both genuine success payloads and "path_not_found" custom payloads.
+            finalResult = ToolHelpers.FormatSuccessResult(resultOrError)
+		elseif resultOrError == nil then -- Should ideally not be reached if pcall'd function always returns a value
+			finalResult = ToolHelpers.FormatErrorResult("DeleteInstance: pcall succeeded but returned nil unexpectedly.")
+		else -- Catch any other unexpected types returned by the pcall'd function
+			finalResult = ToolHelpers.FormatErrorResult("DeleteInstance: Unexpected result type from pcall: " .. type(resultOrError))
         end
     else
 		-- pcall itself failed
-        return ToolHelpers.FormatErrorResult("Internal error in DeleteInstance: " .. tostring(resultOrError))
+        finalResult = ToolHelpers.FormatErrorResult("Internal error in DeleteInstance: " .. tostring(resultOrError))
     end
+    return finalResult
 end
 
 return execute
