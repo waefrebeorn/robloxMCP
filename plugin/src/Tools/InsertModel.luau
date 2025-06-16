@@ -151,12 +151,14 @@ end
 local function handleInsertModel(args: Types.InsertModelArgs)
     local success, resultOrError = pcall(function()
         if type(args.query) ~= "string" or string.len(args.query) == 0 then
+
             local err_msg = "InsertModel: 'query' argument (asset ID or search term) is missing, empty, or not a string."
             return err_msg
         end
         if args.parent_path and type(args.parent_path) ~= "string" then
             local err_msg = "InsertModel: 'parent_path', if provided, must be a string."
             return err_msg
+
         end
 
         return performInsert(args.query, args.parent_path) -- This returns (data, errorString) or (nil, errorString)
