@@ -1,9 +1,10 @@
 -- GetMouseHitCFrame.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types)
 local UserInputService = game:GetService("UserInputService")
 
-local function execute(args)
+local function execute(args: Types.GetMouseHitCFrameArgs)
     -- args.camera_path is optional
     local success, pcall_result = pcall(function()
         local cameraPath = args.camera_path

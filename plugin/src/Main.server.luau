@@ -117,13 +117,13 @@ local function connectWebSocket()
 
 		local decodedSuccess, body = pcall(HttpService.JSONDecode, HttpService, message)
 		if not decodedSuccess or not body or type(body) ~= "table" then
-			log("[MCP] Error: Failed to decode JSON message or invalid format: " .. (body or message))
+			print("[MCP] Error: Failed to decode JSON message or invalid format: " .. (body or message))
 			return
 		end
 
 		local id = body.id
 		if not id or type(id) ~= "string" then
-			log("[MCP] Error: Message ID is missing or not a string in body: ", body)
+			print("[MCP] Error: Message ID is missing or not a string in body: ", body)
 			return
 		end
 
@@ -271,11 +271,11 @@ local function connectWebSocket()
 					toolInputArgs = decodedJsonArgs
 				else
 					-- If JSON decoded to a non-table (e.g. just a string or number), wrap it if necessary or handle error
-					log("[MCP] Warning: arguments_json for " .. toolNameForExecution .. " decoded to a non-table type: " .. type(decodedJsonArgs) .. ". Using as is or wrapping might be needed.")
+					print("[MCP] Warning: arguments_json for " .. toolNameForExecution .. " decoded to a non-table type: " .. type(decodedJsonArgs) .. ". Using as is or wrapping might be needed.")
 					toolInputArgs = decodedJsonArgs -- Assuming tool can handle it or it's a simple value call
 				end
 			else
-				log("[MCP] Error: Failed to JSONDecode arguments_json for tool " .. toolNameForExecution .. ": " .. tostring(decodedJsonArgs)) -- decodedJsonArgs is error msg here
+				print("[MCP] Error: Failed to JSONDecode arguments_json for tool " .. toolNameForExecution .. ": " .. tostring(decodedJsonArgs)) -- decodedJsonArgs is error msg here
 				local errorResultTable = ToolHelpers.FormatErrorResult("ExecuteLuauByName: Failed to decode 'arguments_json': " .. tostring(decodedJsonArgs))
 				sendResponseOnce(errorResultTable, toolNameForExecution)
 				return
@@ -306,7 +306,7 @@ local function connectWebSocket()
 			end
 			log("[MCP] Task Type: InsertModel, mapped to Luau tool: " .. toolNameForExecution)
 		else
-			log("[MCP] Error: Unrecognized task structure in body.args: ", taskArgs)
+			print("[MCP] Error: Unrecognized task structure in body.args: ", taskArgs)
 			local errorResultTable = ToolHelpers.FormatErrorResult("Unrecognized task structure in body.args.")
 			sendResponseOnce(errorResultTable, "unknown_task")
 			return
@@ -347,12 +347,12 @@ local function connectWebSocket()
 			if type(result) == "table" and result.content then -- Assuming 'result' is the CallToolResult-like table
 				sendResponseOnce(result, originalToolNameToRespondWith)
 			else
-				log("[MCP] Error: Tool " .. toolNameForExecution .. " returned unexpected result format: " .. tostring(result))
+				print("[MCP] Error: Tool " .. toolNameForExecution .. " returned unexpected result format: " .. tostring(result))
 				local errorResultTable = ToolHelpers.FormatErrorResult("Tool " .. toolNameForExecution .. " returned an unexpected result format.")
 				sendResponseOnce(errorResultTable, originalToolNameToRespondWith)
 			end
 		else
-			log("[MCP] Error executing tool " .. toolNameForExecution .. ": " .. tostring(result))
+			print("[MCP] Error executing tool " .. toolNameForExecution .. ": " .. tostring(result))
 			local errorResultTable = ToolHelpers.FormatErrorResult("Internal error executing tool " .. toolNameForExecution .. ": " .. tostring(result))
 			sendResponseOnce(errorResultTable, originalToolNameToRespondWith)
 		end

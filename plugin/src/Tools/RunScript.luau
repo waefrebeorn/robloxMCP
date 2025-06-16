@@ -1,8 +1,9 @@
 -- RunScript.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types)
 
-local function execute(args)
+local function execute(args: Types.CreateScriptArgs)
     -- Arguments are expected directly on args table
     local success, pcall_result = pcall(function()
         local parentPath = args.parent_path

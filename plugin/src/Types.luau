@@ -18,38 +18,157 @@ export type WrappedToolResult = WrappedSuccessResult | WrappedErrorResult
 	Each tool should have its arguments defined here.
 ]]
 
--- For tools already inspected or simple ones
+export type AddDebrisItemArgs = { instance_path: string, lifetime: number? } -- Original Placeholder
+export type AddTagArgs = {
+	instance_path: string,
+	tag_name: string,
+}
+export type CallInstanceMethodArgs = { instance_path: string, method_name: string, arguments: {any}? } -- Original Placeholder
+
+export type ComputePathArgs = {
+	start_position: {x: number, y: number, z: number},
+	end_position: {x: number, y: number, z: number},
+	agent_parameters: {
+		AgentRadius: number?,
+		AgentHeight: number?,
+		AgentCanJump: boolean?,
+		WaypointSpacing: number?,
+		Costs: {[string]: number}? -- e.g., {Water = 10, Grass = 1}
+	}?
+}
+
 export type CreateInstanceArgs = {
 	class_name: string,
 	properties: { [string]: any }?, -- JSON representation of properties
 	parent_path: string?, -- Optional path for the parent
 }
-export type AddTagArgs = {
+export type DeleteInstanceArgs = { -- Original definition
 	instance_path: string,
-	tag_name: string,
 }
+
+export type FilterTextForPlayerArgs = {
+	text_to_filter: string,
+	player_path: string
+}
+
+export type GetInstancePropertiesArgs = { -- Original definition
+	instance_path: string,
+	property_names: {string} | string, -- Can be an array of names or a single name
+}
+
+export type GetMouseHitCFrameArgs = {
+	camera_path: string?
+}
+
+export type GetMousePositionArgs = {
+	-- No arguments currently defined, but type is added for consistency
+}
+
+export type GetPlayersInTeamArgs = {
+	team_path_or_name: string
+}
+
+export type GetProductInfoArgs = {
+	asset_id: number,
+	info_type: string -- expecting "Asset" or "Product"
+}
+
+export type GetTeamsArgs = {
+	-- No arguments currently defined
+}
+
+export type GetTeleportDataArgs = {
+	-- No arguments currently defined
+}
+
+export type IncrementDataArgs = {
+	store_name: string,
+	key: string,
+	increment_by: number? -- Optional, tool defaults to 1
+}
+
 export type InsertModelArgs = {
 	query: string, -- Asset ID or search query
 	parent_path: string?,
 }
+
+export type IsKeyDownArgs = {
+	key_code_string: string
+}
+
+export type IsMouseButtonDownArgs = {
+	mouse_button_string: string
+}
+
+export type KickPlayerArgs = {
+	player_path_or_name: string,
+	kick_message: string?
+}
+
+export type LoadAssetByIdArgs = {
+	asset_id: number,
+	parent_path: string?,
+	desired_name: string?
+}
+
+export type LoadDataArgs = {
+	store_name: string,
+	key: string
+}
+
+export type PlaySoundIdArgs = {
+	sound_id: string, -- e.g., "rbxassetid://123"
+	parent_path: string?,
+	properties: {[string]: any}? -- For Sound instance properties like Volume, Looped, etc.
+}
+
+export type PromptPurchaseArgs = {
+	player_path: string,
+	asset_id: number
+}
+
+-- Renaming RunScriptArgs to CreateScriptArgs for clarity
+export type CreateScriptArgs = {
+	parent_path: string,
+	script_source: string,
+	script_name: string,
+	script_type: string, -- Expecting "Script", "LocalScript", or "ModuleScript"
+	initially_disabled: boolean?
+}
+
 export type RunCodeArgs = {
 	command: string, -- Luau code to execute
 }
-export type DeleteInstanceArgs = {
-	instance_path: string,
+
+export type SaveDataArgs = {
+	store_name: string,
+	key: string,
+	data: any -- Data to save, should be any DataStore-compatible Lua type
 }
-export type GetInstancePropertiesArgs = {
-	instance_path: string,
-	property_names: {string} | string, -- Can be an array of names or a single name
+
+export type SendChatMessageArgs = {
+	message_text: string,
+	channel_name: string?,
+	speaker_path: string?
 }
-export type SetInstancePropertiesArgs = {
+
+export type SetInstancePropertiesArgs = { -- Original definition
 	instance_path: string,
 	properties: { [string]: any }, -- JSON representation of properties to set
 }
 
--- Placeholder for other tools - to be defined
-export type AddDebrisItemArgs = { instance_path: string, lifetime: number? }
-export type CallInstanceMethodArgs = { instance_path: string, method_name: string, arguments: {any}? }
+export type TweenPropertiesArgs = {
+	instance_path: string,
+	duration: number,
+	easing_style: string, -- Name of Enum.EasingStyle (e.g., "Linear", "Quad")
+	easing_direction: string, -- Name of Enum.EasingDirection (e.g., "In", "Out", "InOut")
+	properties_to_tween: {[string]: any}, -- Table of properties to their goal values
+	repeat_count: number?,
+	reverses: boolean?,
+	delay_time: number?
+}
+
+
 -- ... (many more Arg types to be defined based on each tool's needs)
 
 
@@ -94,8 +213,157 @@ export type SetInstancePropertiesResultData = {
 }
 
 -- Placeholder for other tools
-export type AddDebrisItemResultData = { message: string, instance_path: string }
-export type CallInstanceMethodResultData = { message: string, return_values: {any}? }
+export type AddDebrisItemResultData = { message: string, instance_path: string } -- Existing placeholder
+export type CallInstanceMethodResultData = { message: string, return_values: {any}? } -- Existing placeholder
+
+export type ComputePathResultData = {
+	message: string,
+	status: string, -- Enum.PathStatus as string
+	start_position_used: {x: number, y: number, z: number}, -- Serialized Vector3
+	end_position_used: {x: number, y: number, z: number},   -- Serialized Vector3
+	waypoints: {{x: number, y: number, z: number}}? -- Array of serialized Vector3
+}
+
+export type CreateScriptResultData = { -- For RunScript.luau
+	message: string,
+	script_path: string,
+	script_type: string,
+	initially_disabled: boolean
+}
+
+export type FilterTextForPlayerResultData = {
+	message: string,
+	original_text: string,
+	filtered_text: string,
+	player_context_path: string,
+	player_user_id_used: number
+}
+
+export type GetMouseHitCFrameResultData = {
+	message: string,
+	instance_hit_path: string?,
+	position: {x: number, y: number, z: number}?, -- Serialized Vector3
+	cframe_components: { position: {x:number,y:number,z:number}, orientation: {x:number,y:number,z:number} }? -- Serialized CFrame
+}
+
+export type GetMousePositionResultData = {
+	message: string,
+	x: number,
+	y: number,
+	viewport_size: {x: number, y: number}
+}
+
+export type GetPlayersInTeamResultData = {
+	message: string,
+	team_name: string,
+	team_path: string,
+	players: {{name: string, path: string, user_id: number}}
+}
+
+export type GetProductInfoResultData = {
+	message: string,
+	asset_id: number,
+	info_type_used: string,
+	product_info: {[string]: any} -- Raw table from MarketplaceService
+}
+
+export type GetTeamsResultData = {
+	message: string,
+	team_count: number,
+	teams: {{
+		name: string,
+		path: string,
+		team_color_brickcolor_string: string,
+		team_color_rgb: {R:number, G:number, B:number},
+		auto_assignable: boolean,
+		player_count: number
+	}}
+}
+
+export type GetTeleportDataResultData = {
+	message: string,
+	teleport_data: any?, -- Can be any Lua type, or nil
+	source_place_id: number?
+}
+
+export type IncrementDataResultData = {
+	message: string,
+	store_name: string,
+	key: string,
+	new_value: any, -- Can be number or other data store type
+	incremented_by: number
+}
+
+export type IsKeyDownResultData = {
+	message: string,
+	key_code_used: string, -- Enum.KeyCode as string
+	is_down: boolean
+}
+
+export type IsMouseButtonDownResultData = {
+	message: string,
+	mouse_button_checked: string, -- Enum.UserInputType as string
+	is_down: boolean
+}
+
+export type KickPlayerResultData = {
+	message: string,
+	kicked_player_name: string,
+	kick_message_used: string
+}
+
+export type LoadAssetByIdResultData = {
+	message: string,
+	asset_path: string,
+	asset_id: number,
+	asset_class_name: string
+}
+
+export type LoadDataResultData = {
+	message: string,
+	store_name: string,
+	key: string,
+	data: any? -- Can be any DataStore-compatible type, or nil
+}
+
+export type PlaySoundIdResultData = {
+	message: string,
+	sound_path: string,
+	sound_id: string,
+	is_playing: boolean,
+	duration: number?, -- Duration might not be available if sound didn't load
+	details: string? -- Optional field for extra info like loading failure
+}
+
+export type PromptPurchaseResultData = {
+	message: string,
+	player_name: string,
+	asset_id: number,
+	purchase_type_prompted: string
+}
+
+export type SaveDataResultData = {
+	message: string,
+	store_name: string,
+	key: string
+}
+
+export type SendChatMessageResultData = {
+	message: string,
+	message_sent: string,
+	channel_used: string,
+	speaker_used: string
+}
+
+export type TweenPropertiesResultData = {
+	message: string,
+	instance_path: string,
+	duration: number,
+	easing_style_used: string, -- Name of Enum.EasingStyle
+	easing_direction_used: string, -- Name of Enum.EasingDirection
+	properties_goal: {[string]: any} -- The goal table after JsonToRobloxValue, then back to JSON via RobloxValueToJson
+}
+
 -- ... (many more ResultData types to be defined)
 
 
