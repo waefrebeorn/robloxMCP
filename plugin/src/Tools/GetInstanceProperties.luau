@@ -101,21 +101,19 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 
 		else -- Specific property names were provided
 			for _, propNameString in ipairs(propertyNamesInput) do
-				if type(propNameString) ~= "string" then
-					accessErrors[tostring(#accessErrors + 1)] = ("All 'property_names' must be strings. Found entry with type: %s"):format(type(propNameString))
-					goto continueLoop -- Skips to next iteration using goto
-				end
+				if type(propNameString) == "string" then
+					local getSuccess, propValue = pcall(function()
+						return instance[propNameString]
+					end)
 
-				local getSuccess, propValue = pcall(function()
-					return instance[propNameString]
-				end)
-
-				if getSuccess then
-					retrievedProperties[propNameString] = ToolHelpers.SerializeValue(propValue)
+					if getSuccess then
+						retrievedProperties[propNameString] = ToolHelpers.SerializeValue(propValue)
+					else
+						accessErrors[propNameString] = "Error getting property: " .. tostring(propValue)
+					end
 				else
-					accessErrors[propNameString] = "Error getting property: " .. tostring(propValue)
+					accessErrors[tostring(#accessErrors + 1)] = ("All 'property_names' must be strings. Found entry with type: %s"):format(type(propNameString))
 				end
-				::continueLoop::
 			end
 			if #accessErrors == 0 then -- Check if accessErrors is empty using #
 				accessErrors = nil -- Set to nil if no errors

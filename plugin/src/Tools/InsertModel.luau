@@ -33,7 +33,7 @@ local function toTitleCase(str: string): string
 	local function titleCase(first: string, rest: string)
 		return first:upper() .. rest:lower()
 	end
-	local intermediate = string.gsub(str, "(%a)([%w_']*)", titleCase :: (string) -> string)
+	local intermediate = string.gsub(str, "(%a)([%w_']*)", titleCase)
 	return intermediate:gsub("%s+", "")
 end
 
