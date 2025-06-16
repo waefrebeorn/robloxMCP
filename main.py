@@ -2,6 +2,7 @@ import asyncio
 import os
 import logging
 import sys
+import argparse # Added for command-line arguments
 from pathlib import Path
 # Remove List typing if no longer needed for ToolOutput specifically
 # from typing import List # For ToolOutput typing
@@ -131,161 +132,161 @@ async def main_loop():
 
         console.print("Type your commands for Roblox Studio, or 'exit' to quit.", style="dim")
 
-        # --- Test Commands Injection ---
-        test_commands = [
-            "create a part named TestPart",
-            "run code print('Hello from RunCode test')"
-        ]
-        for test_command_idx, user_input_str in enumerate(test_commands):
-            console.print(f"\n[bold cyan]>>> Running Test Command {test_command_idx + 1}:[/bold cyan] {user_input_str}")
-            if not user_input_str.strip():
-                continue
+        # --- Command-line Argument Handling ---
+        parser = argparse.ArgumentParser(description="Roblox Studio Gemini Broker")
+        parser.add_argument("--test_command", type=str, help="Execute a single test command and exit.")
+        args = parser.parse_args()
 
-            try:
-                current_retry_attempt = 0
-                current_delay = INITIAL_RETRY_DELAY_SECONDS
-                response = None
-                while current_retry_attempt < MAX_API_RETRIES:
-                    try:
-                        if current_retry_attempt > 0:
-                            with console.status(f"[bold yellow]Gemini API error. Retrying in {current_delay:.1f}s (Attempt {current_retry_attempt + 1}/{MAX_API_RETRIES})...[/bold yellow]", spinner="dots") as status_spinner_gemini_retry:
-                                await asyncio.sleep(current_delay)
-                        with console.status(f"[bold green]Gemini is thinking... (Attempt {current_retry_attempt + 1})[/bold green]", spinner="dots") as status_spinner_gemini:
-                            response = await chat_session.send_message(
-                                message=user_input_str,
-                                config=types.GenerateContentConfig(tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE])
+        if args.test_command:
+            user_input_str = args.test_command
+            console.print(f"\n[bold cyan]>>> Running Test Command:[/bold cyan] {user_input_str}")
+            if user_input_str.strip():
+                try:
+                    current_retry_attempt = 0
+                    current_delay = INITIAL_RETRY_DELAY_SECONDS
+                    response = None
+                    while current_retry_attempt < MAX_API_RETRIES:
+                        try:
+                            if current_retry_attempt > 0:
+                                with console.status(f"[bold yellow]Gemini API error. Retrying in {current_delay:.1f}s (Attempt {current_retry_attempt + 1}/{MAX_API_RETRIES})...[/bold yellow]", spinner="dots") as status_spinner_gemini_retry:
+                                    await asyncio.sleep(current_delay)
+                            with console.status(f"[bold green]Gemini is thinking... (Attempt {current_retry_attempt + 1})[/bold green]", spinner="dots") as status_spinner_gemini:
+                                response = await chat_session.send_message(
+                                    message=user_input_str,
+                                    config=types.GenerateContentConfig(tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE])
+                                )
+                            break
+                        except ServerError as e:
+                            logger.warning(f"Gemini API ServerError (Attempt {current_retry_attempt + 1}/{MAX_API_RETRIES}): {e}")
+                            current_retry_attempt += 1
+                            if current_retry_attempt >= MAX_API_RETRIES:
+                                logger.error(f"Max retries reached for Gemini API call. Last error: {e}")
+                                ConsoleFormatter.print_gemini(f"I encountered a persistent server error after {MAX_API_RETRIES} attempts: {e.message or str(e)}")
+                                break
+                            current_delay *= RETRY_BACKOFF_FACTOR
+                        except asyncio.TimeoutError as e:
+                            logger.warning(f"Gemini API TimeoutError (Attempt {current_retry_attempt + 1}/{MAX_API_RETRIES}): {e}")
+                            current_retry_attempt += 1
+                            if current_retry_attempt >= MAX_API_RETRIES:
+                                logger.error(f"Max retries reached for Gemini API call due to timeout. Last error: {e}")
+                                ConsoleFormatter.print_gemini(f"The request to Gemini timed out after {MAX_API_RETRIES} attempts.")
+                                break
+                            current_delay *= RETRY_BACKOFF_FACTOR
+                        except Exception as e:
+                            logger.error(f"Unexpected error during Gemini API call (Attempt {current_retry_attempt + 1}): {e}", exc_info=True)
+                            ConsoleFormatter.print_gemini(f"I encountered an unexpected error while trying to reach Gemini: {str(e)}")
+                            break
+
+                    if response is None:
+                        console.print(f"[bold red]Skipping processing for command '{user_input_str}' due to API failure.[/bold red]")
+                        return # Exit after test command failure
+
+                    while True:
+                        pending_function_calls = []
+                        if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+                            for part in response.candidates[0].content.parts:
+                                if hasattr(part, 'function_call') and part.function_call and part.function_call.name:
+                                    pending_function_calls.append(part.function_call)
+
+                        if not pending_function_calls:
+                            break
+
+                        tool_tasks = []
+                        for fc_to_execute in pending_function_calls:
+                            tool_tasks.append(tool_dispatcher.execute_tool_call(fc_to_execute))
+
+                        tool_call_results = await asyncio.gather(*tool_tasks)
+
+                        tool_response_parts = []
+                        for result_dict in tool_call_results:
+                            tool_response_parts.append(
+                                types.Part(function_response=types.FunctionResponse(
+                                    name=result_dict['name'],
+                                    response=result_dict['response']
+                                ))
                             )
-                        break
-                    except ServerError as e:
-                        logger.warning(f"Gemini API ServerError (Attempt {current_retry_attempt + 1}/{MAX_API_RETRIES}): {e}")
-                        current_retry_attempt += 1
-                        if current_retry_attempt >= MAX_API_RETRIES:
-                            logger.error(f"Max retries reached for Gemini API call. Last error: {e}")
-                            ConsoleFormatter.print_gemini(f"I encountered a persistent server error after {MAX_API_RETRIES} attempts: {e.message or str(e)}")
-                            break
-                        current_delay *= RETRY_BACKOFF_FACTOR
-                    except asyncio.TimeoutError as e:
-                        logger.warning(f"Gemini API TimeoutError (Attempt {current_retry_attempt + 1}/{MAX_API_RETRIES}): {e}")
-                        current_retry_attempt += 1
-                        if current_retry_attempt >= MAX_API_RETRIES:
-                            logger.error(f"Max retries reached for Gemini API call due to timeout. Last error: {e}")
-                            ConsoleFormatter.print_gemini(f"The request to Gemini timed out after {MAX_API_RETRIES} attempts.")
-                            break
-                        current_delay *= RETRY_BACKOFF_FACTOR
-                    except Exception as e:
-                        logger.error(f"Unexpected error during Gemini API call (Attempt {current_retry_attempt + 1}): {e}", exc_info=True)
-                        ConsoleFormatter.print_gemini(f"I encountered an unexpected error while trying to reach Gemini: {str(e)}")
-                        break
 
-                if response is None:
-                    console.print(f"[bold red]Skipping processing for command '{user_input_str}' due to API failure.[/bold red]")
-                    continue
+                        if tool_response_parts:
+                            current_retry_attempt_tool = 0
+                            current_delay_tool = INITIAL_RETRY_DELAY_SECONDS
+                            response_tool_call = None
 
-                while True:
-                    pending_function_calls = []
-                    if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
-                        for part in response.candidates[0].content.parts:
-                            if hasattr(part, 'function_call') and part.function_call and part.function_call.name:
-                                pending_function_calls.append(part.function_call)
-
-                    if not pending_function_calls:
-                        break
-
-                    tool_tasks = []
-                    for fc_to_execute in pending_function_calls:
-                        tool_tasks.append(tool_dispatcher.execute_tool_call(fc_to_execute))
-
-                    tool_call_results = await asyncio.gather(*tool_tasks)
-
-                    tool_response_parts = []
-                    for result_dict in tool_call_results:
-                        tool_response_parts.append(
-                            types.Part(function_response=types.FunctionResponse(
-                                name=result_dict['name'],
-                                response=result_dict['response']
-                            ))
-                        )
-
-                    if tool_response_parts:
-                        current_retry_attempt_tool = 0
-                        current_delay_tool = INITIAL_RETRY_DELAY_SECONDS
-                        response_tool_call = None
-
-                        while current_retry_attempt_tool < MAX_API_RETRIES:
-                            try:
-                                if current_retry_attempt_tool > 0:
-                                    with console.status(f"[bold yellow]Gemini API error (tool response). Retrying in {current_delay_tool:.1f}s (Attempt {current_retry_attempt_tool + 1}/{MAX_API_RETRIES})...[/bold yellow]", spinner="dots") as status_spinner_gemini_retry_tool:
-                                        await asyncio.sleep(current_delay_tool)
-                                with console.status(f"[bold green]Gemini is processing tool results... (Attempt {current_retry_attempt_tool + 1})[/bold green]", spinner="dots") as status_spinner_gemini_processing:
-                                    response_tool_call = await chat_session.send_message(
-                                        message=tool_response_parts,
-                                        config=types.GenerateContentConfig(tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE])
-                                    )
-                                break
-                            except ServerError as e:
-                                logger.warning(f"Gemini API ServerError (tool response) (Attempt {current_retry_attempt_tool + 1}/{MAX_API_RETRIES}): {e}")
-                                current_retry_attempt_tool += 1
-                                if current_retry_attempt_tool >= MAX_API_RETRIES:
-                                    logger.error(f"Max retries reached for Gemini API call (tool response). Last error: {e}")
-                                    ConsoleFormatter.print_gemini(f"I encountered a persistent server error sending tool results after {MAX_API_RETRIES} attempts: {e.message or str(e)}")
+                            while current_retry_attempt_tool < MAX_API_RETRIES:
+                                try:
+                                    if current_retry_attempt_tool > 0:
+                                        with console.status(f"[bold yellow]Gemini API error (tool response). Retrying in {current_delay_tool:.1f}s (Attempt {current_retry_attempt_tool + 1}/{MAX_API_RETRIES})...[/bold yellow]", spinner="dots") as status_spinner_gemini_retry_tool:
+                                            await asyncio.sleep(current_delay_tool)
+                                    with console.status(f"[bold green]Gemini is processing tool results... (Attempt {current_retry_attempt_tool + 1})[/bold green]", spinner="dots") as status_spinner_gemini_processing:
+                                        response_tool_call = await chat_session.send_message(
+                                            message=tool_response_parts,
+                                            config=types.GenerateContentConfig(tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE])
+                                        )
                                     break
-                                current_delay_tool *= RETRY_BACKOFF_FACTOR
-                            except asyncio.TimeoutError as e:
-                                logger.warning(f"Gemini API TimeoutError (tool response) (Attempt {current_retry_attempt_tool + 1}/{MAX_API_RETRIES}): {e}")
-                                current_retry_attempt_tool += 1
-                                if current_retry_attempt_tool >= MAX_API_RETRIES:
-                                    logger.error(f"Max retries reached for Gemini API call (tool response) due to timeout. Last error: {e}")
-                                    ConsoleFormatter.print_gemini(f"The request to Gemini for tool results timed out after {MAX_API_RETRIES} attempts.")
+                                except ServerError as e:
+                                    logger.warning(f"Gemini API ServerError (tool response) (Attempt {current_retry_attempt_tool + 1}/{MAX_API_RETRIES}): {e}")
+                                    current_retry_attempt_tool += 1
+                                    if current_retry_attempt_tool >= MAX_API_RETRIES:
+                                        logger.error(f"Max retries reached for Gemini API call (tool response). Last error: {e}")
+                                        ConsoleFormatter.print_gemini(f"I encountered a persistent server error sending tool results after {MAX_API_RETRIES} attempts: {e.message or str(e)}")
+                                        break
+                                    current_delay_tool *= RETRY_BACKOFF_FACTOR
+                                except asyncio.TimeoutError as e:
+                                    logger.warning(f"Gemini API TimeoutError (tool response) (Attempt {current_retry_attempt_tool + 1}/{MAX_API_RETRIES}): {e}")
+                                    current_retry_attempt_tool += 1
+                                    if current_retry_attempt_tool >= MAX_API_RETRIES:
+                                        logger.error(f"Max retries reached for Gemini API call (tool response) due to timeout. Last error: {e}")
+                                        ConsoleFormatter.print_gemini(f"The request to Gemini for tool results timed out after {MAX_API_RETRIES} attempts.")
+                                        break
+                                    current_delay_tool *= RETRY_BACKOFF_FACTOR
+                                except Exception as e:
+                                    logger.error(f"Unexpected error during Gemini API call (tool response) (Attempt {current_retry_attempt_tool + 1}): {e}", exc_info=True)
+                                    ConsoleFormatter.print_gemini(f"I encountered an unexpected error sending tool results to Gemini: {str(e)}")
                                     break
-                                current_delay_tool *= RETRY_BACKOFF_FACTOR
-                            except Exception as e:
-                                logger.error(f"Unexpected error during Gemini API call (tool response) (Attempt {current_retry_attempt_tool + 1}): {e}", exc_info=True)
-                                ConsoleFormatter.print_gemini(f"I encountered an unexpected error sending tool results to Gemini: {str(e)}")
+
+                            response = response_tool_call
+                            if response is None:
+                                logger.warning("Failed to send tool responses to Gemini after multiple retries. Breaking from tool processing loop.")
                                 break
-
-                        response = response_tool_call
-                        if response is None:
-                            logger.warning("Failed to send tool responses to Gemini after multiple retries. Breaking from tool processing loop.")
+                        else:
+                            logger.warning("No tool response parts to send, though function calls were expected.")
                             break
-                    else:
-                        logger.warning("No tool response parts to send, though function calls were expected.")
-                        break
 
-                if response and response.text:
-                    ConsoleFormatter.print_gemini_header()
-                    for char_chunk in response.text:
-                         ConsoleFormatter.print_gemini_chunk(char_chunk)
-                    console.print()
-                elif response and response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
-                    text_content = "".join(part.text for part in response.candidates[0].content.parts if hasattr(part, 'text') and part.text)
-                    if text_content:
+                    if response and response.text:
                         ConsoleFormatter.print_gemini_header()
-                        for char_chunk in text_content:
-                            ConsoleFormatter.print_gemini_chunk(char_chunk)
+                        for char_chunk in response.text:
+                             ConsoleFormatter.print_gemini_chunk(char_chunk)
                         console.print()
+                    elif response and response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+                        text_content = "".join(part.text for part in response.candidates[0].content.parts if hasattr(part, 'text') and part.text)
+                        if text_content:
+                            ConsoleFormatter.print_gemini_header()
+                            for char_chunk in text_content:
+                                ConsoleFormatter.print_gemini_chunk(char_chunk)
+                            console.print()
+                        else:
+                            ConsoleFormatter.print_gemini("(No text content found in final response parts after test command)")
                     else:
-                        ConsoleFormatter.print_gemini("(No text content found in final response parts after test command)")
-                else:
-                    ConsoleFormatter.print_gemini("(No text response or recognizable content after test command)")
+                        ConsoleFormatter.print_gemini("(No text response or recognizable content after test command)")
 
-            except MCPConnectionError as e:
-                logger.warning(f"MCP Connection Error in main loop: {e}")
-                console.print(Panel(f"[yellow]Connection issue: {e}. Will attempt to reconnect.[/yellow]", title="[yellow]MCP Warning[/yellow]"))
-                await asyncio.sleep(1)
-            except asyncio.TimeoutError:
-                logger.error("A request to Gemini or a tool timed out.")
-                console.print(Panel("[bold red]A request timed out. Please try again.[/bold red]", title="[red]Timeout Error[/red]"))
-            except Exception as e:
-                logger.error(f"An error occurred during the chat loop: {e}", exc_info=True)
-                if hasattr(e, 'message') and isinstance(e.message, str):
-                    ConsoleFormatter.print_gemini(f"I encountered an internal error: {e.message}")
-                else:
-                    ConsoleFormatter.print_gemini(f"I encountered an internal error: {str(e)}")
+                except MCPConnectionError as e:
+                    logger.warning(f"MCP Connection Error in main loop: {e}")
+                    console.print(Panel(f"[yellow]Connection issue: {e}. Will attempt to reconnect.[/yellow]", title="[yellow]MCP Warning[/yellow]"))
+                    # Do not sleep or attempt reconnect in test command mode, just exit.
+                except asyncio.TimeoutError:
+                    logger.error("A request to Gemini or a tool timed out.")
+                    console.print(Panel("[bold red]A request timed out. Please try again.[/bold red]", title="[red]Timeout Error[/red]"))
+                except Exception as e:
+                    logger.error(f"An error occurred during the chat loop: {e}", exc_info=True)
+                    if hasattr(e, 'message') and isinstance(e.message, str):
+                        ConsoleFormatter.print_gemini(f"I encountered an internal error: {e.message}")
+                    else:
+                        ConsoleFormatter.print_gemini(f"I encountered an internal error: {str(e)}")
+                finally:
+                    console.print("\n[bold cyan]>>> Test command finished. Exiting. <<<[/bold cyan]")
+                    return # Exit after test command
 
-        console.print("\n[bold cyan]>>> Test commands finished. Exiting. <<<[/bold cyan]")
-        return # Exit after test commands
-
-        while True: # Original loop, will be skipped due to the return above
+        # --- Interactive Mode ---
+        while True:
             if not mcp_client.is_alive():
                 console.print(Panel("[bold yellow]Connection to Roblox Studio lost. Attempting to reconnect...[/bold yellow]", title="[yellow]Connection Issue[/yellow]"))
                 with console.status("[bold yellow]Reconnecting to MCP server...", spinner="dots") as status_spinner:
