@@ -4,6 +4,11 @@ local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types)
 
 local function execute(args: Types.GetInstancePropertiesArgs)
+    print(("[GetInstanceProperties] Executing. Path: %s, PropertyNames: %s, FetchAll: %s"):format(
+        tostring(args.path),
+        args.property_names and table.concat(args.property_names, ", ") or "nil (fetch all)",
+        tostring(args.property_names == nil or (type(args.property_names) == "table" and #args.property_names == 0))
+    ))
 	local success, resultOrError = pcall(function()
 		local path = args.path
 		local propertyNamesInput = args.property_names -- Renamed to avoid conflict with loop variable
@@ -65,15 +70,19 @@ local function execute(args: Types.GetInstancePropertiesArgs)
             -- The previous attempt to use GetProperties has been removed.
             -- We will now directly use the commonProps list, which includes class-specific additions.
             local allPropertiesToTry = commonProps
+            print("[GetInstanceProperties] Fetching all common properties. List: ", table.concat(allPropertiesToTry, ", "))
 
 			for _, propNameString in ipairs(allPropertiesToTry) do
+                print("[GetInstanceProperties] Attempting to get property: " .. propNameString)
 				local getSuccess, propValue = pcall(function()
 					return instance[propNameString]
 				end)
 
 				if getSuccess then
+                    print("[GetInstanceProperties] Successfully got property: " .. propNameString .. " Type: " .. typeof(propValue))
 					retrievedProperties[propNameString] = propValue
 				else
+                    print("[GetInstanceProperties] Failed to get property: " .. propNameString .. " Error: " .. tostring(propValue))
 					-- Silently ignore errors when fetching all, or add to errors if desired
 					accessErrors[propNameString] = "Error fetching property: " .. tostring(propValue)
 				end
@@ -83,18 +92,23 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 			end
 
 		else -- Specific property names were provided
+            print("[GetInstanceProperties] Fetching specific properties: ", propertyNamesInput and table.concat(propertyNamesInput, ", ") or "nil")
 			for _, propNameString in ipairs(propertyNamesInput) do
 				if type(propNameString) == "string" then
+                    print("[GetInstanceProperties] Attempting to get property: " .. propNameString)
 					local getSuccess, propValue = pcall(function()
 						return instance[propNameString]
 					end)
 
 					if getSuccess then
+                        print("[GetInstanceProperties] Successfully got property: " .. propNameString .. " Type: " .. typeof(propValue))
 						retrievedProperties[propNameString] = propValue
 					else
+                        print("[GetInstanceProperties] Failed to get property: " .. propNameString .. " Error: " .. tostring(propValue))
 						accessErrors[propNameString] = "Error getting property: " .. tostring(propValue)
 					end
 				else
+                    print("[GetInstanceProperties] Invalid property name type in list: " .. type(propNameString) .. " Value: " .. tostring(propNameString))
 					accessErrors[tostring(#accessErrors + 1)] = ("All 'property_names' must be strings. Found entry with type: %s"):format(type(propNameString))
 				end
 			end
@@ -109,6 +123,10 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 			messageText = messageText .. (" Encountered %d errors retrieving some requested properties."):format(ToolHelpers.TableLength(accessErrors))
 		end
 
+        print(("[GetInstanceProperties] Preparing to return data. Properties count: %d, Errors count: %d"):format(
+            ToolHelpers.TableLength(retrievedProperties),
+            accessErrors and ToolHelpers.TableLength(accessErrors) or 0
+        ))
 		local dataToReturn = {
 			message = messageText,
 			instance_path = path,

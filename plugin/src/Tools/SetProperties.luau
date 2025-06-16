@@ -2,6 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types) -- Added
+local HttpService = game:GetService("HttpService") -- Added
 
 -- This tool will now be a direct alias or very similar to SetInstanceProperties
 local function execute(args: Types.SetPropertiesArgs) -- Type annotation added
@@ -24,33 +25,56 @@ local function execute(args: Types.SetPropertiesArgs) -- Type annotation added
             return ("Failed to find instance at path: %s. %s"):format(path, err or "Unknown error")
         end
 
-        local propertyResults: {Types.PropertyWriteResult} = {}
+        local propertyResults: {Types.PropertyWriteResult} = {} -- Ensure Types.PropertyWriteResult can hold new fields
         local overallSuccess = true
         local setPropsCount = 0
         local failedPropsCount = 0
 
         for propName, propValueInput in pairs(propertiesToSet) do
-            -- No conversion needed, propValueInput is expected to be the correct Luau type.
-            -- ToolHelpers.JsonToRobloxValue call removed.
-            local setSuccess, setError = pcall(function()
-                instance[propName] = propValueInput -- Use propValueInput directly
-            end)
+            local finalValueToSet = propValueInput
+            local conversionErrorMsg = nil
 
-            if setSuccess then
+            if type(propValueInput) == "table" then
+                local converted_value, err_msg = ToolHelpers.ConvertTableToRobloxType(propValueInput, propName, instance)
+                if err_msg then
+                    conversionErrorMsg = err_msg
+                else
+                    finalValueToSet = converted_value
+                end
+            end
+
+            if conversionErrorMsg then
                 table.insert(propertyResults, {
                     name = propName,
-                    status = "success"
-                })
-                setPropsCount += 1
-            else
-                table.insert(propertyResults, {
-                    name = propName,
-                    status = "set_error", -- Error directly from attempting to set the property
-                    error_message = tostring(setError),
-                    original_value = propValueInput -- Value that was attempted
+                    status = "conversion_error",
+                    error_message = conversionErrorMsg,
+                    original_value = HttpService:JSONEncode(propValueInput)
                 })
                 failedPropsCount += 1
                 overallSuccess = false
+            else
+                local setSuccess, setError = pcall(function()
+                    instance[propName] = finalValueToSet
+                end)
+
+                if setSuccess then
+                    table.insert(propertyResults, {
+                        name = propName,
+                        status = "success"
+                        -- Consider adding value_set = finalValueToSet if not too verbose or problematic for SimpleTableToString
+                    })
+                    setPropsCount += 1
+                else
+                    table.insert(propertyResults, {
+                        name = propName,
+                        status = "set_error",
+                        error_message = tostring(setError),
+                        original_value = HttpService:JSONEncode(propValueInput),
+                        attempted_value = HttpService:JSONEncode(finalValueToSet)
+                    })
+                    failedPropsCount += 1
+                    overallSuccess = false
+                end
             end
         end
 
