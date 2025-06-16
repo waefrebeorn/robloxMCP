@@ -1,9 +1,10 @@
 -- IsMouseButtonDown.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types)
 local UserInputService = game:GetService("UserInputService")
 
-local function execute(args)
+local function execute(args: Types.IsMouseButtonDownArgs)
     -- Arguments are expected directly on args table
     local success, pcall_result = pcall(function()
         local mouseButtonString = args.mouse_button_string -- e.g., "MouseButton1", "MouseButton2"
