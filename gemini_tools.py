@@ -984,13 +984,17 @@ class ToolDispatcher:
             mcp_tool_name = "execute_discovered_luau_tool"
             # Serialize original_tool_args into a JSON string
             tool_arguments_json_str = json.dumps(original_tool_args)
+            luau_tool_name_to_execute = original_tool_name
+            if original_tool_name == "set_instance_properties":
+                luau_tool_name_to_execute = "SetInstanceProperties"
+            # Add other mappings here if needed in the future
             mcp_tool_args = {
-                "tool_name": original_tool_name,
-                "tool_arguments_str": tool_arguments_json_str # Correct field name and value type
+                "tool_name": luau_tool_name_to_execute, # Use the potentially corrected name
+                "tool_arguments_str": tool_arguments_json_str
             }
             # Update logger message to reflect the change if desired, or keep as is if original_tool_args is fine for logging.
             # For clarity in logs, let's log what's actually being prepared for MCP:
-            logger.info(f"Dispatching ToolCall: '{original_tool_name}' via MCP tool '{mcp_tool_name}' for Luau script '{original_tool_name}'. Luau script args (as JSON string): {tool_arguments_json_str}")
+            logger.info(f"Dispatching ToolCall: '{original_tool_name}' via MCP tool '{mcp_tool_name}' for Luau script '{luau_tool_name_to_execute}'. Luau script args (as JSON string): {tool_arguments_json_str}")
 
         output_content_dict = {}
         try:
