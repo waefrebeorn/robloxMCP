@@ -60,26 +60,57 @@ local function execute(args: Types.TweenPropertiesArgs)
             delayTime or 0    -- Default to 0 if nil
         )
 
+        local HttpService = game:GetService("HttpService") -- Ensure it's available
         local propertiesGoal = {}
-        -- local conversionErrors = {} -- Removed, direct assignment now
+        -- local conversionErrorsFound = false -- Flag to stop processing if an error occurs -- Not needed if returning immediately
+
         for propName, propValueInput in pairs(propertiesToTween) do
-            -- No conversion needed, propValueInput is expected to be the correct Luau type.
-            -- ToolHelpers.JsonToRobloxValue call removed.
-            -- Type errors will be caught by TweenService:Create if types are incompatible.
-            propertiesGoal[propName] = propValueInput -- Use propValueInput directly
+            local finalValueToSet = propValueInput
+            local conversionErrorMsg = nil
+
+            if type(propValueInput) == "table" then
+                -- Pass 'instance' for context-aware conversion
+                local converted_value, err_msg = ToolHelpers.ConvertTableToRobloxType(propValueInput, propName, instance)
+                if err_msg then
+                    conversionErrorMsg = err_msg
+                else
+                    finalValueToSet = converted_value
+                end
+            end
+
+            if conversionErrorMsg then
+                -- Important: If any conversion fails, stop and return an error immediately.
+                -- TweenService.Create might not give clear errors if it receives a table where it expects a Color3 etc.
+                return ToolHelpers.FormatErrorResult(
+                    ("Property '%s' in 'properties_to_tween': Conversion error: %s. Original value was: %s"):format(
+                        propName,
+                        conversionErrorMsg,
+                        HttpService:JSONEncode(propValueInput)
+                    )
+                )
+                -- No need for conversionErrorsFound flag if we return immediately
+            end
+            propertiesGoal[propName] = finalValueToSet
         end
 
-        -- Removed conversionErrors check. If propertiesToTween was empty, next(propertiesGoal) will be nil.
-        -- The original propertiesToTween emptiness check already covers this.
-        if next(propertiesGoal) == nil then
-            -- This check is technically redundant if the input 'properties_to_tween' cannot be empty (which it can't by an earlier check)
-            -- but kept for safety in case that input check changes.
-            return ToolHelpers.FormatErrorResult("No valid properties to tween (properties_to_tween was empty or became empty).")
+        -- This check for empty propertiesGoal should ideally be after successful conversion of all items.
+        -- If propertiesToTween was not empty but all conversions failed (and returned errors above), this won't be hit.
+        -- If propertiesToTween was not empty, and all items were converted (or didn't need conversion),
+        -- then propertiesGoal will also not be empty.
+        -- The original check for propertiesToTween being empty is still valid and important before this loop.
+        if next(propertiesGoal) == nil and next(propertiesToTween) ~= nil then
+            -- This case implies propertiesToTween was not empty initially, but resulted in an empty propertiesGoal
+            -- This shouldn't happen if errors cause an immediate return above, or if propertiesToTween was valid.
+            -- It covers a scenario where propertiesToTween might contain items that are not tables and also not directly usable,
+            -- though the main concern (table conversion errors) is handled above.
+            return ToolHelpers.FormatErrorResult("No valid properties to tween after processing 'properties_to_tween'. Original input might have been problematic or became empty.")
         end
+        -- If propertiesToTween itself was empty, the earlier check `if next(propertiesToTween) == nil then` handles it.
+
 
         local tweenCreateSuccess, tweenOrError = pcall(TweenService.Create, TweenService, instance, tweenInfo, propertiesGoal)
         if not tweenCreateSuccess then
-             return ToolHelpers.FormatErrorResult("TweenService:Create failed: " .. tostring(tweenOrError))
+             return ToolHelpers.FormatErrorResult("TweenService:Create failed: " .. tostring(tweenOrError) .. ". Goal: " .. HttpService:JSONEncode(propertiesGoal))
         end
         local tween = tweenOrError
 

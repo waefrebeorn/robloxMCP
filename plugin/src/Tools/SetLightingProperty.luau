@@ -3,38 +3,70 @@ local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types) -- Added
 local Lighting = game:GetService("Lighting")
+local HttpService = game:GetService("HttpService")
 
 local function execute(args: Types.SetLightingPropertyArgs) -- Type annotation added
     local success, resultOrError = pcall(function()
         local propertyName = args.property_name
-        local propertyValue = args.value -- Expecting direct Luau value
+        local propertyValueInput = args.value
 
         if not propertyName or type(propertyName) ~= "string" then
             return "'property_name' is required and must be a string."
         end
-        if propertyValue == nil then
+        if propertyValueInput == nil then
             return "'value' is required for the property."
         end
 
-        -- No conversion needed, propertyValue is expected to be the correct Luau type.
-        -- ToolHelpers.JsonToRobloxValue call removed.
-        -- convertError check removed.
+        local finalValueToSet = propertyValueInput
+        local conversionErrorMsg = nil
+
+        if type(propertyValueInput) == "table" then
+            local converted_value_from_helper, err_msg_from_helper = ToolHelpers.ConvertTableToRobloxType(propertyValueInput, propertyName, Lighting)
+            if err_msg_from_helper then
+                conversionErrorMsg = err_msg_from_helper
+            else
+                finalValueToSet = converted_value_from_helper
+            end
+        end
+
+        if conversionErrorMsg then
+            return ("Conversion error for Lighting property '%s': %s. Original value was: %s"):format(
+                propertyName,
+                conversionErrorMsg,
+                HttpService:JSONEncode(propertyValueInput) -- Using JSONEncode for a clearer table representation in error
+            )
+        end
 
         local setSuccess, setError = pcall(function()
-            Lighting[propertyName] = propertyValue -- Use propertyValue directly
+            Lighting[propertyName] = finalValueToSet
         end)
 
         if not setSuccess then
-            if string.find(tostring(setError), "not a valid member") or string.find(tostring(setError), "cannot be assigned to") then
-                 return ("Property '%s' on Lighting is not settable or does not exist. Error: %s"):format(propertyName,tostring(setError))
+            local originalValueStr = HttpService:JSONEncode(propertyValueInput)
+            local attemptedValueStr = HttpService:JSONEncode(finalValueToSet)
+            local errorDetail = tostring(setError)
+            if string.find(errorDetail, "not a valid member") or string.find(errorDetail, "cannot be assigned to") then
+                 return ("Property '%s' on Lighting is not settable or does not exist. Error: %s. Original: %s, Attempted: %s"):format(
+                    propertyName,
+                    errorDetail,
+                    originalValueStr,
+                    attemptedValueStr
+                 )
             end
-            return ("Failed to set Lighting property '%s': %s"):format(propertyName, tostring(setError))
+            return ("Failed to set Lighting property '%s': %s. Original: %s, Attempted: %s"):format(
+                propertyName,
+                errorDetail,
+                originalValueStr,
+                attemptedValueStr
+            )
         end
 
         local actualValue = Lighting[propertyName]
         local resultData: Types.SetLightingPropertyResultData = {
             property_name = propertyName,
-            new_value_set = actualValue, -- Raw Roblox value
+            new_value_set = actualValue,
+            original_value_sent = propertyValueInput, -- Include original value for clarity
+            value_after_conversion = finalValueToSet -- Include value after conversion
         }
         return resultData
     end)

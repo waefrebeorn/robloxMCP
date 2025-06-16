@@ -2,6 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types) -- Added
+local HttpService = game:GetService("HttpService") -- Added
 
 local function execute(args: Types.CreateInstanceArgs) -- Type annotation added
     local success, resultOrError = pcall(function()
@@ -59,14 +60,38 @@ local function execute(args: Types.CreateInstanceArgs) -- Type annotation added
         -- Apply other properties
         for propName, propValueInput in pairs(properties) do
             local propNameLower = string.lower(propName)
-            if propNameLower ~= "parent" then -- Parent is now fully handled by parentInstance logic above
-                -- No conversion needed, propValueInput is expected to be the correct Luau type.
-                -- ToolHelpers.JsonToRobloxValue call removed.
-                local setPropSuccess, setError = pcall(function()
-                    newInstance[propName] = propValueInput -- Use propValueInput directly
-                end)
-                if not setPropSuccess then
-                    table.insert(propertyErrors, ("Property '%s': Error setting value: %s"):format(propName, setError))
+            if propNameLower ~= "parent" then -- Parent is handled by parentInstance logic
+
+                local finalValueToSet = propValueInput
+                local conversionErrorMsg = nil
+
+                if type(propValueInput) == "table" then
+                    local converted_value, err_msg = ToolHelpers.ConvertTableToRobloxType(propValueInput, propName, newInstance)
+                    if err_msg then
+                        conversionErrorMsg = err_msg
+                    else
+                        finalValueToSet = converted_value
+                    end
+                end
+
+                if conversionErrorMsg then
+                    table.insert(propertyErrors, ("Property '%s': Conversion error: %s. Original: %s"):format(
+                        propName,
+                        conversionErrorMsg,
+                        HttpService:JSONEncode(propValueInput) -- Or ToolHelpers.SimpleTableToString
+                    ))
+                else
+                    local setPropSuccess, setError = pcall(function()
+                        newInstance[propName] = finalValueToSet
+                    end)
+                    if not setPropSuccess then
+                        table.insert(propertyErrors, ("Property '%s': Error setting value: %s. Original: %s, Attempted: %s"):format(
+                            propName,
+                            tostring(setError),
+                            HttpService:JSONEncode(propValueInput), -- Or ToolHelpers.SimpleTableToString
+                            HttpService:JSONEncode(finalValueToSet)   -- Or ToolHelpers.SimpleTableToString
+                        ))
+                    end
                 end
             end
         end

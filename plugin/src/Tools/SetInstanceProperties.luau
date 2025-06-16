@@ -29,27 +29,53 @@ local function execute(args: Types.SetInstancePropertiesArgs) -- Type annotation
         local failedPropsCount = 0
 
         for propName, propValueInput in pairs(propertiesToSet) do
-            -- No conversion needed, propValueInput is expected to be the correct Luau type.
-            -- ToolHelpers.JsonToRobloxValue call removed.
-            local setSuccess, setError = pcall(function()
-                instance[propName] = propValueInput -- Use propValueInput directly
-            end)
+            local finalValueToSet = propValueInput
+            local conversionErrorMsg = nil
 
-            if setSuccess then
+            if type(propValueInput) == "table" then -- Only attempt conversion if it's a table
+                local converted_value_from_helper, err_msg_from_helper = ToolHelpers.ConvertTableToRobloxType(propValueInput, propName, instance)
+                if err_msg_from_helper then
+                    conversionErrorMsg = err_msg_from_helper
+                    -- finalValueToSet remains propValueInput, which is correct for reporting original_value
+                else
+                    finalValueToSet = converted_value_from_helper -- Use the successfully converted value
+                end
+            end
+
+            if conversionErrorMsg then
                 table.insert(propertyResults, {
                     name = propName,
-                    status = "success"
-                })
-                setPropsCount += 1
-            else
-                table.insert(propertyResults, {
-                    name = propName,
-                    status = "set_error", -- Error directly from attempting to set the property
-                    error_message = tostring(setError),
+                    status = "conversion_error",
+                    error_message = conversionErrorMsg,
                     original_value = propValueInput -- Value that was attempted
                 })
                 failedPropsCount += 1
                 overallSuccess = false
+            else
+                -- Proceed with setting the property using finalValueToSet
+                local setSuccess, setError = pcall(function()
+                    instance[propName] = finalValueToSet
+                end)
+
+                if setSuccess then
+                    table.insert(propertyResults, {
+                        name = propName,
+                        status = "success"
+                        -- Optional: add 'value_set = finalValueToSet' if needed,
+                        -- but be careful with complex types in results for SimpleTableToString
+                    })
+                    setPropsCount += 1
+                else
+                    table.insert(propertyResults, {
+                        name = propName,
+                        status = "set_error",
+                        error_message = tostring(setError),
+                        original_value = propValueInput, -- Show what was originally intended
+                        attempted_value = finalValueToSet -- Show what was attempted after conversion (if any)
+                    })
+                    failedPropsCount += 1
+                    overallSuccess = false
+                end
             end
         end
 

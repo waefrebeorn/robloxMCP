@@ -2,6 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types) -- Added
+local HttpService = game:GetService("HttpService") -- Added
 
 local function execute(args: Types.CallInstanceMethodArgs) -- Type annotation added
     local success, resultOrError = pcall(function()
@@ -28,11 +29,30 @@ local function execute(args: Types.CallInstanceMethodArgs) -- Type annotation ad
             return ("Method '%s' not found or is not a function on instance %s (type is %s)."):format(methodName, path, type(instance[methodName]))
         end
 
-        -- No conversion needed, args.arguments is expected to be an array of correct Luau types.
-        local convertedArguments = methodArguments
+        local processedMethodArguments = {}
+        for i, argInput in ipairs(methodArguments) do
+            if type(argInput) == "table" then
+                -- Pass instance context, which might be useful for some conversions if ConvertTableToRobloxType uses it.
+                -- PropertyName hint is generic here.
+                local convertedArg, convErr = ToolHelpers.ConvertTableToRobloxType(argInput, "methodArgument" .. tostring(i), instance)
+                if convErr then
+                    return ("Error converting argument #%d for method '%s': %s. Original table: %s"):format(
+                        i,
+                        methodName,
+                        convErr,
+                        HttpService:JSONEncode(argInput)
+                    ) -- Return error string directly
+                end
+                table.insert(processedMethodArguments, convertedArg)
+            else
+                table.insert(processedMethodArguments, argInput)
+            end
+        end
 
+        -- The 'convertedArguments' variable is no longer needed as we use processedMethodArguments directly.
         local callSuccess, resultsPack = pcall(function()
-            return table.pack(instance[methodName](instance, unpack(convertedArguments, 1, #convertedArguments)))
+            -- Use processedMethodArguments for unpack
+            return table.pack(instance[methodName](instance, unpack(processedMethodArguments, 1, #processedMethodArguments)))
         end)
 
         if not callSuccess then
