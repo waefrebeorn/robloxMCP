@@ -7,7 +7,7 @@ local function execute(args: Types.CallInstanceMethodArgs) -- Type annotation ad
     local success, resultOrError = pcall(function()
         local path = args.path
         local methodName = args.method_name
-        local methodArgumentsJson = args.arguments -- These are JSON-like values
+        local methodArguments = args.arguments -- Expecting an array of Luau values
 
         if not path or type(path) ~= "string" then
             return "'path' is required and must be a string."
@@ -15,7 +15,7 @@ local function execute(args: Types.CallInstanceMethodArgs) -- Type annotation ad
         if not methodName or type(methodName) ~= "string" then
             return "'method_name' is required and must be a string."
         end
-        if not methodArgumentsJson or type(methodArgumentsJson) ~= "table" then
+        if not methodArguments or type(methodArguments) ~= "table" then -- Check if it's a table (array)
             return "'arguments' is required and must be an array (can be empty)."
         end
 
@@ -28,14 +28,8 @@ local function execute(args: Types.CallInstanceMethodArgs) -- Type annotation ad
             return ("Method '%s' not found or is not a function on instance %s (type is %s)."):format(methodName, path, type(instance[methodName]))
         end
 
-        local convertedArguments = {}
-        for i, argJson in ipairs(methodArgumentsJson) do
-            local convertedArg, convertError = ToolHelpers.JsonToRobloxValue(argJson) -- Generic conversion
-            if convertError then
-                return ("Error converting argument #%d for method '%s': %s"):format(i, methodName, convertError)
-            end
-            table.insert(convertedArguments, convertedArg)
-        end
+        -- No conversion needed, args.arguments is expected to be an array of correct Luau types.
+        local convertedArguments = methodArguments
 
         local callSuccess, resultsPack = pcall(function()
             return table.pack(instance[methodName](instance, unpack(convertedArguments, 1, #convertedArguments)))

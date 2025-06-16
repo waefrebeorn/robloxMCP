@@ -53,8 +53,8 @@ local function execute(args: Types.GetMouseHitCFrameArgs)
             return ToolHelpers.FormatSuccessResult({
                 message = "Mouse hit CFrame retrieved.",
                 instance_hit_path = raycastResult.Instance:GetFullName(),
-                position = ToolHelpers.RobloxValueToJson(hitCFrame.Position),
-                cframe_components = ToolHelpers.RobloxValueToJson(hitCFrame) -- Full CFrame components
+                position = hitCFrame.Position, -- Pass raw Vector3
+                cframe_components = hitCFrame   -- Pass raw CFrame
             })
         else
             return ToolHelpers.FormatSuccessResult({

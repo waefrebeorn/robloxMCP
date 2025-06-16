@@ -29,38 +29,27 @@ local function execute(args: Types.SetInstancePropertiesArgs) -- Type annotation
         local failedPropsCount = 0
 
         for propName, propValueInput in pairs(propertiesToSet) do
-            local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, instance.ClassName.."."..propName)
+            -- No conversion needed, propValueInput is expected to be the correct Luau type.
+            -- ToolHelpers.JsonToRobloxValue call removed.
+            local setSuccess, setError = pcall(function()
+                instance[propName] = propValueInput -- Use propValueInput directly
+            end)
 
-            if convertError then
+            if setSuccess then
                 table.insert(propertyResults, {
                     name = propName,
-                    status = "conversion_error",
-                    error_message = "Value conversion failed: " .. convertError,
-                    original_value = propValueInput
+                    status = "success"
+                })
+                setPropsCount += 1
+            else
+                table.insert(propertyResults, {
+                    name = propName,
+                    status = "set_error", -- Error directly from attempting to set the property
+                    error_message = tostring(setError),
+                    original_value = propValueInput -- Value that was attempted
                 })
                 failedPropsCount += 1
                 overallSuccess = false
-            else
-                local setSuccess, setError = pcall(function()
-                    instance[propName] = convertedValue
-                end)
-
-                if setSuccess then
-                    table.insert(propertyResults, {
-                        name = propName,
-                        status = "success"
-                    })
-                    setPropsCount += 1
-                else
-                    table.insert(propertyResults, {
-                        name = propName,
-                        status = "set_error",
-                        error_message = tostring(setError),
-                        value_tried = convertedValue
-                    })
-                    failedPropsCount += 1
-                    overallSuccess = false
-                end
             end
         end
 

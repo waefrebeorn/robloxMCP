@@ -62,26 +62,9 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 
 			-- For now, just use a combined list of common and some class-specific props as a proxy for "all"
             -- A true "all scriptable" is hard without :GetProperties() in all environments or a massive lookup table.
-            -- The provided `instance:GetProperties()` is the ideal if available.
-            -- This simplified approach will try to get the common ones.
-
-            local allPropertiesToTry = {}
-            if instance.GetProperties then -- Check if method exists
-                pcall(function() -- Wrap in pcall in case GetProperties itself errors
-                    local studioProps = instance:GetProperties()
-                    for _, propInfo in ipairs(studioProps) do
-                        if type(propInfo) == "table" and propInfo.Name then
-                            table.insert(allPropertiesToTry, propInfo.Name)
-                        elseif type(propInfo) == "string" then -- Some versions might return array of strings
-                             table.insert(allPropertiesToTry, propInfo)
-                        end
-                    end
-                end)
-            end
-            -- If GetProperties wasn't available or didn't populate, use common ones
-            if #allPropertiesToTry == 0 then
-                allPropertiesToTry = commonProps -- Fallback to commonProps
-            end
+            -- The previous attempt to use GetProperties has been removed.
+            -- We will now directly use the commonProps list, which includes class-specific additions.
+            local allPropertiesToTry = commonProps
 
 			for _, propNameString in ipairs(allPropertiesToTry) do
 				local getSuccess, propValue = pcall(function()
@@ -89,7 +72,7 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 				end)
 
 				if getSuccess then
-					retrievedProperties[propNameString] = ToolHelpers.SerializeValue(propValue)
+					retrievedProperties[propNameString] = propValue
 				else
 					-- Silently ignore errors when fetching all, or add to errors if desired
 					accessErrors[propNameString] = "Error fetching property: " .. tostring(propValue)
@@ -107,7 +90,7 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 					end)
 
 					if getSuccess then
-						retrievedProperties[propNameString] = ToolHelpers.SerializeValue(propValue)
+						retrievedProperties[propNameString] = propValue
 					else
 						accessErrors[propNameString] = "Error getting property: " .. tostring(propValue)
 					end
