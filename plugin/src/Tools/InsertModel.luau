@@ -149,6 +149,8 @@ local function performInsert(query: string, parentPath: string?): (Types.InsertM
 end
 
 local function handleInsertModel(args: Types.InsertModelArgs)
+    local result
+
     local pcall_ok, primary_return, secondary_return = pcall(function()
         if type(args.query) ~= "string" or string.len(args.query) == 0 then
             return { __isError = true, message = "InsertModel: 'query' argument (asset ID or search term) is missing, empty, or not a string." }
@@ -163,22 +165,26 @@ local function handleInsertModel(args: Types.InsertModelArgs)
     if pcall_ok then
         -- Check if the pcall'd function returned our custom error table (e.g. from arg validation)
         if primary_return and primary_return.__isError then
-            return ToolHelpers.FormatErrorResult(primary_return.message) -- MODIFIED LINE
+            result = ToolHelpers.FormatErrorResult(primary_return.message)
         else
             -- If not a custom error, then primary_return is the first value from performInsert (data or nil)
             -- and secondary_return is the second value from performInsert (errorString or nil)
             if secondary_return then -- This is the errorString from performInsert
-                return ToolHelpers.FormatErrorResult(secondary_return);
+                result = ToolHelpers.FormatErrorResult(secondary_return)
             else -- No errorString from performInsert, so primary_return should be valid data
-
-                return ToolHelpers.FormatSuccessResult(primary_return)
-
+                if primary_return then
+                    result = ToolHelpers.FormatSuccessResult(primary_return)
+                else
+                    -- This case implies performInsert returned (nil, nil) which is unexpected.
+                    result = ToolHelpers.FormatErrorResult("InsertModel: performInsert returned no data and no error.")
+                end
             end
         end
     else
         -- pcall itself failed, primary_return contains the error message from pcall
-        return ToolHelpers.FormatErrorResult("Internal pcall error in InsertModel: " .. tostring(primary_return))
+        result = ToolHelpers.FormatErrorResult("Internal pcall error in InsertModel: " .. tostring(primary_return))
     end
+    return result
 end
 
 return handleInsertModel

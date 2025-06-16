@@ -30,7 +30,6 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 		local retrievedProperties: { [string]: any } = {}
 		local accessErrors: { [string]: string } = {} -- Changed to dictionary for easier property-specific errors
 
-		-- [[ -- Start of large comment
 		local fetchAllProperties = false
 		if propertyNamesInput == nil or (type(propertyNamesInput) == "table" and #propertyNamesInput == 0) then
 			fetchAllProperties = true
@@ -93,7 +92,7 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 					retrievedProperties[propNameString] = ToolHelpers.SerializeValue(propValue)
 				else
 					-- Silently ignore errors when fetching all, or add to errors if desired
-					-- accessErrors[propNameString] = "Error fetching property: " .. tostring(propValue)
+					accessErrors[propNameString] = "Error fetching property: " .. tostring(propValue)
 				end
 			end
 			if #accessErrors == 0 then -- Check if accessErrors is empty using #
@@ -122,22 +121,21 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 				accessErrors = nil -- Set to nil if no errors
 			end
 		end
-		-- ]] -- End of large comment
 
 
 		local messageText = ("Successfully retrieved %d properties for instance '%s'."):format(ToolHelpers.TableLength(retrievedProperties), path)
-		-- if accessErrors then -- Keep this commented out for now
-		--	messageText = messageText .. (" Encountered %d errors retrieving some requested properties."):format(ToolHelpers.TableLength(accessErrors))
-		-- end
+		if accessErrors then
+			messageText = messageText .. (" Encountered %d errors retrieving some requested properties."):format(ToolHelpers.TableLength(accessErrors))
+		end
 
 		local dataToReturn = {
 			message = messageText,
 			instance_path = path,
 			properties = retrievedProperties, -- retrievedProperties will be {} if main logic was previously commented
 		}
-		-- if accessErrors then -- Keep this commented out for now
-		--	dataToReturn.errors = accessErrors
-		-- end
+		if accessErrors then
+			dataToReturn.errors = accessErrors
+		end
 
 		return dataToReturn
 
