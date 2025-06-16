@@ -170,8 +170,9 @@ local function handleInsertModel(args: Types.InsertModelArgs)
             if secondary_return then -- This is the errorString from performInsert
                 return ToolHelpers.FormatErrorResult(secondary_return)
             else -- No errorString from performInsert, so primary_return should be valid data
-                -- Add semicolon for potentially ambiguous syntax before the return statement
-                return ToolHelpers.FormatSuccessResult(primary_return);
+
+                return ToolHelpers.FormatSuccessResult(primary_return)
+
             end
         end
     else

@@ -135,7 +135,9 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 		if accessErrors then -- only include errors table if there are errors
 			resultData.errors = accessErrors
 		end
-		return resultData
+
+		return resultData; -- Added semicolon
+
 	end)
 
 	if success then
