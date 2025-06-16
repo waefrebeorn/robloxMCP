@@ -8,12 +8,16 @@ SET "ERROR_COUNT=0"
 
 REM === Define Test Commands ===
 SET "TEST_CMD_1=create a part named TestPartFromBatch"
+
 SET "TEST_CMD_2=get the Name and Parent properties of Workspace.TestPartFromBatch"
+
 SET "TEST_CMD_3=run code print('Hello from Batch RunCode')"
 SET "TEST_CMD_4=select the part named TestPartFromBatch"
 SET "TEST_CMD_5=delete Workspace.TestPartFromBatch"
 SET "TEST_CMD_6=What is the current time of day in lighting?"
+
 SET "TEST_CMD_7=Create a sound in workspace with sound ID rbxassetid://1846473670 and name it ClickSound then play it and then delete it"
+
 SET "NUM_TEST_CMDS=7"
 
 REM === Main Logic ===
@@ -31,7 +35,9 @@ ECHO Agent Script: "%~dp0!AGENT_SCRIPT!"
 ECHO =====================================
 
 FOR /L %%I IN (1,1,%NUM_TEST_CMDS%) DO (
+
     SET "CURRENT_COMMAND=!TEST_CMD_%%I!"
+
 
     ECHO.
     ECHO Running test %%I of %NUM_TEST_CMDS%: "!CURRENT_COMMAND!"
