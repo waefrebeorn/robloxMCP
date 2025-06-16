@@ -30,6 +30,7 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 		local retrievedProperties: { [string]: any } = {}
 		local accessErrors: { [string]: string } = {} -- Changed to dictionary for easier property-specific errors
 
+		-- [[ -- Start of large comment
 		local fetchAllProperties = false
 		if propertyNamesInput == nil or (type(propertyNamesInput) == "table" and #propertyNamesInput == 0) then
 			fetchAllProperties = true
@@ -121,6 +122,7 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 				accessErrors = nil -- Set to nil if no errors
 			end
 		end
+		-- ]] -- End of large comment
 
 		-- local messageText = ("Successfully retrieved %d properties for instance '%s'."):format(ToolHelpers.TableLength(retrievedProperties), path)
 		-- if accessErrors then
@@ -137,6 +139,7 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 		-- end
 
 		return { message = "Syntax test successful", simplified = true }
+
 
 	end)
 
