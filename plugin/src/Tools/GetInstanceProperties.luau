@@ -125,7 +125,9 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 		-- ]] -- End of large comment
 
 		local messageText = ("Successfully retrieved %d properties for instance '%s'."):format(ToolHelpers.TableLength(retrievedProperties), path)
+
 		if accessErrors and next(accessErrors) then
+
 			messageText = messageText .. (" Encountered %d errors retrieving some requested properties."):format(ToolHelpers.TableLength(accessErrors))
 		end
 
@@ -134,11 +136,14 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 			instance_path = path,
 			properties = retrievedProperties,
 		}
+
 		if accessErrors and next(accessErrors) then
+
 			dataToReturn.errors = accessErrors
 		end
 
 		return dataToReturn
+
 
 	end)
 
