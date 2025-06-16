@@ -146,9 +146,7 @@ local function executeRunCode(command: string): (Types.RunCodeResultData?, strin
     -- Restore global environment if changed
     for k,_ in pairs(chunk_env) do if _G[k] == chunk_env[k] then _G[k] = nil end end
 
-
-    local final_output_string = table.concat(output_parts, "\n") -- Use literal
- for multiline
+    local final_output_string = table.concat(output_parts, "\n") -- Use literal for multiline
 
     if load_error then -- Prioritize load error
         return nil, load_error
