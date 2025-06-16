@@ -30,6 +30,7 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 		local retrievedProperties: { [string]: any } = {}
 		local accessErrors: { [string]: string } = {} -- Changed to dictionary for easier property-specific errors
 
+		-- [[ -- Start of large comment
 		local fetchAllProperties = false
 		if propertyNamesInput == nil or (type(propertyNamesInput) == "table" and #propertyNamesInput == 0) then
 			fetchAllProperties = true
@@ -121,9 +122,12 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 				accessErrors = nil -- Set to nil if no errors
 			end
 		end
+		-- ]] -- End of large comment
 
 		local messageText = ("Successfully retrieved %d properties for instance '%s'."):format(ToolHelpers.TableLength(retrievedProperties), path)
-		if accessErrors then
+
+		if accessErrors and next(accessErrors) then
+
 			messageText = messageText .. (" Encountered %d errors retrieving some requested properties."):format(ToolHelpers.TableLength(accessErrors))
 		end
 
@@ -132,7 +136,9 @@ local function execute(args: Types.GetInstancePropertiesArgs)
 			instance_path = path,
 			properties = retrievedProperties,
 		}
-		if accessErrors then
+
+		if accessErrors and next(accessErrors) then
+
 			dataToReturn.errors = accessErrors
 		end
 
