@@ -427,11 +427,127 @@ function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instance
         else
             return inputTable, "For PhysicalProperties, provide 'material_enum_name' OR custom properties (density, friction, elasticity, friction_weight, elasticity_weight)."
         end
+<<<<<<< feature/targeted-deserialization-v2
+=======
 
+>>>>>>> main
     end
 
     -- If no specific conversion rule matched, return the original table
     return inputTable, nil
 end
 
+<<<<<<< feature/targeted-deserialization-v2
+-- Forward declaration for the recursive helper
+local _serializeValueForLuauString
+
+function ToolHelpers.TableToLuauString(input)
+    local success, result = pcall(function()
+        return "return " .. _serializeValueForLuauString(input, {})
+    end)
+    if success then
+        if type(result) == "string" then
+            return result, nil
+        else
+            -- This case should ideally not be hit if _serializeValueForLuauString always returns string or errors.
+            return nil, "Serialization resulted in a non-string value unexpectedly: " .. tostring(result)
+        end
+    else
+        return nil, "Error during TableToLuauString serialization: " .. tostring(result)
+    end
+end
+
+_serializeValueForLuauString = function(value, visitedTables)
+    local valueType = typeof(value) -- Use typeof for Roblox types
+
+    if value == nil then
+        return "nil"
+    elseif valueType == "boolean" then
+        return tostring(value)
+    elseif valueType == "number" then
+        -- Handle NaN and Infinity cases for numbers, as they don't have direct Luau literals
+        if value ~= value then return "0/0" -- NaN
+        elseif value == math.huge then return "1/0" -- Infinity
+        elseif value == -math.huge then return "-1/0" -- -Infinity
+        end
+        return tostring(value) -- Standard number
+    elseif valueType == "string" then
+        return string.format("%q", value)
+    elseif valueType == "Color3" then
+        return string.format("Color3.new(%f, %f, %f)", value.r, value.g, value.b)
+    elseif valueType == "Vector3" then
+        return string.format("Vector3.new(%f, %f, %f)", value.x, value.y, value.z)
+    elseif valueType == "Vector2" then
+        return string.format("Vector2.new(%f, %f)", value.x, value.y)
+    elseif valueType == "UDim" then
+        return string.format("UDim.new(%f, %d)", value.Scale, value.Offset)
+    elseif valueType == "UDim2" then
+        return string.format("UDim2.new(%f, %d, %f, %d)", value.X.Scale, value.X.Offset, value.Y.Scale, value.Y.Offset)
+    elseif valueType == "BrickColor" then
+        return string.format("BrickColor.new(%q)", value.Name)
+    elseif valueType == "CFrame" then
+        -- CFrame:GetComponents() returns 12 numbers: x, y, z, R00, R01, R02, R10, R11, R12, R20, R21, R22
+        local comps = {value:GetComponents()}
+        return string.format("CFrame.new(%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f)", unpack(comps))
+    elseif valueType == "NumberRange" then
+        return string.format("NumberRange.new(%f, %f)", value.Min, value.Max)
+    elseif valueType == "NumberSequence" then
+        local keypointStrings = {}
+        for _, kp in ipairs(value.Keypoints) do
+            table.insert(keypointStrings, string.format("NumberSequenceKeypoint.new(%f, %f, %f)", kp.Time, kp.Value, kp.Envelope))
+        end
+        return string.format("NumberSequence.new({%s})", table.concat(keypointStrings, ", "))
+    elseif valueType == "ColorSequence" then
+        local keypointStrings = {}
+        for _, kp in ipairs(value.Keypoints) do
+            -- kp.Value is a Color3, so we serialize it directly.
+            table.insert(keypointStrings, string.format("ColorSequenceKeypoint.new(%f, Color3.new(%f,%f,%f))", kp.Time, kp.Value.r, kp.Value.g, kp.Value.b))
+        end
+        return string.format("ColorSequence.new({%s})", table.concat(keypointStrings, ", "))
+    elseif valueType == "PhysicalProperties" then
+         return string.format("PhysicalProperties.new(%f,%f,%f,%f,%f)", value.Density, value.Friction, value.Elasticity, value.FrictionWeight, value.ElasticityWeight)
+    elseif typeof(value) == "EnumItem" then
+        return value.EnumType.Name .. "." .. value.Name
+    elseif value:IsA("Instance") then -- Must come after specific Roblox types like BrickColor, Color3 etc.
+        return string.format("%q", value:GetFullName()) -- Represent instances by their path
+    elseif valueType == "table" then
+        if visitedTables[value] then
+            return "nil --[[circular_reference]]"
+        end
+        visitedTables[value] = true
+
+        local parts = {}
+        local isArray = true
+        local n = 0
+        for _ in pairs(value) do n = n + 1 end
+
+        if n == #value then -- Heuristic: if pairs count matches ipairs count, treat as array
+            for i = 1, #value do
+                table.insert(parts, _serializeValueForLuauString(value[i], visitedTables))
+            end
+            visitedTables[value] = nil
+            return "{ " .. table.concat(parts, ", ") .. " }"
+        else -- Dictionary
+            for k, v_item in pairs(value) do -- Renamed v to v_item to avoid conflict with outer scope if any
+                local keyStr
+                if type(k) == "string" and string.match(k, "^[_%a][_%w]*$") then
+                    keyStr = k
+                else
+                    -- Recursive call for complex keys (e.g. tables as keys, though rare for Luau string conversion)
+                    keyStr = "[" .. _serializeValueForLuauString(k, visitedTables) .. "]"
+                end
+                table.insert(parts, keyStr .. " = " .. _serializeValueForLuauString(v_item, visitedTables))
+            end
+            visitedTables[value] = nil
+            return "{ " .. table.concat(parts, ", ") .. " }"
+        end
+    else
+        -- For functions, threads, other userdata that are not specifically handled:
+        -- Return a string placeholder indicating the type.
+        return string.format("%q", "<" .. valueType .. " (" .. tostring(value) .. ")>")
+    end
+end
+
+=======
+>>>>>>> main
 return ToolHelpers
