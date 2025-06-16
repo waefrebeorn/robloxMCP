@@ -10,33 +10,31 @@ REM === Main Logic ===
 CALL :ActivateVenv
 IF !ERRORLEVEL! NEQ 0 (
     ECHO ERROR: Failed to activate virtual environment.
-    SET "SCRIPT_EXIT_CODE=!ERRORLEVEL!"
+    SET "SCRIPT_EXIT_CODE=1"
     GOTO :HandleExit
 )
 
 CALL :RunAgent
-IF !ERRORLEVEL! NEQ 0 (
-    ECHO INFO: Agent script exited with a non-zero status.
-    SET "SCRIPT_EXIT_CODE=!ERRORLEVEL!"
-    GOTO :HandleExit
+REM The SCRIPT_EXIT_CODE from RunAgent will propagate
+SET "SCRIPT_EXIT_CODE=!ERRORLEVEL!"
+IF !SCRIPT_EXIT_CODE! NEQ 0 (
+    ECHO INFO: Agent script exited with error code !SCRIPT_EXIT_CODE!.
+) ELSE (
+    ECHO Agent script completed.
 )
 
-REM If we reach here, all main operations were successful
-SET "SCRIPT_EXIT_CODE=0"
-ECHO.
-ECHO Agent execution completed successfully.
 GOTO :HandleExit
 
 REM === Subroutines ===
 :ActivateVenv
     ECHO.
     ECHO Activating virtual environment from '!VENV_DIR!'...
-    IF NOT EXIST "!VENV_DIR!\Scripts\activate.bat" (
-        ECHO ERROR: Virtual environment activation script not found at '!VENV_DIR!\Scripts\activate.bat'.
+    IF NOT EXIST "%~dp0!VENV_DIR!\Scripts\activate.bat" (
+        ECHO ERROR: Virtual environment activation script not found at '%~dp0!VENV_DIR!\Scripts\activate.bat'.
         ECHO Please run the 'setup_venv.bat' script first to create the virtual environment.
         EXIT /B 1
     )
-    CALL "!VENV_DIR!\Scripts\activate.bat"
+    CALL "%~dp0!VENV_DIR!\Scripts\activate.bat"
     IF !ERRORLEVEL! NEQ 0 (
         ECHO ERROR: Failed to execute activate.bat script.
         EXIT /B 1
@@ -46,20 +44,20 @@ EXIT /B 0
 
 :RunAgent
     ECHO.
-    ECHO Starting the Roblox Agent ('!AGENT_SCRIPT!')...
-    IF NOT EXIST "!AGENT_SCRIPT!" (
-        ECHO ERROR: Agent script '!AGENT_SCRIPT!' not found.
+    ECHO Starting the Roblox Agent in Interactive Mode ('%~dp0!AGENT_SCRIPT!')...
+    IF NOT EXIST "%~dp0!AGENT_SCRIPT!" (
+        ECHO ERROR: Agent script '%~dp0!AGENT_SCRIPT!' not found.
         EXIT /B 1
     )
-    python "!AGENT_SCRIPT!"
-pause
+    python "%~dp0!AGENT_SCRIPT!"
     SET "PYTHON_ERRORLEVEL=!ERRORLEVEL!"
+    pause
+    REM This pause allows user to see any immediate output/errors if main.py exits quickly.
+
     IF !PYTHON_ERRORLEVEL! NEQ 0 (
         ECHO WARNING: The agent script exited with error code !PYTHON_ERRORLEVEL!.
-    ) ELSE (
-        ECHO Agent script completed.
     )
-    EXIT /B !PYTHON_ERRORLEVEL!
+EXIT /B !PYTHON_ERRORLEVEL!
 
 REM === Final Exit Point ===
 :HandleExit
