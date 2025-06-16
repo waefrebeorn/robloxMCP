@@ -996,8 +996,43 @@ class ToolDispatcher:
             mcp_response = await self.mcp_client.send_tool_execution_request(mcp_tool_name, mcp_tool_args)
 
             if "result" in mcp_response:
-                output_content_dict = {"status": "success", "output": mcp_response["result"]}
-                ConsoleFormatter.print_tool_result(mcp_response["result"])
+                raw_mcp_result = mcp_response["result"]
+                if original_tool_name == "get_selection":
+                    try:
+                        # First level parse
+                        parsed_outer_result = json.loads(raw_mcp_result)
+                        if isinstance(parsed_outer_result, dict) and parsed_outer_result.get("content"):
+                            # Second level parse (the text part of the content)
+                            inner_json_str = parsed_outer_result["content"][0]["text"]
+                            parsed_inner_result = json.loads(inner_json_str)
+                            if isinstance(parsed_inner_result, dict) and \
+                               "selected_instances" in parsed_inner_result and \
+                               isinstance(parsed_inner_result["selected_instances"], list) and \
+                               not parsed_inner_result["selected_instances"]:
+                                output_content_dict = {
+                                    "status": "success",
+                                    "message": "No instances are currently selected in Roblox Studio.",
+                                    "selection_empty": True, # Explicit flag
+                                    "selected_instances_paths": [] # Keep structure consistent
+                                }
+                                ConsoleFormatter.print_tool_result({"status": "success", "message": "No instances selected (processed by Python agent)."})
+                            else:
+                                # Not an empty selection, or unexpected structure, pass original result
+                                output_content_dict = {"status": "success", "output": raw_mcp_result}
+                                ConsoleFormatter.print_tool_result(raw_mcp_result)
+                        else:
+                            # Unexpected outer structure, pass original result
+                            output_content_dict = {"status": "success", "output": raw_mcp_result}
+                            ConsoleFormatter.print_tool_result(raw_mcp_result)
+                    except Exception as e:
+                        # Parsing failed, pass original result
+                        logger.error(f"Error parsing get_selection result: {e}")
+                        output_content_dict = {"status": "success", "output": raw_mcp_result, "parsing_error": str(e)}
+                        ConsoleFormatter.print_tool_result(raw_mcp_result) # Or a specific error message
+                else:
+                    # For other tools, keep original behavior
+                    output_content_dict = {"status": "success", "output": raw_mcp_result}
+                    ConsoleFormatter.print_tool_result(raw_mcp_result)
             elif "error" in mcp_response: # Error from the Luau tool execution
                 error_data = mcp_response["error"]
                 output_content_dict = {"status": "error", "details": error_data}

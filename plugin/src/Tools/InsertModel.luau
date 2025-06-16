@@ -151,24 +151,31 @@ end
 local function handleInsertModel(args: Types.InsertModelArgs)
     local success, resultOrError = pcall(function()
         if type(args.query) ~= "string" or string.len(args.query) == 0 then
-            return "InsertModel: 'query' argument (asset ID or search term) is missing, empty, or not a string."
+            return { __isError = true, message = "InsertModel: 'query' argument (asset ID or search term) is missing, empty, or not a string." }
         end
         if args.parent_path and type(args.parent_path) ~= "string" then
-            return "InsertModel: 'parent_path', if provided, must be a string."
+            return { __isError = true, message = "InsertModel: 'parent_path', if provided, must be a string." }
         end
 
         return performInsert(args.query, args.parent_path) -- This returns (data, errorString) or (nil, errorString)
     end)
 
     if success then
-        local data, errStr = resultOrError -- Unpack the tuple returned by performInsert (via pcall)
-        if errStr then -- Error string was returned from performInsert
-             return ToolHelpers.FormatErrorResult(errStr)
-        else -- Data was returned
-            return ToolHelpers.FormatSuccessResult(data)
+        if resultOrError and resultOrError.__isError then -- Check for our custom error table
+            return ToolHelpers.FormatErrorResult(resultOrError.message)
+        else
+            -- This path means performInsert was called.
+            -- resultOrError here is the direct return of performInsert,
+            -- which is (data, errorString) or (nil, errorString)
+            local data, errStr = resultOrError
+            if errStr then
+                return ToolHelpers.FormatErrorResult(errStr)
+            else
+                return ToolHelpers.FormatSuccessResult(data)
+            end
         end
     else
-        -- Error from the pcall wrapping performInsert itself
+        -- Error from the pcall itself
         return ToolHelpers.FormatErrorResult("Internal error in InsertModel: " .. tostring(resultOrError))
     end
 end
