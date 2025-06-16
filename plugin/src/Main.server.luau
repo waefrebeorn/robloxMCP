@@ -115,6 +115,7 @@ local function connectWebSocket()
 	client.MessageReceived:Connect(function(message)
 		log("[MCP] Message received")
 
+<<<<<<< feature/targeted-deserialization-v2
 		-- Check for empty or whitespace-only message
 		if message == nil or string.match(message, "^%s*$") then
 			-- More subdued log, not an "Error"
@@ -143,6 +144,27 @@ local function connectWebSocket()
 		if type(body) ~= "table" then
 			print(("[MCP Error] Executed Luau message did not return a table. Returned type: %s. Original raw message was: [%s]"):format(type(body), message))
 			-- Potentially send a formatted error response
+=======
+
+		-- Check for empty or whitespace-only message
+		if message == nil or string.match(message, "^%s*$") then
+			print(("[MCP] Received empty or whitespace-only message, ignoring. Raw message: [%s]"):format(tostring(message)))
+			return
+		end
+
+
+		local decodedSuccess, resultOrError = pcall(HttpService.JSONDecode, HttpService, message)
+
+		if not decodedSuccess then
+			-- 'resultOrError' here is the error message from JSONDecode
+			print(("[MCP] Error: Failed to decode JSON. Decode Error: %s. Original raw message was: [%s]"):format(tostring(resultOrError), message))
+			return
+		end
+
+		local body = resultOrError -- If decodedSuccess is true, resultOrError is the decoded body
+		if type(body) ~= "table" then
+			print(("[MCP] Error: Decoded JSON message is not a table. Type: %s. Original raw message was: [%s]"):format(type(body), message))
+>>>>>>> main
 			return
 		end
 
