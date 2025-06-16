@@ -168,11 +168,9 @@ local function handleInsertModel(args: Types.InsertModelArgs)
             -- If not a custom error, then primary_return is the first value from performInsert (data or nil)
             -- and secondary_return is the second value from performInsert (errorString or nil)
             if secondary_return then -- This is the errorString from performInsert
-                return ToolHelpers.FormatErrorResult(secondary_return)
+                return ToolHelpers.FormatErrorResult(secondary_return);
             else -- No errorString from performInsert, so primary_return should be valid data
-
                 return ToolHelpers.FormatSuccessResult(primary_return)
-
             end
         end
     else
