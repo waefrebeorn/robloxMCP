@@ -171,10 +171,7 @@ local function handleInsertModel(args: Types.InsertModelArgs)
                 return ToolHelpers.FormatErrorResult(secondary_return);
             else -- No errorString from performInsert, so primary_return should be valid data
 
-
-                local formatted_result = ToolHelpers.FormatSuccessResult(primary_return)
-                return formatted_result
-
+                return { message = "Syntax test successful for InsertModel", simplified = true }
 
             end
         end
