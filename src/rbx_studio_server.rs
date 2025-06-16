@@ -237,6 +237,27 @@ pub enum ToolArgumentValues {
     }
 }
 
+// Helper function to format ToolArgumentValues into a Luau string component
+fn format_tool_argument_values_to_luau_string(args: &ToolArgumentValues) -> String {
+    match args {
+        ToolArgumentValues::ExecuteLuauByName { tool_name, arguments_luau } => {
+            // Escape backslashes and then quotes for arguments_luau
+            let escaped_arguments_luau = arguments_luau.replace('\', "\\\\").replace('"', "\\\"");
+            format!("ExecuteLuauByName = {{ tool_name = \"{}\", arguments_luau = \"{}\" }}",
+                    tool_name, escaped_arguments_luau)
+        }
+        ToolArgumentValues::RunCommand { command } => {
+            let escaped_command = command.replace('\', "\\\\").replace('"', "\\\"");
+            format!("RunCommand = {{ command = \"{}\" }}", escaped_command)
+        }
+        ToolArgumentValues::InsertModel { query } => {
+            // Query for InsertModel is typically simpler, but escape for robustness.
+            let escaped_query = query.replace('\', "\\\\").replace('"', "\\\"");
+            format!("InsertModel = {{ query = \"{}\" }}", escaped_query)
+        }
+    }
+}
+
 #[derive(rmcp::serde::Deserialize, rmcp::serde::Serialize, Clone, Debug)]
 pub struct ToolArguments {
     args: ToolArgumentValues,
@@ -244,6 +265,12 @@ pub struct ToolArguments {
 }
 
 impl ToolArguments {
+    pub fn to_luau_string(&self) -> String {
+        let args_str = format_tool_argument_values_to_luau_string(&self.args);
+        let id_str = self.id.map_or_else(|| "nil".to_string(), |uuid| format!("\"{}\"", uuid.to_string()));
+        format!("return {{ id = {}, args = {{ {} }} }}", id_str, args_str)
+    }
+
      fn new_with_id(args_values: ToolArgumentValues) -> (Self, Uuid) {
          let id = Uuid::new_v4();
          (
@@ -546,8 +573,15 @@ pub async fn request_handler(State(axum_state): State<AxumSharedState>) -> Resul
     // Apply long poll timeout waiting for StateManager to provide a task.
     match tokio::time::timeout(LONG_POLL_DURATION, response_rx).await {
         Ok(Ok(Some(task_with_id))) => { // Successfully received a task from StateManager
-            debug!(target: "mcp_server::request_handler", task_id = ?task_with_id.id, "Dequeued task for client from StateManager.");
-            Ok(Json(task_with_id).into_response())
+            debug!(target: "mcp_server::request_handler", task_id = ?task_with_id.id, "Dequeued task for client from StateManager. Formatting as Luau.");
+            let luau_string = task_with_id.to_luau_string();
+            // Return as Luau string
+            Ok((
+                StatusCode::OK,
+                [("Content-Type", "application/luau")], // Or "text/plain"
+                luau_string,
+            )
+                .into_response())
         }
         Ok(Ok(None)) => {
             // This case should ideally not happen if StateManager sends Some(task) or lets the channel drop on its side if it's shutting down.

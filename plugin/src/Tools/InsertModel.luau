@@ -182,7 +182,7 @@ local function handleInsertModel(args: Types.InsertModelArgs)
         end
     else
         -- pcall itself failed, primary_return contains the error message from pcall
-        result = ToolHelpers.FormatErrorResult("Internal pcall error in InsertModel: " .. tostring(primary_return))
+        result = ToolHelpers.FormatErrorResult("Internal pcall error in InsertModel: " .. (tostring(primary_return)))
     end
     return result
 end
