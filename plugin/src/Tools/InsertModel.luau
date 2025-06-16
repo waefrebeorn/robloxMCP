@@ -149,7 +149,7 @@ local function performInsert(query: string, parentPath: string?): (Types.InsertM
 end
 
 local function handleInsertModel(args: Types.InsertModelArgs)
-    local success, resultOrError = pcall(function()
+    local pcall_ok, primary_return, secondary_return = pcall(function()
         if type(args.query) ~= "string" or string.len(args.query) == 0 then
             return { __isError = true, message = "InsertModel: 'query' argument (asset ID or search term) is missing, empty, or not a string." }
         end
@@ -157,26 +157,25 @@ local function handleInsertModel(args: Types.InsertModelArgs)
             return { __isError = true, message = "InsertModel: 'parent_path', if provided, must be a string." }
         end
 
-        return performInsert(args.query, args.parent_path) -- This returns (data, errorString) or (nil, errorString)
+        return performInsert(args.query, args.parent_path) -- Returns (data, errorString) or (nil, errorString)
     end)
 
-    if success then
-        if resultOrError and resultOrError.__isError then -- Check for our custom error table
-            return ToolHelpers.FormatErrorResult(resultOrError.message)
+    if pcall_ok then
+        -- Check if the pcall'd function returned our custom error table (e.g. from arg validation)
+        if primary_return and primary_return.__isError then
+            return ToolHelpers.FormatErrorResult(primary_return.message)
         else
-            -- This path means performInsert was called.
-            -- resultOrError here is the direct return of performInsert,
-            -- which is (data, errorString) or (nil, errorString)
-            local data, errStr = resultOrError
-            if errStr then
-                return ToolHelpers.FormatErrorResult(errStr)
-            else
-                return ToolHelpers.FormatSuccessResult(data)
+            -- If not a custom error, then primary_return is the first value from performInsert (data or nil)
+            -- and secondary_return is the second value from performInsert (errorString or nil)
+            if secondary_return then -- This is the errorString from performInsert
+                return ToolHelpers.FormatErrorResult(secondary_return)
+            else -- No errorString from performInsert, so primary_return should be valid data
+                return ToolHelpers.FormatSuccessResult(primary_return)
             end
         end
     else
-        -- Error from the pcall itself
-        return ToolHelpers.FormatErrorResult("Internal error in InsertModel: " .. tostring(resultOrError))
+        -- pcall itself failed, primary_return contains the error message from pcall
+        return ToolHelpers.FormatErrorResult("Internal pcall error in InsertModel: " .. tostring(primary_return))
     end
 end
 
