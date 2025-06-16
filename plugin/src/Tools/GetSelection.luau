@@ -1,31 +1,34 @@
 -- GetSelection.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types) -- Added
 local Selection = game:GetService("Selection")
 
-return function(args)
-	if not args["GetSelection"] then
-		return ToolHelpers.FormatErrorResult("GetSelection: Invalid argument structure. Expected 'GetSelection' key.")
-	end
+local function execute(args: Types.GetSelectionArgs) -- Type annotation added, args currently unused
+    local success, resultOrError = pcall(function()
+        local selectedObjects = Selection:Get()
+        local resultsInfo: {Types.InstanceInfo} = {}
 
-	-- The GetSelection tool typically doesn't take additional parameters within args["GetSelection"],
-	-- but if it did, they would be accessed here.
-	-- local data = args["GetSelection"]
+        for _, instance in ipairs(selectedObjects) do
+            table.insert(resultsInfo, {
+                name = instance.Name,
+                path = instance:GetFullName(),
+                class_name = instance.ClassName,
+            })
+        end
 
-	local selectedObjects = Selection:Get()
-	local results = {}
+        local resultData: Types.GetSelectionResultData = {
+            selected_instances = resultsInfo,
+        }
+        return resultData
+    end)
 
-	for _, instance in ipairs(selectedObjects) do
-		local objectData = {
-			name = instance.Name,
-			path = instance:GetFullName(),
-			className = instance.ClassName,
-			-- Potentially add more useful identifiers like a unique ID if available/needed
-		}
-		table.insert(results, objectData)
-	end
-
-	-- If no objects are selected, 'results' will be an empty table.
-	-- FormatSuccessResult will correctly encode this as an empty JSON array.
-	return ToolHelpers.FormatSuccessResult(results)
+    if success then
+        -- GetSelection's core logic should not return an error string directly
+        return ToolHelpers.FormatSuccessResult(resultOrError)
+    else
+        return ToolHelpers.FormatErrorResult("Internal error in GetSelection: " .. tostring(resultOrError))
+    end
 end
+
+return execute

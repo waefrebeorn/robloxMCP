@@ -1,43 +1,47 @@
 -- GetChildrenOfInstance.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types) -- Added
 
-local function execute(args)
-    -- Arguments are now expected directly on args table
-    local success, pcall_result = pcall(function()
+local function execute(args: Types.GetChildrenOfInstanceArgs) -- Type annotation added
+    local success, resultOrError = pcall(function()
         local instancePath = args.instance_path
 
         if not instancePath or type(instancePath) ~= "string" or instancePath == "" then
-            return ToolHelpers.FormatErrorResult("'instance_path' is required and must be a non-empty string.")
+            return "'instance_path' is required and must be a non-empty string."
         end
 
         local instance, err = ToolHelpers.FindInstanceByPath(instancePath)
         if not instance then
-            return ToolHelpers.FormatErrorResult(("Instance not found at path: %s. %s"):format(instancePath, err or ""))
+            return ("Instance not found at path: %s. %s"):format(instancePath, err or "Unknown error")
         end
 
         local children = instance:GetChildren()
-        local childrenInfo = {}
+        local childrenInfo: {Types.InstanceInfo} = {}
 
         for _, child in ipairs(children) do
             table.insert(childrenInfo, {
                 name = child.Name,
                 path = child:GetFullName(),
-                class_name = child.ClassName
+                class_name = child.ClassName,
             })
         end
 
-        return ToolHelpers.FormatSuccessResult({
-            message = ("Found %d children for instance %s."):format(#childrenInfo, instancePath),
+        local resultData: Types.GetChildrenOfInstanceResultData = {
             instance_path = instancePath,
-            children = childrenInfo
-        })
+            children = childrenInfo,
+        }
+        return resultData
     end)
 
     if success then
-        return pcall_result
+        if type(resultOrError) == "string" then
+            return ToolHelpers.FormatErrorResult(resultOrError)
+        else
+            return ToolHelpers.FormatSuccessResult(resultOrError)
+        end
     else
-        return ToolHelpers.FormatErrorResult("Internal error in GetChildrenOfInstance: " .. tostring(pcall_result))
+        return ToolHelpers.FormatErrorResult("Internal error in GetChildrenOfInstance: " .. tostring(resultOrError))
     end
 end
 

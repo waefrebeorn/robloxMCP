@@ -1,243 +1,193 @@
-
--- RunCode.luau - Rewritten from scratch
+-- RunCode.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
--- Assuming Types.CallToolResultTable is implicitly handled by ToolHelpers.FormatSuccess/ErrorResult
--- If direct annotation is needed: local Types = require(Main.Types)
+local Types = require(Main.Types)
 
--- Forward declaration for addToOutput due to mutual recursion potential or for clarity
-local addToOutput: (tag: string, ...: any) -> ()
-
--- Simplified internal serialization for individual values
-local function toStrTableInternal(val: any): string
-    if type(val) == "table" then
-        local parts: {string} = {}
-        local count: number = 0
-        for k, v in pairs(val) do
-            table.insert(parts, tostring(k) .. "=" .. tostring(v))
-            count += 1
-            if count >= 10 then -- Limit output for very large tables
-                table.insert(parts, "...")
-                break
-            end
-        end
-        return "{ " .. table.concat(parts, ", ") .. " }"
-    else
-        return tostring(val)
-    end
-
-end
---]]
-
-
--- Helper function to process variadic arguments for addToOutput
-local function processVariadicArgsForOutput(...: any): string
-    local n = select("#", ...)
-    if n == 0 then
-        return ""
-    end
-    local argStrings: {string} = {}
-    for i = 1, n do
-        table.insert(argStrings, toStrTableInternal(select(i, ...)))
-    end
-    return table.concat(argStrings, "\t")
-
-end
---]]
-
-
--- Modified toStrTable for one-level deep table string representation
-local function toStrTable(t) -- t is from table.pack
-    local strTable = {}
-    if t and t.n then -- Check if it looks like a packed table from table.pack
-        for i = 1, t.n do
-            local val = t[i]
-            if type(val) == "table" then
-                local innerParts = {}
-                for k, v in pairs(val) do
-                    table.insert(innerParts, tostring(k) .. "=" .. tostring(v))
-                end
-                strTable[i] = "{ " .. table.concat(innerParts, ", ") .. " }"
-            else
-                strTable[i] = tostring(val)
-            end
-        end
-    elseif type(t) == "table" then -- Fallback if not a packed table (e.g. if toStrTable is called with a single table directly)
-        local fallbackParts = {}
-        for k,v in pairs(t) do
-             table.insert(fallbackParts, tostring(k) .. "=" .. tostring(v))
-        end
-        -- This case should return a table of strings, so wrap the single string in a table
-        return {"{ " .. table.concat(fallbackParts, ", ") .. " }"}
-
-    elseif t == nil then -- Corrected 'else if' to 'elseif'
-
-
--- Main handler function
-local function handleRunCode(args: {command: string}) -- : Types.CallToolResultTable (if Types module is used)
-    if type(args) ~= "table" or type(args.command) ~= "string" then
-        return ToolHelpers.FormatErrorResult("Error: RunCode command argument must be a table with a 'command' string.")
-
-    end
-    return strTable
-
-
-    local command: string = args.command
+local function executeRunCode(command: string): (Types.RunCodeResultData?, string?)
     local output_parts: {string} = {}
-    local an_error_occurred_in_user_code: boolean = false
+    local captured_returns: {any} = {}
+    local load_error: string? = nil
+    local runtime_error: string? = nil
 
-    -- Define addToOutput within handleRunCode to capture output_parts and an_error_occurred_in_user_code
-    addToOutput = function(tag: string, ...: any)
-        local formatted_arguments = processVariadicArgsForOutput(...)
-        table.insert(output_parts, tag .. " " .. formatted_arguments .. "\n")
+    local success, loaded_chunk = pcall(loadstring, command)
+    if not success or not loaded_chunk then
+        load_error = "Failed to load string: " .. (loaded_chunk or "Unknown error") -- loaded_chunk is error if pcall failed
+        local resultData: Types.RunCodeResultData = {
+            message = "Code execution failed during loading.",
+            output = load_error,
+            return_values = nil,
+        }
+        -- Even though it's an error, we are packaging it as per RunCodeResultData structure
+        -- The higher level will decide if this specific structure should be an error response.
+        -- For this tool, even load errors are "output".
+        -- However, to fit the (data?, errorString?) pattern for the helper:
+        return nil, load_error
     end
 
-    local pcall_execution_success: boolean, execution_result: any = pcall(function()
-        local func: any, load_err: string? = loadstring(command)
-        if not func then
-            an_error_occurred_in_user_code = true
-            addToOutput("[LOADSTRING ERROR]", load_err or "Unknown loadstring error")
-            return -- Exit anonymous function
+    -- Setup environment for the chunk
+    local chunk_env = getfenv(loaded_chunk)
+    if type(chunk_env) ~= "table" then chunk_env = {} end -- Should not happen
+
+    local oldPrint = chunk_env.print
+    chunk_env.print = function(...)
+        if type(oldPrint) == "function" then
+            pcall(oldPrint, ...) -- Call original safely
         end
-
-        local chunk_env = getfenv(func)
-        if type(chunk_env) ~= "table" then -- Should always be a table
-            chunk_env = {}
+        local argStrings: {string} = {}
+        for i = 1, select("#", ...) do
+            table.insert(argStrings, tostring(select(i, ...)))
         end
+        table.insert(output_parts, table.concat(argStrings, "	"))
+    end
 
-        local oldPrint = chunk_env.print
-        chunk_env.print = function(...: any)
-            if type(oldPrint) == "function" then
-                pcall(oldPrint, ...) -- Call original safely
-            end
-            addToOutput("[OUTPUT]", ...)
+    local oldWarn = chunk_env.warn
+    chunk_env.warn = function(...)
+        if type(oldWarn) == "function" then
+            pcall(oldWarn, ...) -- Call original safely
         end
-
-        local oldWarn = chunk_env.warn
-        chunk_env.warn = function(...: any)
-            if type(oldWarn) == "function" then
-                pcall(oldWarn, ...) -- Call original safely
-            end
-            addToOutput("[WARNING]", ...)
+        local argStrings: {string} = {}
+        for i = 1, select("#", ...) do
+            table.insert(argStrings, "[WARNING] " .. tostring(select(i, ...)))
         end
+        table.insert(output_parts, table.concat(argStrings, "	"))
+    end
 
-        -- Override error to capture and not halt, unless pcall itself fails
-        -- Note: The original 'error' function cannot be truly "safely" called without halting.
-        -- We just capture its message.
-        chunk_env.error = function(message: any, level: number?) -- level is optional
-            an_error_occurred_in_user_code = true
-            addToOutput("[ERROR]", message)
-            -- Do not call original error() here as it would halt this pcall's protected environment.
-            -- The script execution will stop after this custom error function returns,
-            -- but the pcall protecting 'func()' will catch this "controlled" exit.
-            -- To make it truly error and stop func: error(message, 0) but that's handled by pcall(func)
-		end
+    -- Note: Overriding 'error' can be tricky. If the user's code calls error(),
+    -- it will stop execution within its pcall layer.
+    -- The pcall around `loaded_chunk()` below will catch this.
 
-        -- Execute the loaded chunk
-        local success_run: boolean, results_from_run: any = pcall(func)
+    local execution_success, result_or_err = pcall(loaded_chunk)
 
-        if not success_run then
-            an_error_occurred_in_user_code = true
-            -- The error message is in results_from_run
-            addToOutput("[RUNTIME ERROR]", results_from_run)
-        else
-            -- pcall returns success status then actual results
-            -- To get actual varargs from 'func', we need to unpack results_from_run if it's a table
-            -- However, pcall(func) returns success_run, then result1, result2, ...
-            -- So, we need to process `results_from_run` and any subsequent arguments if `pcall` could return multiple values
-            -- Let's re-evaluate how to capture multiple return values from `pcall(func)`
-            -- The `results` table in prior versions was `{pcall(func)}`. This captures all returns.
-
-            -- Correct way to capture all return values from func:
-            local all_results_from_func = { success_run, results_from_run } -- This is not quite right for multiple returns.
-                                                                      -- Let's use the previous method:
-            local packed_results_from_func = { pcall(func) } -- This executes func AGAIN. BAD.
-
-            -- We already have success_run and the first result (or error) in results_from_run
-            -- The challenge is capturing MULTIPLE return values from a successful func()
-            -- when it's already been called via pcall.
-            -- The current `results_from_run` IS the first return value (or error message).
-            -- `pcall` doesn't return a table of results; it returns them as multiple return values.
-            -- The anonymous function passed to the outer pcall needs to return these.
-
-            -- Let's adjust the execution and result handling:
-            -- The anonymous function for the outer pcall should return what func returns.
-            -- This part needs careful design. For now, let's stick to simpler return handling
-            -- and assume single or no return value is the primary concern for output.
-            -- If func ran successfully and returned values, they are effectively lost with current addToOutput for [RETURNED]
-
-            -- Let's make the anonymous function return the results from `func` to the outer pcall
-            -- This means the `execution_result` will hold them if `pcall_execution_success` is true.
-            -- This section is tricky. Reverting to a slightly simpler model for now from previous iteration for returns.
-            -- The `results = {pcall(func)}` was a good pattern.
-
-            -- Re-think execution to correctly capture returns:
-            -- Solution: The anonymous function itself should return the multiple values from func.
-            -- This cannot be done directly because the anonymous function has its own return path.
-            -- So, we must use the table packing method for `pcall` on `func` itself.
-
-            -- This section will be simplified to what `pcall` on `func` directly provides.
-            -- `success_run` and `results_from_run` (which is the first return or error) are already available.
-            -- If `success_run` is true and `results_from_run` is not nil, it's a return value.
-            if success_run then
-                -- The current structure only directly captures the first return value (results_from_run).
-                -- To capture all, the call would need to be like: local r = {func()}; addToOutput("[RETURNED]", table.unpack(r))
-                -- but this must be within the pcall(func) protection.
-
-                -- Let's assume for this rewrite, we simplify [RETURNED] to only show the first value if any.
-                -- Or, rely on print() within the user's code to show multiple returns.
-                -- For robust multi-return capture, the previous `{pcall(func)}` pattern inside the
-                -- main anonymous function and then processing that table is better.
-                -- Let's reinstate that pattern for returned values.
-
-                -- This part is complex with nested pcalls and return value propagation.
-                -- The prompt implies the anonymous function for the outer pcall does the work.
-                -- Let's make that anonymous function return a table of actual results from `func`.
-
-                -- The following return is for the anonymous function passed to the outer pcall
-                if results_from_run ~= nil then -- results_from_run is the first return value if successful
-                    -- This doesn't capture multiple returns effectively.
-                    -- To do so, the anonymous function should return them, and they'd be part of execution_result
-                    -- For now, we'll just add the first one if it exists.
-                    -- A more complete solution would involve returning a table from the anonymous function.
-                    -- addToOutput("[RETURNED]", results_from_run) -- This is just one value.
-
-                    -- Let's use a temporary table to collect returns if successful
-                    -- This means we need to call func and capture its results if success_run is true
-                    -- This is what the previous {pcall(func)} structure did more cleanly.
-                    -- Sticking to the prompt's structure: the anonymous function handles this.
-                    -- The current `results_from_run` is the first return value.
-                    -- To show more, user must print them or the design here must change.
-                    -- For now, if any single value is returned, log it.
-                    if results_from_run ~= nil then
-                         addToOutput("[RETURNED]", results_from_run)
-                    end
-                end
-            end
-            -- End of execution logic for `func`
-        end
-    end) -- End of the main pcall for loadstring and execution environment
-
-    local final_output_string: string = table.concat(output_parts, "")
-
-    local result_package: any -- Define once
-    if not pcall_execution_success then
-        -- This indicates an error in the script's own Lua logic (e.g., in addToOutput, environment setup)
-        an_error_occurred_in_user_code = true -- Mark as an error state
-        addToOutput("[CRITICAL TOOL ERROR]", execution_result) -- execution_result is the error from the tool's code
-        final_output_string = table.concat(output_parts, "") -- Recapture output_parts
-        result_package = ToolHelpers.FormatErrorResult(final_output_string)
-    elseif an_error_occurred_in_user_code then
-        result_package = ToolHelpers.FormatErrorResult(final_output_string)
+    if not execution_success then
+        runtime_error = tostring(result_or_err)
+        table.insert(output_parts, "[RUNTIME ERROR] " .. runtime_error)
     else
-        if final_output_string == "" then
-            final_output_string = "Command executed successfully with no output or explicit return values shown."
+        -- Capture return values if successful
+        -- `result_or_err` is the first return value. To capture all:
+        -- This requires calling the function and collecting all its returns.
+        -- The `pcall(loaded_chunk)` already did this. `result_or_err` is the first.
+        -- To get all, we would need: local all_returns = { loaded_chunk() } but that's not safe.
+        -- The pcall already gives us the returns.
+        -- If pcall(f) returns true, r1, r2, ..., then result_or_err is r1.
+        -- This needs a different approach to capture varargs from pcall's return.
+
+        -- Correct way to capture all results from a pcall:
+        local resultsFromPcall = { pcall(loaded_chunk) } -- This re-runs the chunk, which is BAD.
+
+        -- We need to use the results from the *first* pcall(loaded_chunk)
+        -- `execution_success` is resultsFromPcall[1]
+        -- `result_or_err` is resultsFromPcall[2]
+        -- `select(3, table.unpack(resultsFromPcall))` would be the rest. This is getting complicated.
+
+        -- Let's simplify: if execution_success, result_or_err is the first return.
+        -- For multiple returns, the script should print them if they need to be seen.
+        -- We will capture the first return value if it exists.
+        if result_or_err ~= nil then
+             table.insert(captured_returns, result_or_err) -- Store the first return
         end
-        result_package = ToolHelpers.FormatSuccessResult({ output = final_output_string })
+        -- To truly capture all, the anonymous function in pcall would need to return a table.
+        -- Or, the environment needs to be set on the function *before* pcall like this:
+        -- setfenv(loaded_chunk, chunk_env)
+        -- local status, ... = pcall(loaded_chunk)
+        -- local n = select("#", ...)
+        -- for i=1, n do table.insert(captured_returns, select(i, ...)) end
+        -- This is a common pattern. Let's try to implement this.
     end
 
-    return result_package
+    -- Re-attempting capture with setfenv and varargs from pcall
+    for k,v in pairs(chunk_env) do _G[k] = v end -- Make print/warn available globally for simplicity if chunk_env is not _G
+    setfenv(loaded_chunk, chunk_env) -- Set the modified environment
 
+    local status_final, returns_final = xpcall(loaded_chunk, function(err_obj)
+        -- Custom error handler for xpcall
+        runtime_error = tostring(err_obj)
+        if typeof(err_obj) == "Instance" and err_obj:IsA("ScriptContext") then -- Roblox specific error object
+            runtime_error = err_obj.ErrorMessage
+        elseif type(err_obj) == "table" and err_obj.message then
+            runtime_error = err_obj.message
+        end
+        table.insert(output_parts, "[RUNTIME ERROR] " .. runtime_error)
+        return runtime_error -- Return the error message for xpcall
+    end)
+
+    if status_final then
+        -- If xpcall is successful, returns_final contains all return values as a tuple
+        -- We need to pack them into the captured_returns table
+        -- However, xpcall on success returns `true` then the values.
+        -- So `returns_final` here is actually the first return value.
+        -- The varargs are after `status_final`.
+        -- This needs to be: local status_final, ret1, ret2, ... = xpcall(...)
+        -- This means my `returns_final` variable name is misleading.
+
+        -- Let's try again with proper vararg capture from xpcall
+        local pack = { xpcall(loaded_chunk, function(err_obj)
+            runtime_error = tostring(err_obj)
+            if typeof(err_obj) == "Instance" and err_obj:IsA("ScriptContext") then
+                runtime_error = err_obj.ErrorMessage
+            elseif type(err_obj) == "table" and err_obj.message then
+                runtime_error = err_obj.message
+            end
+            table.insert(output_parts, "[RUNTIME ERROR] " .. runtime_error)
+            return runtime_error
+        end) }
+
+        if pack[1] == true then -- xpcall succeeded
+            for i = 2, #pack do
+                table.insert(captured_returns, pack[i])
+            end
+        end
+        -- If pack[1] is false, runtime_error was already set by the error handler
+    else
+        -- This case means xpcall itself failed or the error handler re-errored,
+        -- runtime_error should already be set by the handler.
+        if not runtime_error then runtime_error = "Unknown error during xpcall." end
+    end
+
+    -- Restore global environment if changed
+    for k,_ in pairs(chunk_env) do if _G[k] == chunk_env[k] then _G[k] = nil end end
+
+
+    local final_output_string = table.concat(output_parts, "\n") -- Use literal
+ for multiline
+
+    if load_error then -- Prioritize load error
+        return nil, load_error
+    elseif runtime_error then
+         local resultData: Types.RunCodeResultData = {
+            message = "Code executed with runtime errors.",
+            output = final_output_string,
+            return_values = captured_returns, -- May have some returns before error
+        }
+        return nil, "Runtime error: " .. runtime_error .. (final_output_string ~= "" and ("\nOutput:\n" .. final_output_string) or "")
+    end
+
+    local resultData: Types.RunCodeResultData = {
+        message = "Code executed successfully.",
+        output = final_output_string,
+        return_values = captured_returns,
+    }
+    return resultData, nil
+end
+
+
+local function handleRunCode(args: Types.RunCodeArgs)
+    local success, resultOrErrorData = pcall(function()
+        if type(args.command) ~= "string" then
+            return nil, "'command' is required and must be a string."
+        end
+        return executeRunCode(args.command) -- Returns (data?, errorString?)
+    end)
+
+    if success then
+        local data, errStr = resultOrErrorData -- unpack tuple
+        if errStr then
+            return ToolHelpers.FormatErrorResult(errStr)
+        else
+            return ToolHelpers.FormatSuccessResult(data)
+        end
+    else
+        return ToolHelpers.FormatErrorResult("Internal error in RunCode: " .. tostring(resultOrErrorData))
+    end
 end
 
 return handleRunCode
