@@ -7,29 +7,22 @@ local PathfindingService = game:GetService("PathfindingService")
 local function execute(args: Types.ComputePathArgs)
     -- Arguments are now expected directly on args table
     local success, pcall_result = pcall(function()
-        local startPosJson = args.start_position
-        local endPosJson = args.end_position
-        local agentParamsJson = args.agent_parameters -- Optional
+        local startPos = args.start_position -- Expecting Vector3
+        local endPos = args.end_position     -- Expecting Vector3
+        local agentParamsJson = args.agent_parameters -- Optional. This is still a table, specific parsing for Costs below.
 
-        if not startPosJson or type(startPosJson) ~= "table" then
-            return ToolHelpers.FormatErrorResult("'start_position' is required and must be a Vector3-like table.")
+        if not startPos or typeof(startPos) ~= "Vector3" then
+            return ToolHelpers.FormatErrorResult("'start_position' is required and must be a Vector3.")
         end
-        if not endPosJson or type(endPosJson) ~= "table" then
-            return ToolHelpers.FormatErrorResult("'end_position' is required and must be a Vector3-like table.")
+        if not endPos or typeof(endPos) ~= "Vector3" then
+            return ToolHelpers.FormatErrorResult("'end_position' is required and must be a Vector3.")
         end
         if agentParamsJson ~= nil and type(agentParamsJson) ~= "table" then
             return ToolHelpers.FormatErrorResult("'agent_parameters' must be a table if provided.")
         end
 
-        local startPos = ToolHelpers.JsonToRobloxValue(startPosJson)
-        local endPos = ToolHelpers.JsonToRobloxValue(endPosJson)
-
-        if typeof(startPos) ~= "Vector3" then
-            return ToolHelpers.FormatErrorResult("'start_position' did not convert to a Vector3. Ensure format {'x':0,'y':0,'z':0}.")
-        end
-        if typeof(endPos) ~= "Vector3" then
-            return ToolHelpers.FormatErrorResult("'end_position' did not convert to a Vector3. Ensure format {'x':0,'y':0,'z':0}.")
-        end
+        -- JsonToRobloxValue calls removed. startPos and endPos are used directly.
+        -- Redundant type checks also removed as they are covered by the initial checks.
 
         local agentParameters = {}
         if agentParamsJson then
