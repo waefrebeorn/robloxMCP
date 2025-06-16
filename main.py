@@ -297,56 +297,10 @@ async def main_loop():
         console.print("Type your commands for Roblox Studio, or 'exit' to quit.", style="dim")
 
 
-    # genai.configure(api_key=GEMINI_API_KEY) # Old SDK
-
-    # Initialize client and model resource name
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    model_resource_name = f"models/{GEMINI_MODEL_NAME}"
-
-    system_instruction_text = (
-        "You are an expert AI assistant for Roblox Studio, named Gemini-Roblox-Broker. "
-        "Your goal is to help users by using the provided tools to interact with their game development environment. "
-        "First, think step-by-step about the user's request. "
-        "Then, call the necessary tools with correctly formatted arguments. "
-        "If a request is ambiguous, ask clarifying questions. "
-        "After a tool is used, summarize the result for the user. "
-        "You cannot see the screen or the project explorer, so rely on the tool outputs for information."
-    )
-
-    chat_session = client.aio.chats.create(
-        model=model_resource_name,
-        history=[
-            types.Content(role="user", parts=[types.Part(text=system_instruction_text)]),
-            types.Content(role="model", parts=[types.Part(text="Understood. I will act as an expert AI assistant for Roblox Studio.")])
-        ]
-    )
-
-    mcp_client = MCPClient(
-        RBX_MCP_SERVER_PATH,
-        max_initial_start_attempts=MCP_MAX_INITIAL_START_ATTEMPTS,
-        reconnect_attempts=MCP_RECONNECT_ATTEMPTS
-    )
-    tool_dispatcher = ToolDispatcher(mcp_client)
-    mcp_client_instance = None
-
-    try:
-        mcp_client_instance = mcp_client
-        from rich.status import Status
-        with console.status("[bold green]Starting MCP Server...", spinner="dots") as status_spinner_mcp:
-            await mcp_client.start()
-
-        console.print(Panel("[bold green]Roblox Studio Gemini Broker Initialized[/bold green]",
-                            title="[white]System Status[/white]",
-                            subtitle=f"Model: {GEMINI_MODEL_NAME} | MCP Server: {'[bold green]Running[/bold green]' if mcp_client.is_alive() else '[bold red]Failed[/bold red]'}"))
-        if not mcp_client.is_alive():
-            console.print(Panel("[bold red]MCP Server failed to start. Please check the logs and try restarting the broker.[/bold red]", title="[red]Critical Error[/red]"))
-            return
-
         parser = argparse.ArgumentParser(description="Roblox Studio Gemini Broker")
         parser.add_argument("--test_command", type=str, help="Execute a single test command and exit.")
         parser.add_argument('--test_file', type=str, help='Path to a file containing a list of test commands, one per line.')
         args = parser.parse_args()
-
 
         if args.test_file:
             console.print(f"\n[bold yellow]>>> Test File Mode: '{args.test_file}' <<<[/bold yellow]")
