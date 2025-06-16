@@ -1,32 +1,31 @@
 -- CreateTeam.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types) -- Added
 local TeamsService = game:GetService("Teams")
 
-local function execute(args)
-    -- Arguments are now expected directly on args table
-    local success, pcall_result = pcall(function()
+local function execute(args: Types.CreateTeamArgs) -- Type annotation added
+    local success, resultOrError = pcall(function()
         local teamName = args.team_name
         local teamColorBrickColorString = args.team_color_brickcolor_string
         local autoAssignable = if args.auto_assignable == nil then true else args.auto_assignable
 
         if not teamName or type(teamName) ~= "string" then
-            return ToolHelpers.FormatErrorResult("'team_name' is required and must be a string.")
+            return "'team_name' is required and must be a string."
         end
         if not teamColorBrickColorString or type(teamColorBrickColorString) ~= "string" then
-            return ToolHelpers.FormatErrorResult("'team_color_brickcolor_string' is required and must be a string (e.g., 'Bright red').")
+            return "'team_color_brickcolor_string' is required (e.g., 'Bright red')."
         end
         if type(autoAssignable) ~= "boolean" then
-            return ToolHelpers.FormatErrorResult("'auto_assignable' must be a boolean.")
+            return ("'auto_assignable' must be a boolean, got %s"):format(typeof(autoAssignable))
         end
 
         if TeamsService:FindFirstChild(teamName) then
-            return ToolHelpers.FormatErrorResult(("Team '%s' already exists."):format(teamName))
+            return ("Team '%s' already exists."):format(teamName)
         end
 
         local teamColor = BrickColor.new(teamColorBrickColorString)
-        -- As noted before, BrickColor.new() defaults to white for invalid strings.
-        -- This behavior is kept unless stricter validation is required in a future task.
+        -- BrickColor.new() defaults to white for invalid strings.
 
         local newTeam = Instance.new("Team")
         newTeam.Name = teamName
@@ -34,19 +33,24 @@ local function execute(args)
         newTeam.AutoAssignable = autoAssignable
         newTeam.Parent = TeamsService
 
-        return ToolHelpers.FormatSuccessResult({
+        local resultData: Types.CreateTeamResultData = {
             message = ("Successfully created team '%s'."):format(teamName),
             team_name = newTeam.Name,
             team_color = tostring(newTeam.TeamColor),
             auto_assignable = newTeam.AutoAssignable,
-            team_path = newTeam:GetFullName()
-        })
+            team_path = newTeam:GetFullName(),
+        }
+        return resultData
     end)
 
     if success then
-        return pcall_result
+        if type(resultOrError) == "string" then
+            return ToolHelpers.FormatErrorResult(resultOrError)
+        else
+            return ToolHelpers.FormatSuccessResult(resultOrError)
+        end
     else
-        return ToolHelpers.FormatErrorResult("Internal error in CreateTeam: " .. tostring(pcall_result))
+        return ToolHelpers.FormatErrorResult("Internal error in CreateTeam: " .. tostring(resultOrError))
     end
 end
 

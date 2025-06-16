@@ -1,52 +1,47 @@
 -- CreateTextChannel.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types) -- Added
 local TextChatService = game:GetService("TextChatService")
 
-local function execute(args)
-    -- Arguments are now expected directly on args table
-    local success, pcall_result = pcall(function()
+local function execute(args: Types.CreateTextChannelArgs) -- Type annotation added
+    local success, resultOrError = pcall(function()
         local channelName = args.channel_name
-        local properties = args.properties -- Optional, expecting a Lua table
+        local propertiesJson = args.properties or {} -- Default to empty table
 
         if not channelName or type(channelName) ~= "string" or channelName == "" then
-            return ToolHelpers.FormatErrorResult("'channel_name' is required and must be a non-empty string.")
+            return "'channel_name' is required and must be a non-empty string."
         end
-
-        properties = properties or {} -- Default to empty table
-        if type(properties) ~= "table" then
-            return ToolHelpers.FormatErrorResult("'properties', if provided, must be a table.")
+        if type(propertiesJson) ~= "table" then
+            return "'properties', if provided, must be a table."
         end
 
         if not TextChatService then
-            return ToolHelpers.FormatErrorResult("TextChatService not available. This service is essential for TextChannel creation.")
+            return "TextChatService not available."
         end
 
-        if TextChatService:FindFirstChild(channelName) then
-            return ToolHelpers.FormatErrorResult(("TextChannel '%s' already exists in TextChatService."):format(channelName))
+        local existingChannel = TextChatService:FindFirstChild(channelName)
+        if existingChannel and existingChannel:IsA("TextChannel") then
+            return ("TextChannel '%s' already exists."):format(channelName)
         end
 
         local newChannel = Instance.new("TextChannel")
         newChannel.Name = channelName
 
         local propertyErrors = {}
-        if properties then
-            for propName, propValueInput in pairs(properties) do
-                if string.lower(propName) == "parent" then
-                    -- TextChannels are always parented to TextChatService.
-                    print("CreateTextChannel: 'Parent' property in 'properties' table is ignored.")
+        for propName, propValueInput in pairs(propertiesJson) do
+            if string.lower(propName) == "parent" then
+                -- Parent is TextChatService
+            else
+                local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, "TextChannel."..propName)
+                if convertError then
+                    table.insert(propertyErrors, ("Property '%s': %s"):format(propName, convertError))
                 else
-                    -- Use JsonToRobloxValue for each property value
-                    local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, "TextChannel."..propName)
-                    if convertError then
-                        table.insert(propertyErrors, ("Property '%s': Failed to convert input value: %s"):format(propName, convertError))
-                    else
-                        local setSuccess, setError = pcall(function()
-                            newChannel[propName] = convertedValue
-                        end)
-                        if not setSuccess then
-                            table.insert(propertyErrors, ("Property '%s': Error setting value: %s"):format(propName, setError))
-                        end
+                    local setSuccess, setError = pcall(function()
+                        newChannel[propName] = convertedValue
+                    end)
+                    if not setSuccess then
+                        table.insert(propertyErrors, ("Property '%s': %s"):format(propName, setError))
                     end
                 end
             end
@@ -54,22 +49,27 @@ local function execute(args)
 
         if #propertyErrors > 0 then
             newChannel:Destroy()
-            return ToolHelpers.FormatErrorResult(("Error(s) applying properties to new TextChannel '%s': %s"):format(channelName, table.concat(propertyErrors, "; ")))
+            return ("Error(s) applying properties to new TextChannel '%s': %s"):format(channelName, table.concat(propertyErrors, "; "))
         end
 
         newChannel.Parent = TextChatService
 
-        return ToolHelpers.FormatSuccessResult({
+        local resultData: Types.CreateTextChannelResultData = {
             message = ("Successfully created TextChannel '%s'."):format(channelName),
             channel_name = newChannel.Name,
-            channel_path = newChannel:GetFullName()
-        })
+            channel_path = newChannel:GetFullName(),
+        }
+        return resultData
     end)
 
     if success then
-        return pcall_result
+        if type(resultOrError) == "string" then
+            return ToolHelpers.FormatErrorResult(resultOrError)
+        else
+            return ToolHelpers.FormatSuccessResult(resultOrError)
+        end
     else
-        return ToolHelpers.FormatErrorResult("Internal error in CreateTextChannel: " .. tostring(pcall_result))
+        return ToolHelpers.FormatErrorResult("Internal error in CreateTextChannel: " .. tostring(resultOrError))
     end
 end
 

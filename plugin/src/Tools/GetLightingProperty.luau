@@ -1,57 +1,45 @@
 -- GetLightingProperty.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types) -- Added
 local Lighting = game:GetService("Lighting")
 
-local function execute(args)
-    -- Arguments are expected directly on args table
-    local success, pcall_result = pcall(function()
+local function execute(args: Types.GetLightingPropertyArgs) -- Type annotation added
+    local success, resultOrError = pcall(function()
         local propertyName = args.property_name
 
         if not propertyName or type(propertyName) ~= "string" then
-            return ToolHelpers.FormatErrorResult("'property_name' is required and must be a string.")
+            return "'property_name' is required and must be a string."
         end
 
-        -- Check if property actually exists before trying to access it
-        local propertyExists = false
-        local getInstancePropertySuccess, _ = pcall(function()
-            propertyExists = Lighting[propertyName] ~= nil -- Accessing it might error for some internal properties
-        end)
-        -- More robust check:
-        local properties = Lighting:GetProperties()
-        propertyExists = false -- reset
-        for _, propInfo in ipairs(properties) do
-            if propInfo.Name == propertyName then
-                propertyExists = true
-                break
-            end
-        end
-
-
-        if not propertyExists then
-            return ToolHelpers.FormatErrorResult(("Property '%s' does not exist on Lighting service."):format(propertyName))
-        end
-
-
-        local getSuccess, propertyValueOrError = pcall(function()
+        local propertyValue
+        local getSuccess, valueOrError = pcall(function()
             return Lighting[propertyName]
         end)
 
         if not getSuccess then
-            return ToolHelpers.FormatErrorResult(("Failed to get Lighting property '%s': %s"):format(propertyName, tostring(propertyValueOrError)))
+            if string.find(tostring(valueOrError), "is not a valid member of Lighting") then
+                 return ("Property '%s' is not a valid member of Lighting."):format(propertyName)
+            end
+            return ("Failed to get Lighting property '%s': %s"):format(propertyName, tostring(valueOrError))
         end
+        propertyValue = valueOrError
 
-        return ToolHelpers.FormatSuccessResult({
-            message = ("Successfully retrieved Lighting property '%s'."):format(propertyName),
+        local resultData: Types.GetLightingPropertyResultData = {
             property_name = propertyName,
-            value = ToolHelpers.RobloxValueToJson(propertyValueOrError) -- Value is already prepared for JSON by RobloxValueToJson
-        })
+            value = propertyValue, -- Raw Roblox value
+        }
+        return resultData
     end)
 
     if success then
-        return pcall_result
+        if type(resultOrError) == "string" then
+            return ToolHelpers.FormatErrorResult(resultOrError)
+        else
+            return ToolHelpers.FormatSuccessResult(resultOrError)
+        end
     else
-        return ToolHelpers.FormatErrorResult("Internal error in GetLightingProperty: " .. tostring(pcall_result))
+        return ToolHelpers.FormatErrorResult("Internal error in GetLightingProperty: " .. tostring(resultOrError))
     end
 end
 

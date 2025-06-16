@@ -1,39 +1,43 @@
 -- AddTag.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types) -- Added
 local CollectionService = game:GetService("CollectionService")
 
-local function execute(args)
-    -- Arguments are now expected directly on args, e.g. args.instance_path
-    local success, pcall_result = pcall(function()
+local function execute(args: Types.AddTagArgs) -- Type annotation added
+    local success, resultOrError = pcall(function()
         local instancePath = args.instance_path
         local tagName = args.tag_name
 
         if not instancePath or type(instancePath) ~= "string" then
-            return ToolHelpers.FormatErrorResult("'instance_path' is required and must be a string.")
+            return "'instance_path' is required and must be a string." -- Return error string
         end
         if not tagName or type(tagName) ~= "string" or tagName == "" then
-            return ToolHelpers.FormatErrorResult("'tag_name' is required and must be a non-empty string.")
+            return "'tag_name' is required and must be a non-empty string." -- Return error string
         end
 
         local instance, err = ToolHelpers.FindInstanceByPath(instancePath)
         if not instance then
-            return ToolHelpers.FormatErrorResult("Failed to find instance at path: " .. instancePath .. ". " .. (err or ""))
+            return ("Failed to find instance at path: %s. %s"):format(instancePath, err or "Unknown error") -- Return error string
         end
 
         CollectionService:AddTag(instance, tagName)
 
-        return ToolHelpers.FormatSuccessResult({
-            message = ("Successfully added tag '%s' to instance %s."):format(tagName, instancePath),
-            instance_path = instancePath,
-            tag_name = tagName
-        })
+        -- Return AddTagResultData table
+        local resultData: Types.AddTagResultData = {
+            message = ("Successfully added tag '%s' to instance '%s'."):format(tagName, instance:GetFullName()), -- Use instance:GetFullName() for consistency
+            instance_path = instance:GetFullName(), -- Use instance:GetFullName()
+            tag_name = tagName,
+        }
+        return resultData
     end)
 
     if success then
-        return pcall_result
+        -- Pass the XXXResultData to FormatSuccessResult
+        return ToolHelpers.FormatSuccessResult(resultOrError)
     else
-        return ToolHelpers.FormatErrorResult("Internal error in AddTag: " .. tostring(pcall_result))
+        -- Pass the error message string to FormatErrorResult
+        return ToolHelpers.FormatErrorResult("Internal error in AddTag: " .. tostring(resultOrError))
     end
 end
 

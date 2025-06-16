@@ -1,101 +1,93 @@
--- SetProperties.luau (Refactored to match SetInstanceProperties.luau)
+-- SetProperties.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types) -- Added
 
-local function execute(args)
-    -- Arguments are expected directly on args table
-	-- This tool is an alias for SetInstanceProperties, so the argument key is "SetProperties"
-	if not args["SetProperties"] then
-		return ToolHelpers.FormatErrorResult("SetProperties: Invalid argument structure. Expected 'SetProperties' key containing path and properties.")
-	end
-	local toolArgs = args["SetProperties"] -- Keep this if Main.server.luau sends { SetProperties = {path="...", props=...} }
-                                         -- If Main.server.luau sends {path="...", props=...} directly, then toolArgs = args
-
-    local success, pcall_result = pcall(function()
-        -- Assuming toolArgs holds the actual parameters like path and properties
-        -- If args directly holds path and properties (after potential correction in Main.server.luau):
-        -- local path = args.path
-        -- local properties = args.properties
-
-        -- For now, stick to the established pattern from other corrected tools,
-        -- assuming Main.server.luau might still be sending the nested structure for some tools,
-        -- OR that the user of this specific "SetProperties" tool expects to provide arguments under that key.
-        -- The prompt for THIS SUBTASK says "args.property_name", implying direct access.
-        -- So, I will assume direct access for 'path' and 'properties' from the 'args' table.
-
+-- This tool will now be a direct alias or very similar to SetInstanceProperties
+local function execute(args: Types.SetPropertiesArgs) -- Type annotation added
+    local success, resultOrError = pcall(function()
         local path = args.path
-        local properties = args.properties
+        local propertiesToSet = args.properties
 
         if not path or type(path) ~= "string" then
-            return ToolHelpers.FormatErrorResult("'path' is required and must be a string.")
+            return "'path' is required and must be a string."
         end
-        if not properties or type(properties) ~= "table" then
-            return ToolHelpers.FormatErrorResult("'properties' is required and must be a table.")
+        if not propertiesToSet or type(propertiesToSet) ~= "table" then
+            return "'properties' is required and must be a table."
         end
-        if next(properties) == nil then -- Check if properties table is empty
-            return ToolHelpers.FormatErrorResult("'properties' table cannot be empty.")
+        if next(propertiesToSet) == nil then
+            return "'properties' table cannot be empty."
         end
 
         local instance, err = ToolHelpers.FindInstanceByPath(path)
         if not instance then
-            return ToolHelpers.FormatErrorResult("Failed to find instance at path: " .. path .. ". " .. (err or ""))
+            return ("Failed to find instance at path: %s. %s"):format(path, err or "Unknown error")
         end
 
-        local appliedProperties = {}
-        local failedProperties = {}
+        local propertyResults: {Types.PropertyWriteResult} = {}
+        local overallSuccess = true
+        local setPropsCount = 0
+        local failedPropsCount = 0
 
-        for propName, propValueInput in pairs(properties) do
-            local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, instance:GetClass().."."..propName)
+        for propName, propValueInput in pairs(propertiesToSet) do
+            local convertedValue, convertError = ToolHelpers.JsonToRobloxValue(propValueInput, instance:GetClass().Name.."."..propName)
 
             if convertError then
-                table.insert(failedProperties, {
+                table.insert(propertyResults, {
                     name = propName,
-                    error = "Value conversion failed: " .. convertError,
+                    status = "conversion_error",
+                    error_message = "Value conversion failed: " .. convertError,
                     original_value = propValueInput
                 })
-                print(("SetProperties: Error converting value for property '%s' on instance '%s': %s"):format(propName, path, convertError))
+                failedPropsCount += 1
+                overallSuccess = false
             else
                 local setSuccess, setError = pcall(function()
                     instance[propName] = convertedValue
                 end)
 
                 if setSuccess then
-                    table.insert(appliedProperties, propName)
-                else
-                    table.insert(failedProperties, {
+                    table.insert(propertyResults, {
                         name = propName,
-                        error = tostring(setError),
+                        status = "success"
+                    })
+                    setPropsCount += 1
+                else
+                    table.insert(propertyResults, {
+                        name = propName,
+                        status = "set_error",
+                        error_message = tostring(setError),
                         value_tried = convertedValue
                     })
-                    print(("SetProperties: Error setting property '%s' on instance '%s': %s"):format(propName, path, setError))
+                    failedPropsCount += 1
+                    overallSuccess = false
                 end
             end
         end
 
-        if #failedProperties > 0 then
-            local summaryMessage = ("Error setting some properties for %s. %d succeeded, %d failed."):format(
-                path,
-                #appliedProperties,
-                #failedProperties
-            )
-            return ToolHelpers.FormatErrorResult(summaryMessage, {
-                applied_properties = appliedProperties,
-                failed_properties_details = failedProperties,
-                instance_path = path
-            })
+        local message: string
+        if failedPropsCount > 0 then
+            message = ("Attempted to set %d properties for %s. %d succeeded, %d failed."):format(setPropsCount + failedPropsCount, path, setPropsCount, failedPropsCount)
         else
-            return ToolHelpers.FormatSuccessResult({
-                message = ("Successfully set %d properties for instance %s."):format(#appliedProperties, path),
-                applied_properties = appliedProperties,
-                instance_path = path
-            })
+            message = ("Successfully set %d properties for instance %s."):format(setPropsCount, path)
         end
+
+        local resultData: Types.SetPropertiesResultData = {
+            instance_path = path,
+            results = propertyResults,
+            message = message,
+        }
+        return resultData
     end)
 
     if success then
-        return pcall_result
+        if type(resultOrError) == "string" then
+            return ToolHelpers.FormatErrorResult(resultOrError)
+        else
+            return ToolHelpers.FormatSuccessResult(resultOrError)
+        end
     else
-        return ToolHelpers.FormatErrorResult("Internal error in SetProperties: " .. tostring(pcall_result))
+        return ToolHelpers.FormatErrorResult("Internal error in SetProperties: " .. tostring(resultOrError))
     end
 end
 

@@ -1,31 +1,32 @@
 -- SelectInstances.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
+local Types = require(Main.Types) -- Added
 local Selection = game:GetService("Selection")
 
-local function execute(args)
-    -- Arguments are expected directly on args table
-    local success, pcall_result = pcall(function()
+local function execute(args: Types.SelectInstancesArgs) -- Type annotation added
+    local success, resultOrError = pcall(function()
         local paths = args.paths
 
         if not paths or type(paths) ~= "table" then
-            return ToolHelpers.FormatErrorResult("'paths' is required and must be an array of strings.")
+            return "'paths' is required and must be an array of strings."
         end
 
-        local instancesToSelect = {}
-        local findErrors = {}
+        local instancesToSelect: {Instance} = {}
+        local findErrors: {Types.PathResolutionError} = {}
+        local message: string
 
         if #paths == 0 then
-            -- Clear selection if an empty list of paths is provided
             local setEmptySuccess, setEmptyError = pcall(Selection.Set, Selection, {})
             if not setEmptySuccess then
-                return ToolHelpers.FormatErrorResult("Failed to clear selection: " .. tostring(setEmptyError))
+                return "Failed to clear selection: " .. tostring(setEmptyError)
             end
-            return ToolHelpers.FormatSuccessResult({
+            local resultData: Types.SelectInstancesResultData = {
                 message = "Selection cleared as an empty 'paths' array was provided.",
                 selected_paths = {},
-                selection_count = 0
-            })
+                selection_count = 0,
+            }
+            return resultData
         end
 
         for _, pathString in ipairs(paths) do
@@ -35,59 +36,57 @@ local function execute(args)
                     table.insert(instancesToSelect, instance)
                 else
                     table.insert(findErrors, {path = pathString, error = err or "Not found"})
-                    -- Minimal logging, error details are in the response
-                    print(("SelectInstances: Could not find instance for selection at path: %s. Error: %s"):format(pathString, err or "Not found"))
                 end
             else
                 table.insert(findErrors, {path = tostring(pathString), error = "Path entry is not a string."})
             end
         end
 
-        -- Only attempt to set selection if there are valid instances to select,
-        -- otherwise, if all paths failed, it's effectively an error or a partial success with only errors.
         if #instancesToSelect > 0 then
             local setSuccess, setError = pcall(Selection.Set, Selection, instancesToSelect)
             if not setSuccess then
-                 -- This is a more critical error if setting the selection itself fails.
-                 return ToolHelpers.FormatErrorResult("Failed to set selection with found instances: " .. tostring(setError))
+                 return "Failed to set selection with found instances: " .. tostring(setError)
             end
         elseif #findErrors > 0 and #instancesToSelect == 0 then
-             -- All paths resulted in errors, no valid instances found to select.
-            return ToolHelpers.FormatErrorResult("No valid instances found from provided paths to select.", {errors = findErrors})
+            -- All paths resulted in errors, build a specific error message to return as string
+            local errorMessages = {}
+            for _, e in ipairs(findErrors) do table.insert(errorMessages, ("Path '%s': %s"):format(e.path, e.error)) end
+            return "No valid instances found from provided paths to select. Errors: " .. table.concat(errorMessages, "; ")
         end
 
-
         local currentSelection = Selection:Get()
-        local currentSelectionPaths = {}
+        local currentSelectionPaths: {string} = {}
         for _, selectedInstance in ipairs(currentSelection) do
             table.insert(currentSelectionPaths, selectedInstance:GetFullName())
         end
 
-        local message
         if #findErrors > 0 then
             message = ("Partially set selection. %d instance(s) selected. %d path(s) resulted in errors."):format(#currentSelectionPaths, #findErrors)
-        elseif #instancesToSelect == 0 and #paths > 0 then -- Paths provided, but none resolved and no errors (should be caught above)
-            message = "No instances were selected. Provided paths might have been valid but resolved to no selectable instances or were empty."
+        elseif #instancesToSelect == 0 and #paths > 0 then
+            message = "No instances were selected from the provided paths."
         else
             message = ("Successfully selected %d instance(s)."):format(#currentSelectionPaths)
         end
 
-        local resultData = {
+        local resultData: Types.SelectInstancesResultData = {
             message = message,
             selected_paths = currentSelectionPaths,
-            selection_count = #currentSelectionPaths
+            selection_count = #currentSelectionPaths,
         }
         if #findErrors > 0 then
             resultData.errors_finding_paths = findErrors
         end
-
-        return ToolHelpers.FormatSuccessResult(resultData)
+        return resultData
     end)
 
     if success then
-        return pcall_result
+        if type(resultOrError) == "string" then
+            return ToolHelpers.FormatErrorResult(resultOrError)
+        else
+            return ToolHelpers.FormatSuccessResult(resultOrError)
+        end
     else
-        return ToolHelpers.FormatErrorResult("Internal error in SelectInstances: " .. tostring(pcall_result))
+        return ToolHelpers.FormatErrorResult("Internal error in SelectInstances: " .. tostring(resultOrError))
     end
 end
 
