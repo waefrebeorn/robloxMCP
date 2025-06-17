@@ -2,9 +2,10 @@ import json
 import logging
 import asyncio
 import re # For checking valid Luau identifiers
-from typing import Any, Dict, List # Added List for ROBLOX_MCP_TOOLS type hint if needed
+from typing import Any, Dict, List, NamedTuple # Added List for ROBLOX_MCP_TOOLS type hint if needed, NamedTuple for FunctionCall
 from google import genai # I.1
 from google.genai import types # I.2
+from dataclasses import dataclass # For FunctionCall data class
 
 # --- Data Type Formatting for Gemini ---
 # When providing arguments for tools, especially within complex structures like
@@ -42,6 +43,89 @@ from mcp_client import MCPClient, MCPConnectionError
 from console_ui import ConsoleFormatter
 
 logger = logging.getLogger(__name__)
+
+# --- Generic FunctionCall Representation ---
+@dataclass
+class FunctionCall:
+    name: str
+    args: Dict[str, Any]
+
+# --- Function to convert Gemini FunctionDeclaration to Ollama JSON Schema ---
+def get_ollama_tools_json_schema() -> List[Dict[str, Any]]:
+    """
+    Converts Gemini tool declarations to a JSON schema list compatible with Ollama.
+    """
+    ollama_tools = []
+
+    gemini_type_to_json_type = {
+        types.Type.STRING: "string",
+        types.Type.OBJECT: "object",
+        types.Type.ARRAY: "array",
+        types.Type.NUMBER: "number",
+        types.Type.INTEGER: "integer",
+        types.Type.BOOLEAN: "boolean",
+        # types.Type.TYPE_UNSPECIFIED / None -> typically means 'any' or not directly mappable,
+        # might need careful handling if it appears. For properties, 'object' or 'string' might be fallbacks.
+        # For array items, if item type is unspecified, it could be an array of 'any' type.
+    }
+
+    def convert_schema(gemini_schema: types.Schema) -> Dict[str, Any]:
+        if not gemini_schema:
+            return {} # Should not happen for valid tool params
+
+        json_schema = {}
+        gemini_type = gemini_schema.type
+
+        # Map Gemini type to JSON schema type
+        # Fallback to "object" if type is unspecified but properties exist,
+        # or "string" as a general fallback if no other info.
+        if gemini_type in gemini_type_to_json_type:
+            json_schema["type"] = gemini_type_to_json_type[gemini_type]
+        elif gemini_schema.properties:
+             json_schema["type"] = "object" # Assume object if properties are present
+        else:
+            json_schema["type"] = "string" # Default/fallback type
+
+        if gemini_schema.description:
+            json_schema["description"] = gemini_schema.description
+
+        if gemini_schema.nullable: # JSON schema uses "nullable": true (OpenAPI v3 way) or type lists ["type", "null"]
+            # For simplicity, let's assume Ollama might support "nullable" directly or infers from optionality.
+            # Or, one might add "null" to the type list, e.g., "type": ["string", "null"]
+            # Sticking to a simple "nullable" property for now if Ollama's specific format isn't known.
+            # If Ollama follows strict JSON Schema, this might need adjustment.
+            # For now, we'll omit "nullable" as standard JSON schema doesn't always have it at this level.
+            # It's often handled by `required` fields. If a field is not in `required`, it's optional.
+            pass
+
+
+        if gemini_schema.enum:
+            json_schema["enum"] = list(gemini_schema.enum)
+
+        if gemini_type == types.Type.OBJECT and gemini_schema.properties:
+            json_schema["properties"] = {
+                name: convert_schema(prop_schema)
+                for name, prop_schema in gemini_schema.properties.items()
+            }
+            if gemini_schema.required:
+                json_schema["required"] = list(gemini_schema.required)
+
+        elif gemini_type == types.Type.ARRAY and gemini_schema.items:
+            json_schema["items"] = convert_schema(gemini_schema.items)
+            # Gemini's items is a single Schema, JSON schema also expects a single schema or a tuple for fixed-size arrays.
+            # This conversion assumes items are all of the same type, which matches Gemini's Schema.items.
+
+        return json_schema
+
+    for declaration in ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE.function_declarations:
+        tool_schema = {
+            "name": declaration.name,
+            "description": declaration.description,
+            "parameters": convert_schema(declaration.parameters) if declaration.parameters else {"type": "object", "properties": {}}
+        }
+        ollama_tools.append({"type": "function", "function": tool_schema}) # Ollama expects this structure
+
+    return ollama_tools
 
 # --- MCP Tool Definitions for Gemini ---
 # II.1. Rename ROBLOX_MCP_TOOLS to ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE
@@ -1344,10 +1428,11 @@ class ToolDispatcher:
         return True, ""
 
     # II.2. Update execute_tool_call
-    async def execute_tool_call(self, function_call: types.FunctionCall) -> Dict[str, Any]: # II.2. Input type hint and return type
-        """Executes a single tool call and returns a dictionary for the new SDK."""
+    async def execute_tool_call(self, function_call: FunctionCall) -> Dict[str, Any]: # Use the generic FunctionCall
+        """Executes a single tool call (from Gemini or Ollama) and returns a dictionary for the new SDK."""
+        # The input `function_call` is now our generic FunctionCall dataclass
         original_tool_name = function_call.name
-        original_tool_args = dict(function_call.args)
+        original_tool_args = function_call.args # Already a dict
 
         mcp_tool_name = original_tool_name
         mcp_tool_args = original_tool_args
