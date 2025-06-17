@@ -1,4 +1,3 @@
-
 # Comprehensive Test Suite for Luau Tools
 
 # --- Section 1: Instance Creation and Basic Properties (CreateInstance, GetInstanceProperties, SetInstanceProperties, delete_instance) ---
@@ -244,3 +243,8 @@ RunCode command="print('Simple Game: Obby construction commands complete.')"
 # A more robust cleanup would use GetInstancesWithTag and loop delete, but that's too complex for test_commands.txt itself.
 # The individual delete tests already cover functionality.
 
+# --- Section 9: Test for Null Arguments in Tool Calls ---
+# This command is intended to see if the LLM might call CreateInstance (or another tool)
+# with 'null' or missing arguments if the properties are not well-defined by the prompt.
+# The recent fix in main.py should handle fc_args being None by converting it to {}.
+Create a new part with default settings.
