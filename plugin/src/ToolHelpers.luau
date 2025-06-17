@@ -127,7 +127,10 @@ end
 
 -- Standard response formatters
 
-function ToolHelpers.SimpleTableToString(data)
+function ToolHelpers.SimpleTableToString(data, currentDepth)
+    currentDepth = currentDepth or 1
+    local maxDepth = 2 -- Max depth for nested serialization
+
     if type(data) ~= "table" then
         return "nil (not a table)"
     end
@@ -135,14 +138,13 @@ function ToolHelpers.SimpleTableToString(data)
     local parts = {}
     local count = 0
     local totalLength = 0
-    local maxPairs = 10
-    local maxLength = 200
-    -- complexValueFound is not strictly needed with the simpleValuesCount logic later
-    -- local complexValueFound = false
+    local maxPairs = 10 -- Max pairs for the current table level
+    local maxLength = 200 -- Max total string length for the output of this function call
+    local maxNestedValueStrLength = 70 -- Max length for a serialized nested table string
 
     for key, value in pairs(data) do
         count = count + 1
-        if count > maxPairs and key ~= "message" then -- Allow message to be processed even if it exceeds pair limit initially
+        if count > maxPairs and key ~= "message" then
             table.insert(parts, "...")
             break
         end
@@ -154,17 +156,38 @@ function ToolHelpers.SimpleTableToString(data)
         if valueType == "string" or valueType == "number" or valueType == "boolean" then
             valueStr = tostring(value)
         elseif valueType == "table" then
-            valueStr = "[table]"
-            -- complexValueFound = true
+            if currentDepth < maxDepth then
+                local nestedParts = {}
+                local nestedCount = 0
+                for nk, nv in pairs(value) do
+                    nestedCount = nestedCount + 1
+                    if nestedCount > 3 then -- Show up to 3 key-value pairs in a nested table
+                        table.insert(nestedParts, "...")
+                        break
+                    end
+                    local nestedValueStr
+                    if type(nv) == "table" then
+                        nestedValueStr = "[table@next_depth]"
+                    else
+                        nestedValueStr = tostring(nv)
+                    end
+                    table.insert(nestedParts, tostring(nk) .. "=" .. nestedValueStr)
+                end
+                valueStr = "{" .. table.concat(nestedParts, "; ") .. "}"
+                if string.len(valueStr) > maxNestedValueStrLength then
+                    valueStr = string.sub(valueStr, 1, maxNestedValueStrLength - 3) .. "...}"
+                end
+            else
+                valueStr = "[table_max_depth]"
+            end
         elseif valueType == "nil" then
             valueStr = "nil"
         else
             valueStr = "[" .. valueType .. "]"
-            -- complexValueFound = true
         end
 
         if keyStr == "message" and (valueType == "string" or valueType == "number" or valueType == "boolean") then
-            if string.len(valueStr) < maxLength - 5 and string.len(valueStr) > 0 then -- -5 for "..." buffer
+            if string.len(valueStr) < maxLength - 5 and string.len(valueStr) > 0 then -- -5 for "..." buffer, prioritize message
                 return valueStr -- Prioritize and return message directly if it's suitable
             elseif count > maxPairs then -- If message was the one that exceeded pair limit, but is too long
                  local truncatedMessage = string.sub(valueStr, 1, maxLength - 3) .. "..."
