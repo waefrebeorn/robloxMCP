@@ -310,9 +310,11 @@ async def _process_command(
                                                 continue
                                             # MODIFIED SECTION END
 
+
                                             tool_call_id = uuid.uuid4().hex
                                             pending_function_calls.append(FunctionCall(id=tool_call_id, name=fc_name, args=fc_args))
                                             logger.info(f"Appended tool call from 'content' JSON with generated ID {tool_call_id}: {fc_name} with args {fc_args}")
+
                                     else:
                                         logger.info("Ollama content JSON (after potential Markdown stripping) does not match expected tool call structure (name/function_name + arguments keys). Treating as text.")
                                 except json.JSONDecodeError:
