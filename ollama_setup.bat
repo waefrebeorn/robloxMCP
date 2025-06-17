@@ -63,8 +63,8 @@ echo [OLLAMA SETUP] This may take some time depending on your internet connectio
 echo.
 
 SET MODEL_PHI3=phi3:mini
-SET MODEL_QWEN2_7B=qwen2:7b
-SET MODEL_QWEN2_7B_Q4=qwen2:7b-q4_K_M
+SET MODEL_QWEN2_7B=qwen2.5-coder:7b
+SET MODEL_QWEN2_7B_Q4=qwen2.5-coder:7b-instruct-q4_K_M
 REM Using qwen2:7b-q4_K_M as q4_0 is less common. User can change if needed.
 
 echo [OLLAMA SETUP] Pulling model: !MODEL_PHI3!
@@ -95,3 +95,4 @@ IF !ERRORLEVEL! EQU 0 (
 )
 echo.
 GOTO :EOF
+pause

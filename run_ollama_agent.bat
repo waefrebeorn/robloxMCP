@@ -168,3 +168,4 @@ echo.
 echo.
 echo [!SCRIPT_NAME!] Agent execution finished.
 GOTO :EOF
+pause
