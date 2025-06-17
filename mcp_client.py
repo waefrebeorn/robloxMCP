@@ -221,7 +221,7 @@ class MCPClient:
             try:
                 line_bytes = await asyncio.wait_for(self.process.stderr.readline(), timeout=5.0)
                 if not line_bytes: logger.info("MCP stderr EOF."); break
-                logger.warning(f"[MCP STDERR]: {line_bytes.decode('utf-8').strip()}")
+                logger.info(f"[MCP STDERR]: {line_bytes.decode('utf-8').strip()}")
             except asyncio.TimeoutError:
                 if not (self.process and self.process.returncode is None):
                     logger.warning("MCP stderr readline timed out and process is no longer running."); break
