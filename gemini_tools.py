@@ -2,9 +2,10 @@ import json
 import logging
 import asyncio
 import re # For checking valid Luau identifiers
-from typing import Any, Dict, List # Added List for ROBLOX_MCP_TOOLS type hint if needed
+from typing import Any, Dict, List, NamedTuple # Added List for ROBLOX_MCP_TOOLS type hint if needed, NamedTuple for FunctionCall
 from google import genai # I.1
 from google.genai import types # I.2
+from dataclasses import dataclass # For FunctionCall data class
 
 # --- Data Type Formatting for Gemini ---
 # When providing arguments for tools, especially within complex structures like
@@ -42,6 +43,90 @@ from mcp_client import MCPClient, MCPConnectionError
 from console_ui import ConsoleFormatter
 
 logger = logging.getLogger(__name__)
+
+# --- Generic FunctionCall Representation ---
+@dataclass
+class FunctionCall:
+    name: str
+    args: Dict[str, Any]
+    id: str = None # New field for tool call ID, used by Ollama
+
+# --- Function to convert Gemini FunctionDeclaration to Ollama JSON Schema ---
+def get_ollama_tools_json_schema() -> List[Dict[str, Any]]:
+    """
+    Converts Gemini tool declarations to a JSON schema list compatible with Ollama.
+    """
+    ollama_tools = []
+
+    gemini_type_to_json_type = {
+        types.Type.STRING: "string",
+        types.Type.OBJECT: "object",
+        types.Type.ARRAY: "array",
+        types.Type.NUMBER: "number",
+        types.Type.INTEGER: "integer",
+        types.Type.BOOLEAN: "boolean",
+        # types.Type.TYPE_UNSPECIFIED / None -> typically means 'any' or not directly mappable,
+        # might need careful handling if it appears. For properties, 'object' or 'string' might be fallbacks.
+        # For array items, if item type is unspecified, it could be an array of 'any' type.
+    }
+
+    def convert_schema(gemini_schema: types.Schema) -> Dict[str, Any]:
+        if not gemini_schema:
+            return {} # Should not happen for valid tool params
+
+        json_schema = {}
+        gemini_type = gemini_schema.type
+
+        # Map Gemini type to JSON schema type
+        # Fallback to "object" if type is unspecified but properties exist,
+        # or "string" as a general fallback if no other info.
+        if gemini_type in gemini_type_to_json_type:
+            json_schema["type"] = gemini_type_to_json_type[gemini_type]
+        elif gemini_schema.properties:
+             json_schema["type"] = "object" # Assume object if properties are present
+        else:
+            json_schema["type"] = "string" # Default/fallback type
+
+        if gemini_schema.description:
+            json_schema["description"] = gemini_schema.description
+
+        if gemini_schema.nullable: # JSON schema uses "nullable": true (OpenAPI v3 way) or type lists ["type", "null"]
+            # For simplicity, let's assume Ollama might support "nullable" directly or infers from optionality.
+            # Or, one might add "null" to the type list, e.g., "type": ["string", "null"]
+            # Sticking to a simple "nullable" property for now if Ollama's specific format isn't known.
+            # If Ollama follows strict JSON Schema, this might need adjustment.
+            # For now, we'll omit "nullable" as standard JSON schema doesn't always have it at this level.
+            # It's often handled by `required` fields. If a field is not in `required`, it's optional.
+            pass
+
+
+        if gemini_schema.enum:
+            json_schema["enum"] = list(gemini_schema.enum)
+
+        if gemini_type == types.Type.OBJECT and gemini_schema.properties:
+            json_schema["properties"] = {
+                name: convert_schema(prop_schema)
+                for name, prop_schema in gemini_schema.properties.items()
+            }
+            if gemini_schema.required:
+                json_schema["required"] = list(gemini_schema.required)
+
+        elif gemini_type == types.Type.ARRAY and gemini_schema.items:
+            json_schema["items"] = convert_schema(gemini_schema.items)
+            # Gemini's items is a single Schema, JSON schema also expects a single schema or a tuple for fixed-size arrays.
+            # This conversion assumes items are all of the same type, which matches Gemini's Schema.items.
+
+        return json_schema
+
+    for declaration in ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE.function_declarations:
+        tool_schema = {
+            "name": declaration.name,
+            "description": declaration.description,
+            "parameters": convert_schema(declaration.parameters) if declaration.parameters else {"type": "object", "properties": {}}
+        }
+        ollama_tools.append({"type": "function", "function": tool_schema}) # Ollama expects this structure
+
+    return ollama_tools
 
 # --- MCP Tool Definitions for Gemini ---
 # II.1. Rename ROBLOX_MCP_TOOLS to ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE
@@ -1344,137 +1429,176 @@ class ToolDispatcher:
         return True, ""
 
     # II.2. Update execute_tool_call
-    async def execute_tool_call(self, function_call: types.FunctionCall) -> Dict[str, Any]: # II.2. Input type hint and return type
-        """Executes a single tool call and returns a dictionary for the new SDK."""
+    async def execute_tool_call(self, function_call: FunctionCall) -> Dict[str, Any]: # Use the generic FunctionCall
+        """Executes a single tool call (from Gemini or Ollama) and returns a dictionary for the new SDK."""
+        # The input `function_call` is now our generic FunctionCall dataclass
         original_tool_name = function_call.name
-        original_tool_args = dict(function_call.args)
+        original_tool_args = function_call.args # Already a dict
+        tool_call_id = function_call.id # Get the ID
 
-        mcp_tool_name = original_tool_name
-        mcp_tool_args = original_tool_args
+        # mcp_tool_name = original_tool_name # This will be set by the new logic below
+        # mcp_tool_args = original_tool_args # This will be set by the new logic below
 
         ConsoleFormatter.print_tool_call(original_tool_name, original_tool_args)
 
         is_valid, error_msg = self._validate_args(original_tool_name, original_tool_args)
         if not is_valid:
             ConsoleFormatter.print_tool_error({"validation_error": f"Argument validation failed: {error_msg}"})
-
             return {"name": original_tool_name, "response": {"error": f"Invalid arguments provided by AI: {error_msg}"}}
 
+        # Refined structure for tool name mapping and argument preparation:
+        mcp_tool_name_final = ""
+        mcp_tool_args_final = {}
+        current_tool_args = original_tool_args.copy() # Start with a copy for potential transformation
+
         if original_tool_name == "insert_model":
-            mcp_tool_name = "insert_model"
-            mcp_tool_args = original_tool_args
-            logger.info(f"Dispatching ToolCall: '{original_tool_name}' directly to MCP tool '{mcp_tool_name}' with args: {mcp_tool_args}")
+            mcp_tool_name_final = "insert_model"
+            mcp_tool_args_final = current_tool_args # Use the (unmodified for this case) args
+            logger.info(f"Dispatching ToolCall: '{original_tool_name}' directly to MCP tool '{mcp_tool_name_final}' with args: {mcp_tool_args_final}")
         else:
-            # All other tools (CreateInstance, RunCode, GetSelection, etc.) are routed via execute_discovered_luau_tool
-            mcp_tool_name = "execute_discovered_luau_tool"
-            # Convert original_tool_args (Python dict) into a Luau table string
-            tool_arguments_luau_str = python_to_luau_table_string(original_tool_args) # NEW
-            luau_tool_name_to_execute = original_tool_name
-            # Mapping for specific tools if their Python-side name differs from Luau script name
-            # This mapping should align with the Luau script file names in plugin/src/Tools/
-            if original_tool_name == "set_instance_properties":
-                luau_tool_name_to_execute = "SetInstanceProperties"
-            elif original_tool_name == "get_instance_properties":
-                luau_tool_name_to_execute = "GetInstanceProperties"
-            elif original_tool_name == "call_instance_method":
-                luau_tool_name_to_execute = "CallInstanceMethod"
-            elif original_tool_name == "delete_instance":
+            mcp_tool_name_final = "execute_discovered_luau_tool"
+            luau_tool_name_to_execute = original_tool_name # Default
 
-                luau_tool_name_to_execute = "delete_instance" # Corrected mapping
+            # 1. Special handling for specific tool names (e.g., argument transformation)
+            if original_tool_name == "set_gravity":
+                luau_tool_name_to_execute = "SetWorkspaceProperty" # Target Luau script
+                gravity_value = current_tool_args.get("gravity_value")
+                if isinstance(gravity_value, (int, float)):
+                    current_tool_args = {"property_name": "Gravity", "value": gravity_value} # Transform args
+                    logger.info(f"Remapped tool call from 'set_gravity' to 'SetWorkspaceProperty' with transformed args: {current_tool_args}")
+                else:
+                    logger.warning(f"'set_gravity' called with invalid 'gravity_value'. Args: {current_tool_args}. Passing to SetWorkspaceProperty as is.")
 
-            elif original_tool_name == "select_instances": # Python: select_instances, Luau: SelectInstances.luau
-                luau_tool_name_to_execute = "SelectInstances"
-            elif original_tool_name == "run_script":
-                luau_tool_name_to_execute = "RunScript"
-            elif original_tool_name == "set_lighting_property":
-                luau_tool_name_to_execute = "SetLightingProperty"
-            elif original_tool_name == "get_lighting_property": # Python: get_lighting_property, Luau: GetLightingProperty.luau
-                luau_tool_name_to_execute = "GetLightingProperty"
-            elif original_tool_name == "play_sound_id": # Python: play_sound_id, Luau: PlaySoundId.luau
-                luau_tool_name_to_execute = "PlaySoundId"
-            elif original_tool_name == "set_workspace_property":
-                luau_tool_name_to_execute = "SetWorkspaceProperty"
-            elif original_tool_name == "get_workspace_property":
-                luau_tool_name_to_execute = "GetWorkspaceProperty"
-            elif original_tool_name == "kick_player":
-                luau_tool_name_to_execute = "KickPlayer"
-            elif original_tool_name == "create_team":
-                luau_tool_name_to_execute = "CreateTeam"
-            elif original_tool_name == "tween_properties":
-                luau_tool_name_to_execute = "TweenProperties"
-            elif original_tool_name == "add_tag":
-                luau_tool_name_to_execute = "AddTag"
-            elif original_tool_name == "remove_tag":
-                luau_tool_name_to_execute = "RemoveTag"
-            elif original_tool_name == "get_instances_with_tag": # Python: get_instances_with_tag, Luau: GetInstancesWithTag.luau
-                luau_tool_name_to_execute = "GetInstancesWithTag"
-            elif original_tool_name == "has_tag":
-                luau_tool_name_to_execute = "HasTag"
-            elif original_tool_name == "compute_path":
-                luau_tool_name_to_execute = "ComputePath"
-            elif original_tool_name == "create_proximity_prompt":
-                luau_tool_name_to_execute = "CreateProximityPrompt"
-            elif original_tool_name == "get_product_info": # Python: get_product_info, Luau: GetProductInfo.luau
-                luau_tool_name_to_execute = "GetProductInfo"
-            elif original_tool_name == "prompt_purchase":
-                luau_tool_name_to_execute = "PromptPurchase"
-            elif original_tool_name == "add_debris_item":
-                luau_tool_name_to_execute = "AddDebrisItem"
-            elif original_tool_name == "create_gui_element":
-                luau_tool_name_to_execute = "CreateGuiElement"
-            elif original_tool_name == "get_mouse_position": # Python: get_mouse_position, Luau: GetMousePosition.luau
-                luau_tool_name_to_execute = "GetMousePosition"
-            elif original_tool_name == "get_mouse_hit_cframe": # Python: get_mouse_hit_cframe, Luau: GetMouseHitCFrame.luau
-                luau_tool_name_to_execute = "GetMouseHitCFrame"
-            elif original_tool_name == "is_key_down":
-                luau_tool_name_to_execute = "IsKeyDown"
-            elif original_tool_name == "is_mouse_button_down":
-                luau_tool_name_to_execute = "IsMouseButtonDown"
-            elif original_tool_name == "save_data":
-                luau_tool_name_to_execute = "SaveData"
-            elif original_tool_name == "load_data":
-                luau_tool_name_to_execute = "LoadData"
-            elif original_tool_name == "increment_data":
-                luau_tool_name_to_execute = "IncrementData"
-            elif original_tool_name == "remove_data":
-                luau_tool_name_to_execute = "RemoveData"
-            elif original_tool_name == "teleport_player_to_place":
-                luau_tool_name_to_execute = "TeleportPlayerToPlace"
-            elif original_tool_name == "get_teleport_data": # Python: get_teleport_data, Luau: GetTeleportData.luau
-                luau_tool_name_to_execute = "GetTeleportData"
-            elif original_tool_name == "send_chat_message":
-                luau_tool_name_to_execute = "SendChatMessage"
-            elif original_tool_name == "filter_text_for_player":
-                luau_tool_name_to_execute = "FilterTextForPlayer"
-            elif original_tool_name == "create_text_channel":
-                luau_tool_name_to_execute = "CreateTextChannel"
-            elif original_tool_name == "get_teams":
-                luau_tool_name_to_execute = "GetTeams"
-            elif original_tool_name == "get_players_in_team": # Python: get_players_in_team, Luau: GetPlayersInTeam.luau
-                luau_tool_name_to_execute = "GetPlayersInTeam"
-            elif original_tool_name == "load_asset_by_id":
-                luau_tool_name_to_execute = "LoadAssetById"
-            elif original_tool_name == "get_children_of_instance": # Python: get_children_of_instance, Luau: GetChildrenOfInstance.luau
-                luau_tool_name_to_execute = "GetChildrenOfInstance"
-            elif original_tool_name == "get_descendants_of_instance": # Python: get_descendants_of_instance, Luau: GetDescendantsOfInstance.luau
-                luau_tool_name_to_execute = "GetDescendantsOfInstance"
-            elif original_tool_name == "find_first_child_matching": # Python: find_first_child_matching, Luau: FindFirstChildMatching.luau
-                luau_tool_name_to_execute = "FindFirstChildMatching"
-            # Default to original_tool_name if no specific mapping (should match Luau script name by convention)
-
-
-            mcp_tool_args = {
-                "tool_name": luau_tool_name_to_execute,
-                "tool_arguments_luau": tool_arguments_luau_str # CHANGED KEY and VALUE
+            # 2. Normalize or map tool names to the exact Luau script names (PascalCase or specific case)
+            # This map helps handle variations from LLM (e.g., lowercase, snake_case)
+            # and ensures the correct Luau script (which are mostly PascalCase) is called.
+            # Keys are lowercase and underscore-removed versions of potential LLM tool names.
+            # Values are the exact Luau script names (without .luau extension).
+            tool_name_normalization_map = {
+                "createinstance": "CreateInstance",
+                "setinstanceproperties": "SetInstanceProperties",
+                "getinstanceproperties": "GetInstanceProperties",
+                "callinstancemethod": "CallInstanceMethod",
+                "deleteinstance": "delete_instance", # Luau script is lowercase
+                "selectinstances": "SelectInstances",
+                "getselection": "GetSelection",
+                "runcode": "RunCode",
+                "runscript": "RunScript",
+                "setlightingproperty": "SetLightingProperty",
+                "getlightingproperty": "GetLightingProperty",
+                "playsoundid": "PlaySoundId",
+                "setworkspaceproperty": "SetWorkspaceProperty", # Handles 'set_gravity' target
+                "getworkspaceproperty": "GetWorkspaceProperty",
+                "kickplayer": "KickPlayer",
+                "createteam": "CreateTeam",
+                "tweenproperties": "TweenProperties",
+                "addtag": "AddTag",
+                "removetag": "RemoveTag",
+                "getinstanceswithtag": "GetInstancesWithTag",
+                "hastag": "HasTag",
+                "computepath": "ComputePath",
+                "createproximityprompt": "CreateProximityPrompt",
+                "getproductinfo": "GetProductInfo",
+                "promptpurchase": "PromptPurchase",
+                "adddebrisitem": "AddDebrisItem",
+                "createguielement": "CreateGuiElement",
+                "getmouseposition": "GetMousePosition",
+                "getmousehitcframe": "GetMouseHitCFrame",
+                "iskeydown": "IsKeyDown",
+                "ismousebuttondown": "IsMouseButtonDown",
+                "savedata": "SaveData",
+                "loaddata": "LoadData",
+                "incrementdata": "IncrementData",
+                "removedata": "RemoveData",
+                "teleportplayertoplace": "TeleportPlayerToPlace",
+                "getteleportdata": "GetTeleportData",
+                "sendchatmessage": "SendChatMessage",
+                "filtertextforplayer": "FilterTextForPlayer",
+                "createtextchannel": "CreateTextChannel",
+                "getteams": "GetTeams",
+                "getplayersinteam": "GetPlayersInTeam",
+                "loadassetbyid": "LoadAssetById",
+                "getchildrenofinstance": "GetChildrenOfInstance",
+                "getdescendantsofinstance": "GetDescendantsOfInstance",
+                "findfirstchildmatching": "FindFirstChildMatching",
+                # Add common snake_case versions if Gemini schema uses them and they differ after lowercasing
+                "create_instance": "CreateInstance",
+                "set_instance_properties": "SetInstanceProperties",
+                "get_instance_properties": "GetInstanceProperties",
+                "call_instance_method": "CallInstanceMethod",
+                "delete_instance": "delete_instance", # Explicitly map snake_case to lowercase if Luau is lowercase
+                "select_instances": "SelectInstances",
+                "get_selection": "GetSelection",
+                "run_code": "RunCode",
+                "run_script": "RunScript",
+                "set_lighting_property": "SetLightingProperty",
+                "get_lighting_property": "GetLightingProperty",
+                "play_sound_id": "PlaySoundId",
+                "set_workspace_property": "SetWorkspaceProperty",
+                "get_workspace_property": "GetWorkspaceProperty",
+                "kick_player": "KickPlayer",
+                "create_team": "CreateTeam",
+                "tween_properties": "TweenProperties",
+                "add_tag": "AddTag",
+                "remove_tag": "RemoveTag",
+                "get_instances_with_tag": "GetInstancesWithTag",
+                "has_tag": "HasTag",
+                "compute_path": "ComputePath",
+                "create_proximity_prompt": "CreateProximityPrompt",
+                "get_product_info": "GetProductInfo",
+                "prompt_purchase": "PromptPurchase",
+                "add_debris_item": "AddDebrisItem",
+                "create_gui_element": "CreateGuiElement",
+                "get_mouse_position": "GetMousePosition",
+                "get_mouse_hit_cframe": "GetMouseHitCFrame",
+                "is_key_down": "IsKeyDown",
+                "is_mouse_button_down": "IsMouseButtonDown",
+                "save_data": "SaveData",
+                "load_data": "LoadData",
+                "increment_data": "IncrementData",
+                "remove_data": "RemoveData",
+                "teleport_player_to_place": "TeleportPlayerToPlace",
+                "get_teleport_data": "GetTeleportData",
+                "send_chat_message": "SendChatMessage",
+                "filter_text_for_player": "FilterTextForPlayer",
+                "create_text_channel": "CreateTextChannel",
+                "get_teams": "GetTeams",
+                "get_players_in_team": "GetPlayersInTeam",
+                "load_asset_by_id": "LoadAssetById",
+                "get_children_of_instance": "GetChildrenOfInstance",
+                "get_descendants_of_instance": "GetDescendantsOfInstance",
+                "find_first_child_matching": "FindFirstChildMatching",
             }
-            logger.info(f"Dispatching ToolCall: '{original_tool_name}' via MCP tool '{mcp_tool_name}' for Luau script '{luau_tool_name_to_execute}'. Luau script args (as Luau table string): {{tool_arguments_luau_str}}") # UPDATED LOG
+
+            # Use luau_tool_name_to_execute if it was already changed by special handling (e.g. set_gravity)
+            # Otherwise, use original_tool_name for lookup.
+            lookup_name = luau_tool_name_to_execute if luau_tool_name_to_execute != original_tool_name else original_tool_name
+            normalized_lookup_name = lookup_name.replace("_", "").lower()
+
+            if normalized_lookup_name in tool_name_normalization_map:
+                final_luau_name = tool_name_normalization_map[normalized_lookup_name]
+                if luau_tool_name_to_execute != final_luau_name: # Log if a change occurred
+                    logger.info(f"Normalized/Mapped tool name '{lookup_name}' to Luau script name '{final_luau_name}'.")
+                luau_tool_name_to_execute = final_luau_name
+            else:
+                # If not in map, it implies the original_tool_name (or the one from set_gravity)
+                # is expected to be the exact Luau script name.
+                logger.warning(f"Tool name '{lookup_name}' not found in normalization map. Using as Luau script name. Ensure casing matches Luau script file.")
+
+            tool_arguments_luau_str = python_to_luau_table_string(current_tool_args) # Use current_tool_args
+            mcp_tool_args_final = {
+                "tool_name": luau_tool_name_to_execute,
+                "tool_arguments_luau": tool_arguments_luau_str
+            }
+            logger.info(f"Dispatching ToolCall: '{original_tool_name}' (Luau: '{luau_tool_name_to_execute}') via MCP tool '{mcp_tool_name_final}'.")
 
         output_content_dict = {}
         try:
-            mcp_response = await self.mcp_client.send_tool_execution_request(mcp_tool_name, mcp_tool_args)
+            # Use mcp_tool_name_final and mcp_tool_args_final for the actual MCP call
+            mcp_response = await self.mcp_client.send_tool_execution_request(mcp_tool_name_final, mcp_tool_args_final)
 
-            if mcp_tool_name == "insert_model": # insert_model returns result directly, not nested
-                if "result" in mcp_response:
+            if mcp_tool_name_final == "insert_model": # Check using mcp_tool_name_final
+                if "result" in mcp_response: # This path for insert_model result
                     output_content_dict = {"status": "success", "output": mcp_response["result"]}
                     ConsoleFormatter.print_tool_result(mcp_response["result"])
                 elif "error" in mcp_response:
@@ -1542,5 +1666,5 @@ class ToolDispatcher:
             output_content_dict = {"status": "error", "details": f"An internal broker error occurred: {e}"}
             ConsoleFormatter.print_tool_error(output_content_dict)
 
-        # II.2. Return a dictionary using the original tool name
-        return {"name": original_tool_name, "response": output_content_dict}
+        # II.2. Return a dictionary using the original tool name, include ID
+        return {"id": tool_call_id, "name": original_tool_name, "response": output_content_dict}
