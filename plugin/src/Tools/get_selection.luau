@@ -7,27 +7,28 @@ local Selection = game:GetService("Selection")
 local function execute(args: Types.GetSelectionArgs) -- Type annotation added, args currently unused
     local success, resultOrError = pcall(function()
         local selectedObjects = Selection:Get()
-        local resultsInfo: {Types.InstanceInfo} = {}
+        local selectedPaths: {string} = {}
 
         for _, instance in ipairs(selectedObjects) do
-            table.insert(resultsInfo, {
-                name = instance.Name,
-                path = instance:GetFullName(),
-                class_name = instance.ClassName,
-            })
+            if typeof(instance) == "Instance" then -- Ensure it's an instance before calling GetFullName
+                table.insert(selectedPaths, instance:GetFullName())
+            end
         end
 
-        local resultData: Types.GetSelectionResultData = {
-            selected_instances = resultsInfo,
-        }
-        return resultData
+        local HttpService = game:GetService("HttpService")
+        local jsonEncodedSelectedPaths = HttpService:JSONEncode(selectedPaths)
+
+        return jsonEncodedSelectedPaths -- This will be the actual data returned on success
     end)
 
     if success then
-        -- GetSelection's core logic should not return an error string directly
-        return ToolHelpers.FormatSuccessResult(resultOrError)
+        -- Successful execution, resultOrError is the JSON string of selected paths
+        -- Manually construct the success response structure
+        return { content = { { type = "text", text = resultOrError } }, isError = false }
     else
-        return ToolHelpers.FormatErrorResult("Internal error in GetSelection: " .. tostring(resultOrError))
+        -- This is an error from the pcall itself (e.g. HttpService not available, or other script error)
+        local err_msg = "Internal error in GetSelection: " .. tostring(resultOrError)
+        return ToolHelpers.FormatErrorResult(err_msg, {internal_error_details = tostring(resultOrError), is_luau_error = true})
     end
 end
 
