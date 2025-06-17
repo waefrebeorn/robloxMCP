@@ -22,7 +22,10 @@ DEFAULT_CONFIG = {
     "GEMINI_API_KEY": None, # Encouraging use of environment variable via .env
     "MCP_MAX_INITIAL_START_ATTEMPTS": 3,
     "MCP_RECONNECT_ATTEMPTS": 5,
-    "HISTORY_FILE_PATH": str(Path.home() / ".roblox_agent_history")
+    "HISTORY_FILE_PATH": str(Path.home() / ".roblox_agent_history"),
+    "OLLAMA_API_URL": "http://localhost:11434",
+    "OLLAMA_DEFAULT_MODEL": "phi3:mini",
+    "LLM_PROVIDER": "gemini" # Can be "gemini" or "ollama"
 }
 
 def load_or_create_config(r_console=None) -> dict: # Optionally pass rich console
@@ -80,7 +83,8 @@ def load_or_create_config(r_console=None) -> dict: # Optionally pass rich consol
                 json.dump(DEFAULT_CONFIG, f, indent=4)
             _print_panel(
                 f"Default configuration file '{CONFIG_FILE_NAME}' created. "
-                f"Please review it, especially for 'GEMINI_API_KEY' (use .env recommended) "
+                f"Please review it, especially for 'GEMINI_API_KEY' (if using Gemini), "
+                f"'OLLAMA_API_URL', 'OLLAMA_DEFAULT_MODEL' (if using Ollama), "
                 f"and 'RBX_MCP_SERVER_PATH'.",
                 "[green]Config Notice[/green]", style="green"
             )
