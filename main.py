@@ -308,8 +308,6 @@ async def _process_command(
                                             if not isinstance(fc_args, dict):
                                                 logger.warning(f"Ollama tool call from content for '{fc_name}' has 'arguments' not as dict or parsable string (and not None): {type(fc_args)}. Skipping.")
                                                 continue
-                                            # MODIFIED SECTION END
-
                                             tool_call_id = uuid.uuid4().hex
                                             pending_function_calls.append(FunctionCall(id=tool_call_id, name=fc_name, args=fc_args))
                                             logger.info(f"Appended tool call from 'content' JSON with generated ID {tool_call_id}: {fc_name} with args {fc_args}")
@@ -353,6 +351,7 @@ async def _process_command(
                              ollama_history.append({'role': 'user', 'content': intervention_message_content})
                              logger.info(f"Sent intervention message to Ollama: {intervention_message_content}")
                              console.print(Panel("[bold yellow]Max consecutive tool calls reached. An intervention message has been sent to the assistant to encourage a direct response or clarification.[/bold yellow]", title="[orange_red1]Loop Intervention[/orange_red1]", expand=False))
+
                         else: # Should not happen if ollama_history is correctly passed for ollama provider
                             logger.error("Cannot send intervention message: ollama_history is not a list.")
                     # For Gemini, a similar intervention might be possible by sending a user message,

@@ -1617,6 +1617,7 @@ class ToolDispatcher:
 
                 # Populate properties_dict using specific mappings
                 arg_to_prop_map = {
+
                     "part_name": "Name",         # from create_part
                     "name": "Name",              # from create_instance
                     "instance_name": "Name",     # new mapping
