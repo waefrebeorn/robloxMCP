@@ -275,27 +275,33 @@ async def _process_command(
                                 try:
                                     potential_tool_call = json.loads(json_to_parse)
                                     if isinstance(potential_tool_call, dict) and \
-                                       'name' in potential_tool_call and \
+                                       ('name' in potential_tool_call or 'function_name' in potential_tool_call) and \
                                        'arguments' in potential_tool_call:
 
-                                        fc_name = potential_tool_call['name']
+                                        fc_name = potential_tool_call.get('name') or potential_tool_call.get('function_name')
                                         fc_args = potential_tool_call['arguments']
 
-                                        if isinstance(fc_args, str):
-                                            try:
-                                                fc_args = json.loads(fc_args)
-                                            except json.JSONDecodeError as e_inner:
-                                                logger.error(f"Failed to parse string 'arguments' from content-based tool call for '{fc_name}': {fc_args}. Error: {e_inner}")
+                                        if not fc_name: # Safeguard, though covered by the condition above
+                                            logger.warning("Tool call from content JSON is missing 'name' or 'function_name'. Skipping.")
+                                            continue
+                                        else:
+                                            logger.info(f"Identified potential tool call from content: '{fc_name}'")
+
+                                            if isinstance(fc_args, str):
+                                                try:
+                                                    fc_args = json.loads(fc_args)
+                                                except json.JSONDecodeError as e_inner:
+                                                    logger.error(f"Failed to parse string 'arguments' from content-based tool call for '{fc_name}': {fc_args}. Error: {e_inner}")
+                                                    continue
+
+                                            if not isinstance(fc_args, dict):
+                                                logger.warning(f"Ollama tool call from content for '{fc_name}' has 'arguments' not as dict or parsable string: {type(fc_args)}. Skipping.")
                                                 continue
 
-                                        if not isinstance(fc_args, dict):
-                                            logger.warning(f"Ollama tool call from content for '{fc_name}' has 'arguments' not a dict or parsable string: {type(fc_args)}. Skipping.")
-                                            continue
-
-                                        pending_function_calls.append(FunctionCall(id=None, name=fc_name, args=fc_args)) # id is None
-                                        logger.info(f"Appended tool call from parsed 'content' JSON: Name {fc_name} with args {fc_args}")
+                                            pending_function_calls.append(FunctionCall(id=None, name=fc_name, args=fc_args)) # id will be None
+                                            logger.info(f"Appended tool call from 'content' JSON: {fc_name} with args {fc_args}")
                                     else:
-                                        logger.info("Ollama content (after potential Markdown stripping) is JSON, but not a valid tool call structure. Treating as text.")
+                                        logger.info("Ollama content JSON (after potential Markdown stripping) does not match expected tool call structure (name/function_name + arguments keys). Treating as text.")
                                 except json.JSONDecodeError:
                                     if is_markdown_json:
                                         logger.error(f"Failed to parse JSON extracted from Markdown: '{json_to_parse}'")
