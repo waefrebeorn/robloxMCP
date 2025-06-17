@@ -287,7 +287,10 @@ async def _process_command(
                                         else:
                                             logger.info(f"Identified potential tool call from content: '{fc_name}'")
 
-                                            if isinstance(fc_args, str):
+                                            # MODIFIED SECTION START
+                                            if fc_args is None:
+                                                fc_args = {}
+                                            elif isinstance(fc_args, str):
                                                 try:
                                                     fc_args = json.loads(fc_args)
                                                 except json.JSONDecodeError as e_inner:
@@ -295,10 +298,11 @@ async def _process_command(
                                                     continue
 
                                             if not isinstance(fc_args, dict):
-                                                logger.warning(f"Ollama tool call from content for '{fc_name}' has 'arguments' not as dict or parsable string: {type(fc_args)}. Skipping.")
+                                                logger.warning(f"Ollama tool call from content for '{fc_name}' has 'arguments' not as dict or parsable string (and not None): {type(fc_args)}. Skipping.")
                                                 continue
+                                            # MODIFIED SECTION END
 
-                                            pending_function_calls.append(FunctionCall(id=None, name=fc_name, args=fc_args)) # id will be None
+                                            pending_function_calls.append(FunctionCall(id=None, name=fc_name, args=fc_args))
                                             logger.info(f"Appended tool call from 'content' JSON: {fc_name} with args {fc_args}")
                                     else:
                                         logger.info("Ollama content JSON (after potential Markdown stripping) does not match expected tool call structure (name/function_name + arguments keys). Treating as text.")
