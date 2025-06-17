@@ -1476,6 +1476,8 @@ class ToolDispatcher:
             # Keys are lowercase and underscore-removed versions of potential LLM tool names.
             # Values are the exact Luau script names (without .luau extension).
             tool_name_normalization_map = {
+                "createpart": "CreateInstance", # Added for create_part
+                "create_part": "CreateInstance", # Added for create_part
                 "createinstance": "CreateInstance",
                 "setinstanceproperties": "SetInstanceProperties",
                 "getinstanceproperties": "GetInstanceProperties",
@@ -1574,6 +1576,11 @@ class ToolDispatcher:
             # Use luau_tool_name_to_execute if it was already changed by special handling (e.g. set_gravity)
             # Otherwise, use original_tool_name for lookup.
             lookup_name = luau_tool_name_to_execute if luau_tool_name_to_execute != original_tool_name else original_tool_name
+
+            # Store original LLM intended name before normalization for create_part check
+            llm_intended_tool_name = function_call.name
+            normalized_llm_intended_name = llm_intended_tool_name.replace("_", "").lower()
+
             normalized_lookup_name = lookup_name.replace("_", "").lower()
 
             if normalized_lookup_name in tool_name_normalization_map:
@@ -1586,7 +1593,87 @@ class ToolDispatcher:
                 # is expected to be the exact Luau script name.
                 logger.warning(f"Tool name '{lookup_name}' not found in normalization map. Using as Luau script name. Ensure casing matches Luau script file.")
 
-            tool_arguments_luau_str = python_to_luau_table_string(current_tool_args) # Use current_tool_args
+            # Argument transformation for CreateInstance (handles create_part and create_instance variations)
+            if luau_tool_name_to_execute == "CreateInstance" and \
+               (normalized_llm_intended_name == "createpart" or normalized_llm_intended_name == "createinstance"):
+
+                logger.info(f"Transforming LLM call '{llm_intended_tool_name}' with args {original_tool_args} for 'CreateInstance'.")
+
+                properties_dict = {}
+                class_name_val = None
+                transformed_args = original_tool_args.copy()
+
+                # Determine class_name
+                if "class_name" in transformed_args:
+                    class_name_val = transformed_args.pop("class_name")
+                elif "instance_type" in transformed_args: # Alternative key for class_name
+                    class_name_val = transformed_args.pop("instance_type")
+
+                if class_name_val is None and normalized_llm_intended_name == "createpart":
+                    class_name_val = "Part" # Default for create_part if no class_name specified
+                elif class_name_val is None: # Default for create_instance if no class_name specified (should ideally be provided by LLM)
+                    logger.warning("CreateInstance called without 'class_name' or 'instance_type'. Luau side might error if not handled.")
+                    # No default here, CreateInstance Luau script expects class_name.
+
+                # Populate properties_dict using specific mappings
+                arg_to_prop_map = {
+                    "part_name": "Name",         # from create_part
+                    "name": "Name",              # from create_instance
+                    "instance_name": "Name",     # new mapping
+                    "parent_path": "Parent",
+                    "parent": "Parent",          # common for create_instance or direct property
+                    "size": "Size",
+                    "position": "Position",
+                    "color": "Color",            # Assuming Color3 dict e.g. {'r':1,'g':0,'b':0}
+                    "material": "Material",      # Assuming Enum string e.g. "Enum.Material.Plastic"
+                    "anchored": "Anchored",
+                    "transparency": "Transparency"
+                    # Add any other common direct mappings if necessary
+                }
+                for arg_key, prop_key in arg_to_prop_map.items():
+                    if arg_key in transformed_args:
+                        properties_dict[prop_key] = transformed_args.pop(arg_key)
+
+                # If 'properties' key exists and is a dict, merge its content
+                if 'properties' in transformed_args and isinstance(transformed_args.get('properties'), dict):
+                    properties_dict.update(transformed_args.pop('properties'))
+
+                # Merge any remaining items in transformed_args directly into properties_dict
+                properties_dict.update(transformed_args)
+
+                # Helper function to normalize dictionary keys (e.g., for Vector3/Color3)
+                def normalize_dict_keys(obj):
+                    if isinstance(obj, dict):
+                        return {k.lower() if isinstance(k, str) else k: normalize_dict_keys(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [normalize_dict_keys(elem) for elem in obj]
+                    return obj
+
+                # Normalize keys for known Vector3/Color3-like properties
+                vector3_like_props = ["Position", "Size"]
+                color3_like_props = ["Color"] # Could be extended for BrickColor if it's passed as dict by LLM
+
+                for prop_name in vector3_like_props:
+                    if prop_name in properties_dict and isinstance(properties_dict[prop_name], dict):
+                        original_prop_val = properties_dict[prop_name]
+                        properties_dict[prop_name] = normalize_dict_keys(original_prop_val)
+                        if properties_dict[prop_name] != original_prop_val: # Log only if change occurred
+                            logger.info(f"Normalized keys for Vector3-like property '{prop_name}': {properties_dict[prop_name]}")
+
+                for prop_name in color3_like_props:
+                    if prop_name in properties_dict and isinstance(properties_dict[prop_name], dict):
+                        original_prop_val = properties_dict[prop_name]
+                        properties_dict[prop_name] = normalize_dict_keys(original_prop_val)
+                        if properties_dict[prop_name] != original_prop_val: # Log only if change occurred
+                            logger.info(f"Normalized keys for Color3-like property '{prop_name}': {properties_dict[prop_name]}")
+
+                current_tool_args = {"class_name": class_name_val, "properties": properties_dict}
+                logger.info(f"Arguments for CreateInstance after transformation and V3/C3 normalization: class_name='{class_name_val}', properties={properties_dict}")
+
+            # For all other tools, or if not matching the CreateInstance transformation conditions,
+            # current_tool_args remains as it was (either a copy of original_tool_args or transformed by other specific logic like set_gravity)
+
+            tool_arguments_luau_str = python_to_luau_table_string(current_tool_args)
 
             mcp_tool_args_final = {
                 "tool_name": luau_tool_name_to_execute,
