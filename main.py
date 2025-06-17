@@ -134,6 +134,7 @@ async def _process_command(
     if not user_input_str.strip():
         return True # Considered processed, no actual error
 
+    intervention_occurred_this_turn = False # Flag for Ollama intervention
     consecutive_tool_calls_count = 0 # Initialize/reset for each user command
     command_processed_successfully = True
     try:
@@ -345,6 +346,7 @@ async def _process_command(
                 if consecutive_tool_calls_count > MAX_CONSECUTIVE_TOOL_CALLS:
                     logger.warning(f"Ollama exceeded max consecutive tool calls ({MAX_CONSECUTIVE_TOOL_CALLS}). Intervening.")
                     if llm_provider == "ollama":
+                        intervention_occurred_this_turn = True # Set the flag
                         intervention_message_content = "You have called tools multiple times consecutively. Please stop and summarize your progress or ask the user for clarification instead of calling more tools."
                         # Ensure ollama_history is the correct list to append to
                         if isinstance(ollama_history, list):
@@ -427,9 +429,18 @@ async def _process_command(
                         # Depending on strictness, one might skip appending this result or send without ID.
                         # For now, we'll send it, Ollama might still handle it based on order or if only one tool was called.
 
+                    response_data = result_dict.get('response', {})
+                    content_for_ollama = ""
+                    if isinstance(response_data, dict) and list(response_data.keys()) == ['content'] and isinstance(response_data['content'], str):
+                        content_for_ollama = response_data['content']
+                        logger.info(f"Extracted simple text content for Ollama tool result (ID: {tool_call_id_for_ollama}): '{content_for_ollama}'")
+                    else:
+                        content_for_ollama = json.dumps(response_data)
+                        logger.info(f"Using JSON dump for Ollama tool result (ID: {tool_call_id_for_ollama}): {content_for_ollama}")
+
                     ollama_history.append({
                         'role': 'tool',
-                        'content': json.dumps(result_dict.get('response', {})), # Ensure content is serializable
+                        'content': content_for_ollama,
                         'tool_call_id': tool_call_id_for_ollama
                     })
                     logger.info(f"Appended tool result to Ollama history: ID {tool_call_id_for_ollama}, Name {result_dict.get('name')}")
@@ -472,6 +483,24 @@ async def _process_command(
                 logger.warning(f"Failed to get valid response from {llm_provider} after tool processing. Breaking from tool loop.")
                 return False # Indicate critical failure for the command
 
+        # (This is after the 'while True:' loop for tool processing)
+        # ...
+
+        if llm_provider == "ollama" and intervention_occurred_this_turn:
+            # Check Ollama's last response. 'response' here holds what Ollama sent
+            # *after* receiving the tool results and potentially the intervention message.
+            if response and response.get('message') and response['message'].get('tool_calls'):
+                # Ollama tried to call a tool again even after intervention
+                console.print(Panel(
+                    "[bold orange_red1]Ollama attempted to call a tool again after intervention. "
+                    "Halting processing for this command. Please review and issue a new command if needed.[/orange_red1]",
+                    title="[orange_red1]Intervention Follow-up[/orange_red1]"
+                ))
+                logger.warning("Ollama attempted further tool calls post-intervention. Command processing halted.")
+                command_processed_successfully = False # Consider this an unsuccessful command completion
+                return command_processed_successfully
+            # If it's not a tool call, the normal printing logic below will handle its text response.
+
         # Print final response from LLM
         if llm_provider == "gemini":
             if response and response.text:
@@ -491,11 +520,18 @@ async def _process_command(
             else:
                 ConsoleFormatter.print_provider_message("Gemini", "(No text response or recognizable content from Gemini)")
         elif llm_provider == "ollama":
+            # If intervention_occurred_this_turn and Ollama's last response was a tool_call,
+            # the above block will have printed a message and returned.
+            # So, this part will only execute if Ollama responded with text, or no intervention occurred.
             if response and response.get('message') and response['message'].get('content'):
                 ConsoleFormatter.print_provider_response_header("Ollama")
-                # Ollama response is typically not streamed char by char here unless we implement that
                 ConsoleFormatter.print_provider_response_chunk("Ollama", response['message']['content'])
                 console.print()
+            # It's possible that if an intervention occurred and Ollama DIDN'T respond with a tool call OR content,
+            # we might want a fallback message. However, the current structure implies it would just print nothing.
+            # Let's add a small check for the case where an intervention happened but Ollama's response was empty/unexpected.
+            elif intervention_occurred_this_turn:
+                 ConsoleFormatter.print_provider_message("Ollama", "(Intervention occurred, and Ollama did not provide a subsequent text response or tool call.)")
             else:
                 ConsoleFormatter.print_provider_message("Ollama", "(No text content in final response from Ollama)")
 
