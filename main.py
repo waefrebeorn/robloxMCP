@@ -5,6 +5,7 @@ import sys
 import argparse # Added for command-line arguments
 from pathlib import Path
 import json # Ensure json is imported for Ollama tool call argument parsing
+import uuid
 # Remove List typing if no longer needed for ToolOutput specifically
 # from typing import List # For ToolOutput typing
 
@@ -302,8 +303,11 @@ async def _process_command(
                                                 continue
                                             # MODIFIED SECTION END
 
-                                            pending_function_calls.append(FunctionCall(id=None, name=fc_name, args=fc_args))
-                                            logger.info(f"Appended tool call from 'content' JSON: {fc_name} with args {fc_args}")
+
+                                            tool_call_id = uuid.uuid4().hex
+                                            pending_function_calls.append(FunctionCall(id=tool_call_id, name=fc_name, args=fc_args))
+                                            logger.info(f"Appended tool call from 'content' JSON with generated ID {tool_call_id}: {fc_name} with args {fc_args}")
+
                                     else:
                                         logger.info("Ollama content JSON (after potential Markdown stripping) does not match expected tool call structure (name/function_name + arguments keys). Treating as text.")
                                 except json.JSONDecodeError:

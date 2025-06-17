@@ -1476,6 +1476,8 @@ class ToolDispatcher:
             # Keys are lowercase and underscore-removed versions of potential LLM tool names.
             # Values are the exact Luau script names (without .luau extension).
             tool_name_normalization_map = {
+                "createpart": "CreateInstance", # Added for create_part
+                "create_part": "CreateInstance", # Added for create_part
                 "createinstance": "CreateInstance",
                 "setinstanceproperties": "SetInstanceProperties",
                 "getinstanceproperties": "GetInstanceProperties",
@@ -1574,6 +1576,11 @@ class ToolDispatcher:
             # Use luau_tool_name_to_execute if it was already changed by special handling (e.g. set_gravity)
             # Otherwise, use original_tool_name for lookup.
             lookup_name = luau_tool_name_to_execute if luau_tool_name_to_execute != original_tool_name else original_tool_name
+
+            # Store original LLM intended name before normalization for create_part check
+            llm_intended_tool_name = function_call.name
+            normalized_llm_intended_name = llm_intended_tool_name.replace("_", "").lower()
+
             normalized_lookup_name = lookup_name.replace("_", "").lower()
 
             if normalized_lookup_name in tool_name_normalization_map:
@@ -1586,7 +1593,48 @@ class ToolDispatcher:
                 # is expected to be the exact Luau script name.
                 logger.warning(f"Tool name '{lookup_name}' not found in normalization map. Using as Luau script name. Ensure casing matches Luau script file.")
 
-            tool_arguments_luau_str = python_to_luau_table_string(current_tool_args) # Use current_tool_args
+            # Argument transformation for create_part -> CreateInstance
+            if normalized_llm_intended_name == "createpart" and luau_tool_name_to_execute == "CreateInstance":
+                logger.info(f"Transforming 'create_part' arguments for 'CreateInstance'. Original args: {original_tool_args}")
+                properties_dict = {}
+
+                # Known argument mappings from create_part to CreateInstance properties
+                arg_map = {
+                    "part_name": "Name",
+                    "parent_path": "Parent",
+                    "size": "Size",
+                    "position": "Position",
+                    "color": "Color", # Assuming Color3 dict e.g. {'r':1,'g':0,'b':0}
+                    "material": "Material", # Assuming Enum string e.g. "Enum.Material.Plastic"
+                    "anchored": "Anchored",
+                    "transparency": "Transparency"
+                    # Add other direct mappings if necessary
+                }
+
+                # Use a copy of original_tool_args for this transformation block
+                # current_tool_args was already made as a copy of original_tool_args earlier.
+                # We will modify current_tool_args based on original_tool_args content.
+
+                # If 'properties' is already a dict in original_tool_args, use it as a base for properties_dict
+                if 'properties' in original_tool_args and isinstance(original_tool_args['properties'], dict):
+                    properties_dict.update(original_tool_args.pop('properties')) # Use pop to avoid re-processing
+
+                # Map specific arguments from original_tool_args into properties_dict
+                for arg_key, prop_key in arg_map.items():
+                    if arg_key in original_tool_args:
+                        properties_dict[prop_key] = original_tool_args.pop(arg_key)
+
+                # Any remaining args in original_tool_args (after popping known ones and 'properties')
+                # are merged into properties_dict. This allows passthrough of arbitrary properties.
+                properties_dict.update(original_tool_args)
+
+                current_tool_args = {"class_name": "Part", "properties": properties_dict}
+                logger.info(f"Transformed args for CreateInstance from create_part: {current_tool_args}")
+
+            # For all other tools (or if not create_part), current_tool_args remains as it was
+            # (either a copy of original_tool_args or transformed by other logic like set_gravity)
+
+            tool_arguments_luau_str = python_to_luau_table_string(current_tool_args)
 
             mcp_tool_args_final = {
                 "tool_name": luau_tool_name_to_execute,
