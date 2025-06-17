@@ -308,7 +308,7 @@ async def main_loop():
             file_command_total = 0
             try:
                 with open(args.test_file, 'r') as f:
-                    commands = [line.strip() for line in f if line.strip()]
+                    commands = [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
 
                 file_command_total = len(commands)
                 console.print(f"[info]Found {file_command_total} commands in the test file.[/info]")

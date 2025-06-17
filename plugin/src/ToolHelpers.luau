@@ -1,7 +1,90 @@
 -- ToolHelpers.luau
 local ToolHelpers = {}
 
+local _services = {}
 local HttpService = game:GetService("HttpService")
+
+function ToolHelpers.InitServices(servicesTable)
+	if type(servicesTable) ~= "table" then
+		warn("ToolHelpers.InitServices expects a table, got: " .. type(servicesTable))
+		return
+	end
+	for serviceName, serviceInstance in pairs(servicesTable) do
+		_services[serviceName] = serviceInstance
+	end
+end
+
+function ToolHelpers.GetDebrisService()
+	return _services.DebrisService
+end
+
+function ToolHelpers.GetCollectionService()
+	return _services.CollectionService
+end
+
+function ToolHelpers.GetPathfindingService()
+	return _services.PathfindingService
+end
+
+function ToolHelpers.GetTextService()
+	return _services.TextService
+end
+
+function ToolHelpers.GetPlayersService()
+	return _services.Players
+end
+
+function ToolHelpers.GetStarterGuiService()
+	return _services.StarterGui
+end
+
+function ToolHelpers.GetTeamsService()
+	return _services.Teams
+end
+
+function ToolHelpers.GetTextChatService()
+	return _services.TextChatService
+end
+
+function ToolHelpers.GetLightingService()
+	return _services.Lighting
+end
+
+function ToolHelpers.GetUserInputService()
+	return _services.UserInputService
+end
+
+function ToolHelpers.GetMarketplaceService()
+	return _services.MarketplaceService
+end
+
+function ToolHelpers.GetDataStoreService()
+	return _services.DataStoreService
+end
+
+function ToolHelpers.GetInsertService()
+	return _services.InsertService
+end
+
+function ToolHelpers.GetSelectionService()
+	return _services.Selection
+end
+
+function ToolHelpers.GetWorkspaceService()
+	return _services.Workspace
+end
+
+function ToolHelpers.GetSoundService()
+	return _services.SoundService
+end
+
+function ToolHelpers.GetTeleportService()
+	return _services.TeleportService
+end
+
+function ToolHelpers.GetTweenService()
+	return _services.TweenService
+end
 
 function ToolHelpers.FindInstanceByPath(pathString)
     if not pathString or type(pathString) ~= "string" or pathString == "" then
@@ -9,27 +92,27 @@ function ToolHelpers.FindInstanceByPath(pathString)
     end
 
     local lowerPath = string.lower(pathString)
-    if lowerPath == "workspace" then return workspace, nil end
-    if lowerPath == "lighting" then return game:GetService("Lighting"), nil end
-    if lowerPath == "soundservice" then return game:GetService("SoundService"), nil end
-    if lowerPath == "replicatedstorage" then return game:GetService("ReplicatedStorage"), nil end
-    if lowerPath == "serverstorage" then return game:GetService("ServerStorage"), nil end
-    if lowerPath == "serverplayers" or lowerPath == "players" then return game:GetService("Players"), nil end
-    if lowerPath == "starterplayer" then return game:GetService("StarterPlayer"), nil end
-    if lowerPath == "starterplayerscripts" then return game:GetService("StarterPlayer").StarterPlayerScripts, nil end
-    if lowerPath == "startercharacterscripts" then return game:GetService("StarterPlayer").StarterCharacterScripts, nil end
-    if lowerPath == "startergui" then return game:GetService("StarterGui"), nil end
-    if lowerPath == "starterpack" then return game:GetService("StarterPack"), nil end
-    if lowerPath == "serverscriptservice" then return game:GetService("ServerScriptService"), nil end
-    if lowerPath == "teams" then return game:GetService("Teams"), nil end
-    if lowerPath == "textchatservice" then return game:GetService("TextChatService"), nil end
-    if lowerPath == "userinputservice" then return game:GetService("UserInputService"), nil end
+    if lowerPath == "workspace" then return _services.Workspace, nil end
+    if lowerPath == "lighting" then return _services.Lighting, nil end
+    if lowerPath == "soundservice" then return _services.SoundService, nil end
+    if lowerPath == "replicatedstorage" then return _services.ReplicatedStorage, nil end
+    if lowerPath == "serverstorage" then return _services.ServerStorage, nil end
+    if lowerPath == "serverplayers" or lowerPath == "players" then return _services.Players, nil end
+    if lowerPath == "starterplayer" then return _services.StarterPlayer, nil end
+    if lowerPath == "starterplayerscripts" then return _services.StarterPlayer.StarterPlayerScripts, nil end
+    if lowerPath == "startercharacterscripts" then return _services.StarterPlayer.StarterCharacterScripts, nil end
+    if lowerPath == "startergui" then return _services.StarterGui, nil end
+    if lowerPath == "starterpack" then return _services.StarterPack, nil end
+    if lowerPath == "serverscriptservice" then return _services.ServerScriptService, nil end
+    if lowerPath == "teams" then return _services.Teams, nil end
+    if lowerPath == "textchatservice" then return _services.TextChatService, nil end
+    if lowerPath == "userinputservice" then return _services.UserInputService, nil end
      -- Path for PlayerGui typically needs player name, e.g. "Players.LocalPlayer.PlayerGui"
     -- However, if just "PlayerGui" is passed for a ScreenGui, some tools might try to resolve LocalPlayer.PlayerGui.
     -- For direct access, a full path is better. This helper won't assume LocalPlayer here.
 
 
-    local current = game
+    local current = _services.Game
     for part in string.gmatch(pathString, "[^%.]+") do
         if not current or typeof(current) ~= "Instance" then
              return nil, "Invalid path segment: " .. part .. " - parent is not an Instance or nil."
@@ -398,7 +481,7 @@ function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instance
             else
                 return inputTable, "Invalid 'material_enum_name': " .. (err or "must be a valid Enum.Material string (e.g., 'Enum.Material.Plastic').")
             end
-        elseif inputTable.density ~= nil or inputTable.friction ~= nil or inputTable.elasticity ~= nil then -- Allow partial for custom
+        elseif inputTable.density ~= nil or inputTable.friction ~= nil or inputTable.elasticity ~= nil or inputTable.friction_weight ~= nil or inputTable.elasticity_weight ~= nil then -- Allow partial for custom
             local d = tonumber(inputTable.density)
             local f = tonumber(inputTable.friction)
             local e = tonumber(inputTable.elasticity)

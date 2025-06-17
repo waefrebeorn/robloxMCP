@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types) -- Added
-local DebrisService = game:GetService("Debris")
+local DebrisService = ToolHelpers.GetDebrisService()
 
 local function execute(args: Types.AddDebrisItemArgs) -- Type annotation added
     local success, resultOrError = pcall(function()

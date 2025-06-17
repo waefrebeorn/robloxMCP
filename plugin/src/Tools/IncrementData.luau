@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types)
-local DataStoreService = game:GetService("DataStoreService")
+local DataStoreService = ToolHelpers.GetDataStoreService()
 
 local function execute(args: Types.IncrementDataArgs)
     -- Arguments are expected directly on args table

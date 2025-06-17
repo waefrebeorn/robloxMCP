@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types) -- Added
-local TextChatService = game:GetService("TextChatService")
+local TextChatService = ToolHelpers.GetTextChatService()
 local HttpService = game:GetService("HttpService") -- Added
 
 local function execute(args: Types.CreateTextChannelArgs) -- Type annotation added

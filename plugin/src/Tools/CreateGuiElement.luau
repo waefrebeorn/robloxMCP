@@ -2,8 +2,8 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types) -- Added
-local PlayersService = game:GetService("Players")
-local StarterGuiService = game:GetService("StarterGui")
+local PlayersService = ToolHelpers.GetPlayersService()
+local StarterGuiService = ToolHelpers.GetStarterGuiService()
 local HttpService = game:GetService("HttpService") -- Added
 
 local function execute(args: Types.CreateGuiElementArgs) -- Type annotation added

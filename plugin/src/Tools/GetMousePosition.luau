@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types)
-local UserInputService = game:GetService("UserInputService")
+local UserInputService = ToolHelpers.GetUserInputService()
 
 local function execute(args: Types.GetMousePositionArgs)
     -- This tool typically doesn't take arguments, but args table is passed anyway.
@@ -18,7 +18,7 @@ local function execute(args: Types.GetMousePositionArgs)
             message = "Successfully retrieved mouse 2D position.",
             x = mouseLocation.X,
             y = mouseLocation.Y,
-            viewport_size = {x = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.X or 0, y = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.Y or 0}
+            viewport_size = {x = ToolHelpers.GetWorkspaceService().CurrentCamera and ToolHelpers.GetWorkspaceService().CurrentCamera.ViewportSize.X or 0, y = ToolHelpers.GetWorkspaceService().CurrentCamera and ToolHelpers.GetWorkspaceService().CurrentCamera.ViewportSize.Y or 0}
         })
     end)
 

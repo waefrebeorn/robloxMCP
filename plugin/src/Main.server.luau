@@ -3,6 +3,36 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 
+-- Initialize ToolHelpers with Roblox services
+local robloxServices = {
+    Game = game,
+    Workspace = game:GetService("Workspace"),
+    Players = game:GetService("Players"),
+    ReplicatedStorage = game:GetService("ReplicatedStorage"),
+    ServerStorage = game:GetService("ServerStorage"),
+    Lighting = game:GetService("Lighting"),
+    StarterGui = game:GetService("StarterGui"),
+    StarterPlayer = game:GetService("StarterPlayer"),
+    Teams = game:GetService("Teams"),
+    TextChatService = game:GetService("TextChatService"),
+    ServerScriptService = game:GetService("ServerScriptService"),
+    SoundService = game:GetService("SoundService"),
+    StarterPack = game:GetService("StarterPack"),
+    UserInputService = game:GetService("UserInputService"),
+    DebrisService = game:GetService("Debris"),
+    CollectionService = game:GetService("CollectionService"),
+    PathfindingService = game:GetService("PathfindingService"),
+    TextService = game:GetService("TextService"),
+    MarketplaceService = game:GetService("MarketplaceService"),
+    DataStoreService = game:GetService("DataStoreService"),
+    InsertService = game:GetService("InsertService"),
+    Selection = game:GetService("Selection"),
+    -- Workspace, Lighting, UserInputService, SoundService are already confirmed to be present
+    TeleportService = game:GetService("TeleportService"),
+    TweenService = game:GetService("TweenService")
+}
+ToolHelpers.InitServices(robloxServices)
+
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")

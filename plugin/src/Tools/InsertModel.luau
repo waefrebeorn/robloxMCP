@@ -6,7 +6,7 @@ local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local Types = require(Main.Types)
 local ToolHelpers = require(Main.ToolHelpers)
 
-local InsertService = game:GetService("InsertService")
+local InsertService = ToolHelpers.GetInsertService()
 -- local CollectionService = game:GetService("CollectionService") -- For tagging if needed later
 
 local INSERT_MAX_SEARCH_DEPTH = 2048
@@ -15,7 +15,7 @@ local INSERT_MAX_DISTANCE_AWAY = 20
 -- Determines the 3D position in the world where the model should be inserted.
 -- It raycasts from the center of the camera's viewport.
 local function getInsertPosition(): Vector3
-	local camera = workspace.CurrentCamera
+	local camera = ToolHelpers.GetWorkspaceService().CurrentCamera
 	if not camera then return Vector3.new(0, 5, 0) end
 
 	local viewportPoint = camera.ViewportSize / 2
@@ -24,9 +24,9 @@ local function getInsertPosition(): Vector3
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	-- Exclude currently selected objects from the raycast target
-	params.FilterDescendantsInstances = game:GetService("Selection"):Get()
+	params.FilterDescendantsInstances = ToolHelpers.GetSelectionService():Get()
 
-	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * INSERT_MAX_SEARCH_DEPTH, params)
+	local result = ToolHelpers.GetWorkspaceService():Raycast(unitRay.Origin, unitRay.Direction * INSERT_MAX_SEARCH_DEPTH, params)
 
 	if result then
 		-- Place the model on the surface that was hit
@@ -101,7 +101,7 @@ local function performInsert(query: string, parentPath: string?): (Types.InsertM
 	-- At this point, loadedModel is guaranteed to be a non-nil Model instance.
 	loadedModel = loadedModel :: Model
 
-	local parent = workspace -- Default parent is workspace
+	local parent = ToolHelpers.GetWorkspaceService() -- Default parent is workspace
 	if parentPath then
 		local foundParent, findError = ToolHelpers.FindInstanceByPath(parentPath)
 		if not foundParent then
