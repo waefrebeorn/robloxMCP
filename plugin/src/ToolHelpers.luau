@@ -372,17 +372,16 @@ function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instance
             pcall(function() if instance:IsA("GuiObject") or instance:IsA("GuiBase2d") then isGui = true end end)
         end
 
-        if isGui and (lowerPropName == "position" or lowerPropName == "size") then -- UDim2 for GuiObject
-            if inputTable.x_scale ~= nil and inputTable.x_offset ~= nil and inputTable.y_scale ~= nil and inputTable.y_offset ~= nil then
-                local xs, xo, ys, yo = tonumber(inputTable.x_scale), tonumber(inputTable.x_offset), tonumber(inputTable.y_scale), tonumber(inputTable.y_offset)
-                if xs and xo and ys and yo then
-                    return UDim2.new(xs, xo, ys, yo), nil
-                else
-                    return inputTable, "Invalid UDim2 components: x_scale, x_offset, y_scale, y_offset must be numbers."
-                end
-            else
-                return inputTable, "Missing x_scale, x_offset, y_scale, or y_offset for UDim2."
-            end
+        if (isGui and (lowerPropName == "position" or lowerPropName == "size")) then -- UDim2 for GuiObject (Position or Size)
+            -- Try to get components with primary names (x_scale), fallback to alternative (scale_x), default to 0
+            local xs = tonumber(inputTable.x_scale) or tonumber(inputTable.scale_x) or 0
+            local xo = tonumber(inputTable.x_offset) or tonumber(inputTable.offset_x) or 0
+            local ys = tonumber(inputTable.y_scale) or tonumber(inputTable.scale_y) or 0
+            local yo = tonumber(inputTable.y_offset) or tonumber(inputTable.offset_y) or 0
+
+            -- UDim2.new will error if any are nil. The 'or 0' ensures they are numbers.
+            return UDim2.new(xs, xo, ys, yo), nil
+
         elseif not isGui and (lowerPropName == "position" or lowerPropName == "size" or string.find(lowerPropName, "vector3")) then -- Vector3
             if inputTable.x ~= nil and inputTable.y ~= nil and inputTable.z ~= nil then
                 local x, y, z = tonumber(inputTable.x), tonumber(inputTable.y), tonumber(inputTable.z)
@@ -406,17 +405,15 @@ function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instance
         else
             return inputTable, "Missing x or y fields for Vector2."
         end
-    elseif string.find(lowerPropName, "udim2") then -- Explicit UDim2
-        if inputTable.x_scale ~= nil and inputTable.x_offset ~= nil and inputTable.y_scale ~= nil and inputTable.y_offset ~= nil then
-            local xs, xo, ys, yo = tonumber(inputTable.x_scale), tonumber(inputTable.x_offset), tonumber(inputTable.y_scale), tonumber(inputTable.y_offset)
-            if xs and xo and ys and yo then
-                return UDim2.new(xs, xo, ys, yo), nil
-            else
-                return inputTable, "Invalid UDim2 components: x_scale, x_offset, y_scale, y_offset must be numbers."
-            end
-        else
-            return inputTable, "Missing x_scale, x_offset, y_scale, or y_offset for UDim2."
-        end
+    elseif string.find(lowerPropName, "udim2") then -- Explicit UDim2 (e.g. property name is "MyUDim2Property")
+        -- Try to get components with primary names (x_scale), fallback to alternative (scale_x), default to 0
+        local xs = tonumber(inputTable.x_scale) or tonumber(inputTable.scale_x) or 0
+        local xo = tonumber(inputTable.x_offset) or tonumber(inputTable.offset_x) or 0
+        local ys = tonumber(inputTable.y_scale) or tonumber(inputTable.scale_y) or 0
+        local yo = tonumber(inputTable.y_offset) or tonumber(inputTable.offset_y) or 0
+
+        return UDim2.new(xs, xo, ys, yo), nil
+
     elseif string.find(lowerPropName, "udim") then -- Catch UDim (single scale/offset)
         if inputTable.scale ~= nil and inputTable.offset ~= nil then
             local s, o = tonumber(inputTable.scale), tonumber(inputTable.offset)

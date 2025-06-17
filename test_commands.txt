@@ -138,6 +138,8 @@ RunCode command="return 5 + 5" # Output should show the return value
 RunCode command="error('RunCode Test: This is a test error')" # Should report error
 
 # --- Section 6: DataStore (Basic Tests - requires service availability) ---
+# IMPORTANT: DataStore operations require this Roblox Studio place to be PUBLISHED to the web.
+# These tests will fail if the place is not published or if DataStore service is unavailable.
 # These tests might be flaky depending on DataStore availability and previous runs.
 # Test 6.1: Save, Load, Increment, Remove
 SaveData store_name=TestStore key=TestKey data={message='Hello DataStore', value=123}
@@ -160,8 +162,11 @@ GetInstanceProperties path=StarterGui.TestScreenGui.TestFrame.TestLabel property
 # delete_instance path=StarterGui.TestScreenGui # Clean up GUI
 
 # --- Section 8: Asset Management (LoadAssetById, InsertModel) ---
-# Test 8.1: Load a known free asset (e.g., a simple part or model) - replace with actual free asset ID if known
-# Using a common Roblox asset ID for a simple model (e.g. Sword - 161692711)
+# Test 8.1: Load a known free asset
+# IMPORTANT: Asset loading depends on the asset's public availability, trust settings,
+# and the Studio place's security settings (e.g., allowing third-party assets).
+# The asset ID 161692711 (Roblox Sword) may fail due to trust issues if not configured in the place.
+# The tool's error reporting for such failures is part of what this can test.
 LoadAssetById asset_id=161692711 parent_path=Workspace desired_name=LoadedSword
 GetInstanceProperties path=Workspace.LoadedSword property_names=['ClassName']
 delete_instance path=Workspace.LoadedSword
