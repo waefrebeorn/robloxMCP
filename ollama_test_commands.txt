@@ -253,4 +253,8 @@ Create a new part with default settings.
 
 # This command tests the create_part to CreateInstance transformation with specific properties.
 Create a part named MyTransformTestCube in Workspace, color it blue, make it anchored, and set its size to (4, 8, 2).
+# Test create_instance phrasing with instance_type for a non-Part.
+Create an instance of type SpotLight, name it MyTestSpotlight, and parent it to Workspace.TestPart1. Set its Range to 20 and Angle to 45.
+# Test create_instance phrasing for a Part, specifying "as a Part" and some properties.
+Create an instance named MyInstancePart in Workspace as a Part, size (3,3,3), material Neon.
 

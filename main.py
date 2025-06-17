@@ -233,6 +233,9 @@ async def _process_command(
                             if ollama_tc.get('function') and ollama_tc['function'].get('name'):
                                 fc_id = ollama_tc.get('id') # Extract the ID if available
                                 fc_name = ollama_tc['function']['name']
+                                if not fc_id:
+                                    logger.warning(f"Ollama tool_call for '{fc_name}' is missing an ID. Generating one.")
+                                    fc_id = uuid.uuid4().hex
                                 fc_args_str = ollama_tc['function'].get('arguments', '{}') # Arguments are often a string
                                 fc_args = {}
                                 try:

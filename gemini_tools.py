@@ -1593,46 +1593,60 @@ class ToolDispatcher:
                 # is expected to be the exact Luau script name.
                 logger.warning(f"Tool name '{lookup_name}' not found in normalization map. Using as Luau script name. Ensure casing matches Luau script file.")
 
-            # Argument transformation for create_part -> CreateInstance
-            if normalized_llm_intended_name == "createpart" and luau_tool_name_to_execute == "CreateInstance":
-                logger.info(f"Transforming 'create_part' arguments for 'CreateInstance'. Original args: {original_tool_args}")
-                properties_dict = {}
 
-                # Known argument mappings from create_part to CreateInstance properties
-                arg_map = {
-                    "part_name": "Name",
+            # Argument transformation for CreateInstance (handles create_part and create_instance variations)
+            if luau_tool_name_to_execute == "CreateInstance" and \
+               (normalized_llm_intended_name == "createpart" or normalized_llm_intended_name == "createinstance"):
+
+                logger.info(f"Transforming LLM call '{llm_intended_tool_name}' with args {original_tool_args} for 'CreateInstance'.")
+
+                properties_dict = {}
+                class_name_val = None
+                transformed_args = original_tool_args.copy()
+
+                # Determine class_name
+                if "class_name" in transformed_args:
+                    class_name_val = transformed_args.pop("class_name")
+                elif "instance_type" in transformed_args: # Alternative key for class_name
+                    class_name_val = transformed_args.pop("instance_type")
+
+                if class_name_val is None and normalized_llm_intended_name == "createpart":
+                    class_name_val = "Part" # Default for create_part if no class_name specified
+                elif class_name_val is None: # Default for create_instance if no class_name specified (should ideally be provided by LLM)
+                    logger.warning("CreateInstance called without 'class_name' or 'instance_type'. Luau side might error if not handled.")
+                    # No default here, CreateInstance Luau script expects class_name.
+
+                # Populate properties_dict using specific mappings
+                arg_to_prop_map = {
+                    "part_name": "Name",   # from create_part
+                    "name": "Name",        # common for create_instance or direct property
                     "parent_path": "Parent",
+                    "parent": "Parent",    # common for create_instance or direct property
                     "size": "Size",
                     "position": "Position",
-                    "color": "Color", # Assuming Color3 dict e.g. {'r':1,'g':0,'b':0}
-                    "material": "Material", # Assuming Enum string e.g. "Enum.Material.Plastic"
+                    "color": "Color",      # Assuming Color3 dict e.g. {'r':1,'g':0,'b':0}
+                    "material": "Material",# Assuming Enum string e.g. "Enum.Material.Plastic"
                     "anchored": "Anchored",
                     "transparency": "Transparency"
-                    # Add other direct mappings if necessary
+                    # Add any other common direct mappings if necessary
                 }
+                for arg_key, prop_key in arg_to_prop_map.items():
+                    if arg_key in transformed_args:
+                        properties_dict[prop_key] = transformed_args.pop(arg_key)
 
-                # Use a copy of original_tool_args for this transformation block
-                # current_tool_args was already made as a copy of original_tool_args earlier.
-                # We will modify current_tool_args based on original_tool_args content.
+                # If 'properties' key exists and is a dict, merge its content
+                if 'properties' in transformed_args and isinstance(transformed_args.get('properties'), dict):
+                    properties_dict.update(transformed_args.pop('properties'))
 
-                # If 'properties' is already a dict in original_tool_args, use it as a base for properties_dict
-                if 'properties' in original_tool_args and isinstance(original_tool_args['properties'], dict):
-                    properties_dict.update(original_tool_args.pop('properties')) # Use pop to avoid re-processing
+                # Merge any remaining items in transformed_args directly into properties_dict
+                properties_dict.update(transformed_args)
 
-                # Map specific arguments from original_tool_args into properties_dict
-                for arg_key, prop_key in arg_map.items():
-                    if arg_key in original_tool_args:
-                        properties_dict[prop_key] = original_tool_args.pop(arg_key)
+                current_tool_args = {"class_name": class_name_val, "properties": properties_dict}
+                logger.info(f"Arguments for CreateInstance after transformation: class_name='{class_name_val}', properties={properties_dict}")
 
-                # Any remaining args in original_tool_args (after popping known ones and 'properties')
-                # are merged into properties_dict. This allows passthrough of arbitrary properties.
-                properties_dict.update(original_tool_args)
+            # For all other tools, or if not matching the CreateInstance transformation conditions,
+            # current_tool_args remains as it was (either a copy of original_tool_args or transformed by other specific logic like set_gravity)
 
-                current_tool_args = {"class_name": "Part", "properties": properties_dict}
-                logger.info(f"Transformed args for CreateInstance from create_part: {current_tool_args}")
-
-            # For all other tools (or if not create_part), current_tool_args remains as it was
-            # (either a copy of original_tool_args or transformed by other logic like set_gravity)
 
             tool_arguments_luau_str = python_to_luau_table_string(current_tool_args)
 
