@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types) -- Added
-local Lighting = game:GetService("Lighting")
+local Lighting = ToolHelpers.GetLightingService()
 
 local function execute(args: Types.GetLightingPropertyArgs) -- Type annotation added
     local success, resultOrError = pcall(function()

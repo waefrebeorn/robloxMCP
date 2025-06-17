@@ -21,7 +21,7 @@ local function execute(args: Types.SetWorkspacePropertyArgs) -- Type annotation 
 
         if type(propertyValueInput) == "table" then
             -- Pass 'workspace' as the instance for context-aware conversion (e.g. Vector3 vs UDim2 for Size)
-            local converted_value_from_helper, err_msg_from_helper = ToolHelpers.ConvertTableToRobloxType(propertyValueInput, propertyName, workspace)
+            local converted_value_from_helper, err_msg_from_helper = ToolHelpers.ConvertTableToRobloxType(propertyValueInput, propertyName, ToolHelpers.GetWorkspaceService())
             if err_msg_from_helper then
                 conversionErrorMsg = err_msg_from_helper
             else
@@ -38,7 +38,7 @@ local function execute(args: Types.SetWorkspacePropertyArgs) -- Type annotation 
         end
 
         local setSuccess, setError = pcall(function()
-            workspace[propertyName] = finalValueToSet
+            ToolHelpers.GetWorkspaceService()[propertyName] = finalValueToSet
         end)
 
         if not setSuccess then
@@ -62,7 +62,7 @@ local function execute(args: Types.SetWorkspacePropertyArgs) -- Type annotation 
             )
         end
 
-        local actualValue = workspace[propertyName]
+        local actualValue = ToolHelpers.GetWorkspaceService()[propertyName]
         local resultData: Types.SetWorkspacePropertyResultData = {
             property_name = propertyName,
             new_value_set = actualValue,

@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types)
-local TweenService = game:GetService("TweenService")
+local TweenService = ToolHelpers.GetTweenService()
 
 local function execute(args: Types.TweenPropertiesArgs)
     -- Arguments are expected directly on args table

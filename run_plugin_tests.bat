@@ -37,7 +37,6 @@ IF !PYTHON_EXIT_CODE! NEQ 0 (
 
 )
 ECHO =====================================
-ECHO.
 
 PAUSE
 

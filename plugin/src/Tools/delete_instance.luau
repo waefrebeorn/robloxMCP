@@ -22,7 +22,7 @@ local function execute(args: Types.DeleteInstanceArgs) -- Type annotation added
             return resultData -- This will be handled by FormatSuccessResult
         end
 
-        if instance == workspace or instance:IsA("ServiceProvider") or instance:IsA("Terrain") then
+        if instance == ToolHelpers.GetWorkspaceService() or instance:IsA("ServiceProvider") or instance:IsA("Terrain") then
              return ("Cannot delete core services, the workspace root, or Terrain: %s"):format(path) -- Return error string
         end
 

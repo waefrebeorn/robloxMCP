@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types)
-local TeamsService = game:GetService("Teams")
+local TeamsService = ToolHelpers.GetTeamsService()
 
 local function execute(args: Types.GetTeamsArgs)
     -- This tool does not currently take any specific arguments from the 'args' table.

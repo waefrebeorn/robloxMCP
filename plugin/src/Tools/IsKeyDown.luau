@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types)
-local UserInputService = game:GetService("UserInputService")
+local UserInputService = ToolHelpers.GetUserInputService()
 
 local function execute(args: Types.IsKeyDownArgs)
     -- Arguments are expected directly on args table

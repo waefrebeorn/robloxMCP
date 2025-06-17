@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types)
-local InsertService = game:GetService("InsertService")
+local InsertService = ToolHelpers.GetInsertService()
 
 local function execute(args: Types.LoadAssetByIdArgs)
     -- Arguments are expected directly on args table
@@ -25,7 +25,7 @@ local function execute(args: Types.LoadAssetByIdArgs)
             return ToolHelpers.FormatErrorResult("InsertService not available in this context.")
         end
 
-        local parentInstance = workspace -- Default to workspace
+        local parentInstance = ToolHelpers.GetWorkspaceService() -- Default to workspace
         if parentPath then
             local foundParent, err = ToolHelpers.FindInstanceByPath(parentPath)
             if foundParent then

@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types)
-local UserInputService = game:GetService("UserInputService")
+local UserInputService = ToolHelpers.GetUserInputService()
 
 local function execute(args: Types.GetMouseHitCFrameArgs)
     -- args.camera_path is optional
@@ -18,7 +18,7 @@ local function execute(args: Types.GetMouseHitCFrameArgs)
             return ToolHelpers.FormatErrorResult("UserInputService not available in this context.")
         end
 
-        local cameraToUse = workspace.CurrentCamera
+        local cameraToUse = ToolHelpers.GetWorkspaceService().CurrentCamera
         if cameraPath then
             local foundCam, err = ToolHelpers.FindInstanceByPath(cameraPath)
             if foundCam and foundCam:IsA("Camera") then
@@ -43,7 +43,7 @@ local function execute(args: Types.GetMouseHitCFrameArgs)
         --    raycastParams.FilterDescendantsInstances = {player.Character}
         -- end
 
-        local raycastResult = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
+        local raycastResult = ToolHelpers.GetWorkspaceService():Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
 
         if raycastResult and raycastResult.Instance then
             local hitPosition = raycastResult.Position

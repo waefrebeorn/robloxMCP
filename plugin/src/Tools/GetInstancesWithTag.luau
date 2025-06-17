@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types) -- Added
-local CollectionService = game:GetService("CollectionService")
+local CollectionService = ToolHelpers.GetCollectionService()
 
 local function execute(args: Types.GetInstancesWithTagArgs) -- Type annotation added
     local success, resultOrError = pcall(function()

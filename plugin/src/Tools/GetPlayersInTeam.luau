@@ -1,7 +1,7 @@
 -- GetPlayersInTeam.luau
 local ToolHelpers = require(script.Parent.Parent.ToolHelpers)
 local Types = require(script.Parent.Parent.Types)
-local TeamsService = game:GetService("Teams")
+local TeamsService = ToolHelpers.GetTeamsService()
 
 local function execute(args: Types.GetPlayersInTeamArgs)
     local success, pcall_result = pcall(function()
