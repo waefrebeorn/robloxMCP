@@ -1449,124 +1449,152 @@ class ToolDispatcher:
         # Refined structure for tool name mapping and argument preparation:
         mcp_tool_name_final = ""
         mcp_tool_args_final = {}
-        processed_tool_args_for_luau = original_tool_args.copy() # Start with a copy for potential transformation
+
+        current_tool_args = original_tool_args.copy() # Start with a copy for potential transformation
 
         if original_tool_name == "insert_model":
             mcp_tool_name_final = "insert_model"
-            mcp_tool_args_final = processed_tool_args_for_luau # Use the (unmodified for this case) args
+            mcp_tool_args_final = current_tool_args # Use the (unmodified for this case) args
             logger.info(f"Dispatching ToolCall: '{original_tool_name}' directly to MCP tool '{mcp_tool_name_final}' with args: {mcp_tool_args_final}")
         else:
             mcp_tool_name_final = "execute_discovered_luau_tool"
-            luau_tool_name_to_execute = original_tool_name # Default if no specific mapping
+            luau_tool_name_to_execute = original_tool_name # Default
 
-            # Specific mappings for tool names and potential argument transformations
+            # 1. Special handling for specific tool names (e.g., argument transformation)
             if original_tool_name == "set_gravity":
-                luau_tool_name_to_execute = "SetWorkspaceProperty"
-                gravity_value = processed_tool_args_for_luau.get("gravity_value")
+                luau_tool_name_to_execute = "SetWorkspaceProperty" # Target Luau script
+                gravity_value = current_tool_args.get("gravity_value")
                 if isinstance(gravity_value, (int, float)):
-                    # Transform args for SetWorkspaceProperty expecting "Gravity" and a scalar value
-                    processed_tool_args_for_luau = {"property_name": "Gravity", "value": gravity_value}
-                    logger.info(f"Remapped tool call from 'set_gravity' to 'SetWorkspaceProperty' with transformed args: {processed_tool_args_for_luau}")
+                    current_tool_args = {"property_name": "Gravity", "value": gravity_value} # Transform args
+                    logger.info(f"Remapped tool call from 'set_gravity' to 'SetWorkspaceProperty' with transformed args: {current_tool_args}")
                 else:
-                    logger.warning(f"'set_gravity' called with invalid 'gravity_value' type: {type(gravity_value)}. Args: {original_tool_args}. Luau tool will receive original or partially formed args.")
-                    # If gravity_value is not a number, SetWorkspaceProperty will likely fail or misinterpret.
-                    # We'll pass the current state of processed_tool_args_for_luau, which might be the original ones
-                    # or if 'gravity_value' was the only key, it might be just that.
-                    # This relies on Luau-side validation. A stricter approach here would be to return an error.
-            elif original_tool_name == "set_instance_properties":
-                luau_tool_name_to_execute = "SetInstanceProperties"
-            elif original_tool_name == "get_instance_properties":
-                luau_tool_name_to_execute = "GetInstanceProperties"
-            elif original_tool_name == "call_instance_method":
-                luau_tool_name_to_execute = "CallInstanceMethod"
-            elif original_tool_name == "delete_instance":
-                luau_tool_name_to_execute = "delete_instance"
-            elif original_tool_name == "select_instances":
-                luau_tool_name_to_execute = "SelectInstances"
-            elif original_tool_name == "run_script":
-                luau_tool_name_to_execute = "RunScript"
-            elif original_tool_name == "set_lighting_property":
-                luau_tool_name_to_execute = "SetLightingProperty"
-            elif original_tool_name == "get_lighting_property":
-                luau_tool_name_to_execute = "GetLightingProperty"
-            elif original_tool_name == "play_sound_id":
-                luau_tool_name_to_execute = "PlaySoundId"
-            elif original_tool_name == "set_workspace_property": # Note: set_gravity maps to this
-                luau_tool_name_to_execute = "SetWorkspaceProperty"
-            elif original_tool_name == "get_workspace_property":
-                luau_tool_name_to_execute = "GetWorkspaceProperty"
-            elif original_tool_name == "kick_player":
-                luau_tool_name_to_execute = "KickPlayer"
-            elif original_tool_name == "create_team":
-                luau_tool_name_to_execute = "CreateTeam"
-            elif original_tool_name == "tween_properties":
-                luau_tool_name_to_execute = "TweenProperties"
-            elif original_tool_name == "add_tag":
-                luau_tool_name_to_execute = "AddTag"
-            elif original_tool_name == "remove_tag":
-                luau_tool_name_to_execute = "RemoveTag"
-            elif original_tool_name == "get_instances_with_tag":
-                luau_tool_name_to_execute = "GetInstancesWithTag"
-            elif original_tool_name == "has_tag":
-                luau_tool_name_to_execute = "HasTag"
-            elif original_tool_name == "compute_path":
-                luau_tool_name_to_execute = "ComputePath"
-            elif original_tool_name == "create_proximity_prompt":
-                luau_tool_name_to_execute = "CreateProximityPrompt"
-            elif original_tool_name == "get_product_info":
-                luau_tool_name_to_execute = "GetProductInfo"
-            elif original_tool_name == "prompt_purchase":
-                luau_tool_name_to_execute = "PromptPurchase"
-            elif original_tool_name == "add_debris_item":
-                luau_tool_name_to_execute = "AddDebrisItem"
-            elif original_tool_name == "create_gui_element":
-                luau_tool_name_to_execute = "CreateGuiElement"
-            elif original_tool_name == "get_mouse_position":
-                luau_tool_name_to_execute = "GetMousePosition"
-            elif original_tool_name == "get_mouse_hit_cframe":
-                luau_tool_name_to_execute = "GetMouseHitCFrame"
-            elif original_tool_name == "is_key_down":
-                luau_tool_name_to_execute = "IsKeyDown"
-            elif original_tool_name == "is_mouse_button_down":
-                luau_tool_name_to_execute = "IsMouseButtonDown"
-            elif original_tool_name == "save_data":
-                luau_tool_name_to_execute = "SaveData"
-            elif original_tool_name == "load_data":
-                luau_tool_name_to_execute = "LoadData"
-            elif original_tool_name == "increment_data":
-                luau_tool_name_to_execute = "IncrementData"
-            elif original_tool_name == "remove_data":
-                luau_tool_name_to_execute = "RemoveData"
-            elif original_tool_name == "teleport_player_to_place":
-                luau_tool_name_to_execute = "TeleportPlayerToPlace"
-            elif original_tool_name == "get_teleport_data":
-                luau_tool_name_to_execute = "GetTeleportData"
-            elif original_tool_name == "send_chat_message":
-                luau_tool_name_to_execute = "SendChatMessage"
-            elif original_tool_name == "filter_text_for_player":
-                luau_tool_name_to_execute = "FilterTextForPlayer"
-            elif original_tool_name == "create_text_channel":
-                luau_tool_name_to_execute = "CreateTextChannel"
-            elif original_tool_name == "get_teams":
-                luau_tool_name_to_execute = "GetTeams"
-            elif original_tool_name == "get_players_in_team":
-                luau_tool_name_to_execute = "GetPlayersInTeam"
-            elif original_tool_name == "load_asset_by_id":
-                luau_tool_name_to_execute = "LoadAssetById"
-            elif original_tool_name == "get_children_of_instance":
-                luau_tool_name_to_execute = "GetChildrenOfInstance"
-            elif original_tool_name == "get_descendants_of_instance":
-                luau_tool_name_to_execute = "GetDescendantsOfInstance"
-            elif original_tool_name == "find_first_child_matching":
-                luau_tool_name_to_execute = "FindFirstChildMatching"
-            # Ensure original_tool_name default is fine if no mapping applies.
+                    logger.warning(f"'set_gravity' called with invalid 'gravity_value'. Args: {current_tool_args}. Passing to SetWorkspaceProperty as is.")
 
-            tool_arguments_luau_str = python_to_luau_table_string(processed_tool_args_for_luau)
+            # 2. Normalize or map tool names to the exact Luau script names (PascalCase or specific case)
+            # This map helps handle variations from LLM (e.g., lowercase, snake_case)
+            # and ensures the correct Luau script (which are mostly PascalCase) is called.
+            # Keys are lowercase and underscore-removed versions of potential LLM tool names.
+            # Values are the exact Luau script names (without .luau extension).
+            tool_name_normalization_map = {
+                "createinstance": "CreateInstance",
+                "setinstanceproperties": "SetInstanceProperties",
+                "getinstanceproperties": "GetInstanceProperties",
+                "callinstancemethod": "CallInstanceMethod",
+                "deleteinstance": "delete_instance", # Luau script is lowercase
+                "selectinstances": "SelectInstances",
+                "getselection": "GetSelection",
+                "runcode": "RunCode",
+                "runscript": "RunScript",
+                "setlightingproperty": "SetLightingProperty",
+                "getlightingproperty": "GetLightingProperty",
+                "playsoundid": "PlaySoundId",
+                "setworkspaceproperty": "SetWorkspaceProperty", # Handles 'set_gravity' target
+                "getworkspaceproperty": "GetWorkspaceProperty",
+                "kickplayer": "KickPlayer",
+                "createteam": "CreateTeam",
+                "tweenproperties": "TweenProperties",
+                "addtag": "AddTag",
+                "removetag": "RemoveTag",
+                "getinstanceswithtag": "GetInstancesWithTag",
+                "hastag": "HasTag",
+                "computepath": "ComputePath",
+                "createproximityprompt": "CreateProximityPrompt",
+                "getproductinfo": "GetProductInfo",
+                "promptpurchase": "PromptPurchase",
+                "adddebrisitem": "AddDebrisItem",
+                "createguielement": "CreateGuiElement",
+                "getmouseposition": "GetMousePosition",
+                "getmousehitcframe": "GetMouseHitCFrame",
+                "iskeydown": "IsKeyDown",
+                "ismousebuttondown": "IsMouseButtonDown",
+                "savedata": "SaveData",
+                "loaddata": "LoadData",
+                "incrementdata": "IncrementData",
+                "removedata": "RemoveData",
+                "teleportplayertoplace": "TeleportPlayerToPlace",
+                "getteleportdata": "GetTeleportData",
+                "sendchatmessage": "SendChatMessage",
+                "filtertextforplayer": "FilterTextForPlayer",
+                "createtextchannel": "CreateTextChannel",
+                "getteams": "GetTeams",
+                "getplayersinteam": "GetPlayersInTeam",
+                "loadassetbyid": "LoadAssetById",
+                "getchildrenofinstance": "GetChildrenOfInstance",
+                "getdescendantsofinstance": "GetDescendantsOfInstance",
+                "findfirstchildmatching": "FindFirstChildMatching",
+                # Add common snake_case versions if Gemini schema uses them and they differ after lowercasing
+                "create_instance": "CreateInstance",
+                "set_instance_properties": "SetInstanceProperties",
+                "get_instance_properties": "GetInstanceProperties",
+                "call_instance_method": "CallInstanceMethod",
+                "delete_instance": "delete_instance", # Explicitly map snake_case to lowercase if Luau is lowercase
+                "select_instances": "SelectInstances",
+                "get_selection": "GetSelection",
+                "run_code": "RunCode",
+                "run_script": "RunScript",
+                "set_lighting_property": "SetLightingProperty",
+                "get_lighting_property": "GetLightingProperty",
+                "play_sound_id": "PlaySoundId",
+                "set_workspace_property": "SetWorkspaceProperty",
+                "get_workspace_property": "GetWorkspaceProperty",
+                "kick_player": "KickPlayer",
+                "create_team": "CreateTeam",
+                "tween_properties": "TweenProperties",
+                "add_tag": "AddTag",
+                "remove_tag": "RemoveTag",
+                "get_instances_with_tag": "GetInstancesWithTag",
+                "has_tag": "HasTag",
+                "compute_path": "ComputePath",
+                "create_proximity_prompt": "CreateProximityPrompt",
+                "get_product_info": "GetProductInfo",
+                "prompt_purchase": "PromptPurchase",
+                "add_debris_item": "AddDebrisItem",
+                "create_gui_element": "CreateGuiElement",
+                "get_mouse_position": "GetMousePosition",
+                "get_mouse_hit_cframe": "GetMouseHitCFrame",
+                "is_key_down": "IsKeyDown",
+                "is_mouse_button_down": "IsMouseButtonDown",
+                "save_data": "SaveData",
+                "load_data": "LoadData",
+                "increment_data": "IncrementData",
+                "remove_data": "RemoveData",
+                "teleport_player_to_place": "TeleportPlayerToPlace",
+                "get_teleport_data": "GetTeleportData",
+                "send_chat_message": "SendChatMessage",
+                "filter_text_for_player": "FilterTextForPlayer",
+                "create_text_channel": "CreateTextChannel",
+                "get_teams": "GetTeams",
+                "get_players_in_team": "GetPlayersInTeam",
+                "load_asset_by_id": "LoadAssetById",
+                "get_children_of_instance": "GetChildrenOfInstance",
+                "get_descendants_of_instance": "GetDescendantsOfInstance",
+                "find_first_child_matching": "FindFirstChildMatching",
+            }
+
+            # Use luau_tool_name_to_execute if it was already changed by special handling (e.g. set_gravity)
+            # Otherwise, use original_tool_name for lookup.
+            lookup_name = luau_tool_name_to_execute if luau_tool_name_to_execute != original_tool_name else original_tool_name
+            normalized_lookup_name = lookup_name.replace("_", "").lower()
+
+            if normalized_lookup_name in tool_name_normalization_map:
+                final_luau_name = tool_name_normalization_map[normalized_lookup_name]
+                if luau_tool_name_to_execute != final_luau_name: # Log if a change occurred
+                    logger.info(f"Normalized/Mapped tool name '{lookup_name}' to Luau script name '{final_luau_name}'.")
+                luau_tool_name_to_execute = final_luau_name
+            else:
+                # If not in map, it implies the original_tool_name (or the one from set_gravity)
+                # is expected to be the exact Luau script name.
+                logger.warning(f"Tool name '{lookup_name}' not found in normalization map. Using as Luau script name. Ensure casing matches Luau script file.")
+
+            tool_arguments_luau_str = python_to_luau_table_string(current_tool_args) # Use current_tool_args
+
             mcp_tool_args_final = {
                 "tool_name": luau_tool_name_to_execute,
                 "tool_arguments_luau": tool_arguments_luau_str
             }
-            logger.info(f"Dispatching ToolCall: '{original_tool_name}' via MCP tool '{mcp_tool_name_final}' for Luau script '{luau_tool_name_to_execute}'. Luau script args (from processed_tool_args_for_luau): {tool_arguments_luau_str}")
+
+            logger.info(f"Dispatching ToolCall: '{original_tool_name}' (Luau: '{luau_tool_name_to_execute}') via MCP tool '{mcp_tool_name_final}'.")
+
 
         output_content_dict = {}
         try:

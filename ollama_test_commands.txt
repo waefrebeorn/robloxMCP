@@ -1,3 +1,4 @@
+
 # Comprehensive Test Suite for Luau Tools
 
 # --- Section 1: Instance Creation and Basic Properties (CreateInstance, GetInstanceProperties, SetInstanceProperties, delete_instance) ---
@@ -242,3 +243,4 @@ RunCode command="print('Simple Game: Obby construction commands complete.')"
 # RunCode command="print('Attempted cleanup of obby parts. Review workspace.')"
 # A more robust cleanup would use GetInstancesWithTag and loop delete, but that's too complex for test_commands.txt itself.
 # The individual delete tests already cover functionality.
+

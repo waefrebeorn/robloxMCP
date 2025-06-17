@@ -4,7 +4,9 @@ SET "SCRIPT_EXIT_CODE=0"
 
 REM === Configuration ===
 SET "VENV_DIR=venv"
+
 SET "OLLAMA_TEST_MODEL=qwen2.5-coder:7b-instruct-q4_K_M" 
+
 SET "TEST_COMMAND_FILE=ollama_test_commands.txt"
 SET "PYTHON_SCRIPT=main.py"
 SET "OLLAMA_SERVICE_LOG=ollama_service_test_run.log"
@@ -94,8 +96,10 @@ EXIT /B 0
         ECHO [run_ollama_agent_test.bat] Ollama service does not appear to be running. Attempting to start it...
         ECHO [run_ollama_agent_test.bat] (This may take a few moments. A log file '!OLLAMA_SERVICE_LOG!' will be created.)
         START "OllamaServiceTest" /B ollama run !OLLAMA_TEST_MODEL! --verbose > "!OLLAMA_SERVICE_LOG!" 2>&1
+
         ECHO [run_ollama_agent_test.bat] Waiting for 25 seconds for Ollama service to initialize...
         TIMEOUT /T 25 /NOBREAK >nul
+
         ollama list >nul 2>&1
         IF !ERRORLEVEL! NEQ 0 (
             ECHO [run_ollama_agent_test.bat] ERROR: Failed to start or detect Ollama service after attempt.
