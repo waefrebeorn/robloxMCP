@@ -54,15 +54,65 @@ class ConsoleFormatter:
             error_json = Text(str(error))
         console.print(Panel(error_json, title="[bold red]❌ Tool Error[/bold red]", border_style="red"))
 
+    # --- Generic Provider Methods ---
+    @staticmethod
+    def print_provider_response_header(provider_name: str):
+        style = "purple" # Default for Gemini
+        if provider_name.lower() == "ollama":
+            style = "orange1" # Rich color name for orange
+        elif provider_name.lower() == "gemini":
+            style = "purple"
+        console.print(Text(f"{provider_name.capitalize()}:", style=f"bold {style}"), end=" ")
+
+    @staticmethod
+    def print_provider_response_chunk(provider_name: str, text: str):
+        style = "purple"
+        if provider_name.lower() == "ollama":
+            style = "orange1"
+        elif provider_name.lower() == "gemini":
+            style = "purple"
+        console.print(Text(text, style=style), end="")
+
+    @staticmethod
+    def print_provider_message(provider_name: str, text: str):
+        style = "purple"
+        title_style = "bold purple"
+        if provider_name.lower() == "ollama":
+            style = "orange1"
+            title_style = "bold orange1"
+        elif provider_name.lower() == "gemini":
+            style = "purple"
+            title_style = "bold purple"
+        console.print(Panel(Text(text, style=style), title=f"[{title_style}]{provider_name.capitalize()}[/{title_style}]", border_style=style))
+
+    @staticmethod
+    def print_provider_error(provider_name: str, text: str):
+        style = "red" # Errors are typically red
+        title_style = "bold red"
+        # It's an error, so panel is red. Provider name is in the title.
+        console.print(Panel(Text(text, style=style), title=f"[{title_style}]{provider_name.capitalize()} Error[/{title_style}]", border_style=style))
+
+
 # Example usage (for testing this module directly)
 if __name__ == '__main__':
     from typing import Any # Required for example usage
     ConsoleFormatter.print_user("This is a test user message.")
-    ConsoleFormatter.print_gemini("This is a test Gemini message.")
-    ConsoleFormatter.print_gemini_header()
-    ConsoleFormatter.print_gemini_chunk("This is a ")
-    ConsoleFormatter.print_gemini_chunk("streamed Gemini message.")
+    ConsoleFormatter.print_gemini("This is a test Gemini message.") # Legacy
+    ConsoleFormatter.print_provider_message("Gemini", "This is a test Gemini message via generic method.")
+    ConsoleFormatter.print_provider_response_header("Gemini")
+    ConsoleFormatter.print_provider_response_chunk("Gemini", "This is a ")
+    ConsoleFormatter.print_provider_response_chunk("Gemini", "streamed Gemini message.")
     console.print() # for newline
+
+    ConsoleFormatter.print_provider_message("Ollama", "This is a test Ollama message via generic method.")
+    ConsoleFormatter.print_provider_response_header("Ollama")
+    ConsoleFormatter.print_provider_response_chunk("Ollama", "This is a ")
+    ConsoleFormatter.print_provider_response_chunk("Ollama", "streamed Ollama message.")
+    console.print() # for newline
+
+    ConsoleFormatter.print_provider_error("Gemini", "This is a Gemini error.")
+    ConsoleFormatter.print_provider_error("Ollama", "This is an Ollama error.")
+
     ConsoleFormatter.print_tool_call("test_tool", {"param1": "value1", "param2": 123})
     ConsoleFormatter.print_tool_result({"status": "success", "data": [1, 2, 3]})
     ConsoleFormatter.print_tool_error({"error_code": 500, "message": "Something went wrong."})

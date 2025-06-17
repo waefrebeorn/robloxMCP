@@ -84,6 +84,84 @@ To use the Gemini agent with Roblox Studio:
 
 Type your prompts into the Python agent's console. It will interact with Gemini and relay actions to Roblox Studio via the Rust MCP server.
 
+## Using Local LLMs with Ollama
+
+This project also supports using local Large Language Models (LLMs) through [Ollama](https://ollama.com/). This allows you to run powerful models directly on your own machine.
+
+**Benefits of using Ollama:**
+*   **Privacy**: Your prompts and code are processed locally, not sent to a third-party cloud service.
+*   **Offline Capability**: Once models are downloaded, you can use the agent without an active internet connection (though initial setup and model downloads require internet).
+*   **Custom Models**: Ollama supports a wide range of open-source models, and you can easily switch between them or even use customized versions.
+
+### Installation and Setup (Ollama)
+
+1.  **Prerequisites**:
+    *   Ensure your Python environment is set up as described in the "Getting Started with Gemini" section (virtual environment, `requirements.txt` installed, especially the `ollama` package).
+    *   Ollama itself needs to be installed on your system.
+
+2.  **Ollama Setup Script**:
+    This project includes a batch script to help you set up Ollama and download recommended models.
+    *   **What it does**:
+        *   Checks if Ollama is already installed.
+        *   If not installed, it provides a download link and instructions.
+        *   Pulls several common Ollama models suitable for coding tasks (e.g., `phi3:mini`, `qwen2:7b`).
+    *   **How to run it**:
+        Open a command prompt or terminal in the project root and run:
+        ```batch
+        .\ollama_setup.bat
+        ```
+        Follow the on-screen prompts.
+
+### Running the Agent with Ollama
+
+A dedicated batch script is provided to simplify running the agent with Ollama.
+
+1.  **Ensure Rust MCP Server is Running**:
+    Just like with the Gemini workflow, the Rust MCP server (`rbx-studio-mcp.exe`) must be running. Open a terminal and execute:
+    ```batch
+    run_rust_server.bat
+    ```
+    Keep this window open.
+
+2.  **Run the Ollama Agent Script**:
+    In another terminal, run the `run_ollama_agent.bat` script:
+    ```batch
+    .\run_ollama_agent.bat
+    ```
+    *   **What it does**:
+        *   Checks if Ollama is installed and if the Ollama service/daemon is running.
+        *   Attempts to start the Ollama service if it's not detected (by running a small model in the background).
+        *   Presents a menu to select which Ollama model you want to use (from the ones downloaded by `ollama_setup.bat` or a custom one).
+        *   Starts the Python agent (`main.py`) configured to use Ollama with your selected model.
+
+### Configuration Options (Ollama)
+
+The primary way to configure Ollama is through command-line arguments or the interactive menu in `run_ollama_agent.bat`. However, you can also view or (less commonly) manually edit these settings in `config.json` (created after the first run or if you manually copy `config.example.json`):
+
+*   `"LLM_PROVIDER"`: Set this to `"ollama"` to use Ollama by default (can be overridden by command-line).
+*   `"OLLAMA_API_URL"`: The API endpoint for your Ollama instance. Defaults to `"http://localhost:11434"`.
+*   `"OLLAMA_DEFAULT_MODEL"`: The default Ollama model to use if not specified by other means. Defaults to `"phi3:mini"`.
+
+### Command-Line Arguments for Ollama (`main.py`)
+
+You can also run `main.py` directly with arguments to use Ollama:
+
+*   `--llm_provider {gemini,ollama}`: Specifies the LLM provider.
+    *   Example: `python main.py --llm_provider ollama`
+*   `--ollama_model <model_name>`: Specifies which Ollama model to use. This overrides the `OLLAMA_DEFAULT_MODEL` from `config.json` and the selection from `run_ollama_agent.bat` if you run `main.py` directly.
+    *   Example: `python main.py --llm_provider ollama --ollama_model qwen2:7b`
+
+### Model Notes (Ollama)
+
+*   The `ollama_setup.bat` script attempts to download the following models:
+    *   `phi3:mini` (a capable small model)
+    *   `qwen2:7b` (a larger, powerful model)
+    *   `qwen2:7b-q4_K_M` (a quantized version of Qwen2 7B, offering a balance of performance and resource usage)
+*   You can download other models compatible with Ollama by using the command `ollama pull <another_model_name:tag>`.
+*   Once downloaded, you can use these additional models by:
+    *   Selecting the "Enter custom model name" option in `run_ollama_agent.bat`.
+    *   Using the `--ollama_model <another_model_name:tag>` command-line argument when running `main.py`.
+
 ## Known Issues
 
 ### Tool Execution Timeouts in Persistent Sessions
