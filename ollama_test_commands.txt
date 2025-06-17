@@ -1,0 +1,13 @@
+# Ollama Test Commands
+
+# Test 1: Simple asset insertion (likely to fail with non-existent/unauthorized asset ID, but tests tool call)
+put kart in
+
+# Test 2: Attempt to change gravity (tests tool call for 'set_gravity' -> 'SetWorkspaceProperty')
+change gravity to 150
+
+# Test 3: Request that doesn't involve a direct tool, to see text response
+what is a Vector3 in Roblox
+
+# Test 4: Another asset insertion with a slightly different phrasing
+can you add a red brick wall
