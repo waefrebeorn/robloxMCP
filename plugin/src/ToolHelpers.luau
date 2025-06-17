@@ -296,14 +296,64 @@ function ToolHelpers.TableLength(t)
     return count
 end
 
-function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instance)
+function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instanceOrClassName)
     if type(inputTable) ~= "table" then
         return inputTable, nil -- Not a table, no conversion needed
     end
 
-    -- Infer type from property name (case-insensitive)
+    local className = ""
+    local instance = nil
+    if typeof(instanceOrClassName) == "Instance" then
+        instance = instanceOrClassName
+        className = instance.ClassName
+    elseif type(instanceOrClassName) == "string" then
+        className = instanceOrClassName -- Assume it's a class name string for broader use
+    end
+
     local lowerPropName = string.lower(propertyName)
 
+    if lowerPropName == "value" and className ~= "" then
+        if className == "Vector3Value" then
+            if inputTable.x ~= nil and inputTable.y ~= nil and inputTable.z ~= nil then
+                local x, y, z = tonumber(inputTable.x), tonumber(inputTable.y), tonumber(inputTable.z)
+                if x and y and z then return Vector3.new(x, y, z), nil
+                else return inputTable, "Invalid Vector3 components for Value: x, y, z must be numbers." end
+            else return inputTable, "Missing x, y, or z fields for Vector3 Value." end
+        elseif className == "Color3Value" then
+            if inputTable.r ~= nil and inputTable.g ~= nil and inputTable.b ~= nil then
+                local r, g, b = tonumber(inputTable.r), tonumber(inputTable.g), tonumber(inputTable.b)
+                if r and g and b then return Color3.new(r, g, b), nil
+                else return inputTable, "Invalid Color3 components for Value: r, g, b must be numbers." end
+            else return inputTable, "Missing r, g, or b fields for Color3 Value." end
+        elseif className == "CFrameValue" then
+            -- Simplified: assumes x,y,z for position. CFrameValue can store full CFrame.
+            -- Users would need to provide more components for full CFrame representation.
+            local x,y,z = tonumber(inputTable.x), tonumber(inputTable.y), tonumber(inputTable.z)
+            if x and y and z then
+                -- This creates a CFrame at position x,y,z with no rotation.
+                -- For full CFrame, more fields like lookAt or rotation matrix components would be needed from inputTable.
+                return CFrame.new(x,y,z), nil
+            else
+                return inputTable, "Missing x,y,z components for CFrame Value. For full CFrame, provide more components."
+            end
+        elseif className == "BrickColorValue" then
+            if type(inputTable.name) == "string" then
+                 local success, result = pcall(BrickColor.new, inputTable.name)
+                 if success then return result, nil else return inputTable, "Invalid BrickColor name for Value: " .. tostring(result) end
+            elseif type(inputTable.number) == "number" then
+                local success, result = pcall(BrickColor.new, inputTable.number)
+                if success then return result, nil else return inputTable, "Invalid BrickColor number for Value: " .. tostring(result) end
+            else return inputTable, "Missing 'name' or 'number' field for BrickColor Value." end
+        -- Note: For primitive *Value types like StringValue, IntValue, BoolValue, NumberValue,
+        -- if the 'Value' property is already a Lua primitive (string, number, boolean),
+        -- the type(inputTable) ~= "table" check at the function start would mean this function
+        -- isn't called or returns early. This block is for when 'Value' is given as a table.
+        -- If a StringValue's 'Value' is given as {Text="Hi"}, it wouldn't match here.
+        -- This primarily targets Roblox datatypes that are represented as tables by users.
+        end
+    end
+
+    -- Infer type from property name (case-insensitive) - existing logic
     if string.find(lowerPropName, "color") then -- Matches "Color", "BackgroundColor3", "TextColor3", etc.
         if inputTable.r ~= nil and inputTable.g ~= nil and inputTable.b ~= nil then
             local r, g, b = tonumber(inputTable.r), tonumber(inputTable.g), tonumber(inputTable.b)
@@ -318,7 +368,7 @@ function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instance
     elseif lowerPropName == "position" or lowerPropName == "size" or string.find(lowerPropName, "vector3") then
         -- Check if it's for a GUI object's Position/Size (UDim2) vs a Part's Position/Size (Vector3)
         local isGui = false
-        if instance then
+        if instance then -- instance is defined if instanceOrClassName was an Instance
             pcall(function() if instance:IsA("GuiObject") or instance:IsA("GuiBase2d") then isGui = true end end)
         end
 
