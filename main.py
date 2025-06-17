@@ -290,8 +290,8 @@ async def _process_command(
                                         fc_name = potential_tool_call.get('name') or potential_tool_call.get('function_name')
                                         fc_args = potential_tool_call['arguments']
 
-                                        if not fc_name: # Safeguard, though covered by the condition above
-                                            logger.warning("Tool call from content JSON is missing 'name' or 'function_name'. Skipping.")
+                                        if not fc_name:
+                                            logger.warning(f"Tool call from content JSON is missing a valid 'name' or 'function_name'. Full potential tool call dictionary: {potential_tool_call}. Skipping.")
                                             continue
                                         else:
                                             logger.info(f"Identified potential tool call from content: '{fc_name}'")
