@@ -137,6 +137,7 @@ async def _process_command(
         while current_retry_attempt < MAX_API_RETRIES:
             try:
                 if current_retry_attempt > 0:
+
                     # Common delay logic for retries, message customized by provider
                     delay_message_provider = "Gemini" if llm_provider == "gemini" else "Ollama"
                     with console.status(f"[bold yellow]{delay_message_provider} API error. Retrying in {current_delay:.1f}s (Attempt {current_retry_attempt + 1}/{MAX_API_RETRIES})...[/bold yellow]", spinner="dots") as status_spinner_retry:
@@ -144,6 +145,7 @@ async def _process_command(
 
                 # API call logic properly indented under the try block
                 if llm_provider == "gemini":
+
                     with console.status(f"[bold green]Gemini is thinking... (Attempt {current_retry_attempt + 1})[/bold green]", spinner="dots") as status_spinner_gemini:
                         response = await chat_session.send_message( # chat_session is the Gemini chat
                             message=user_input_str,
@@ -151,6 +153,8 @@ async def _process_command(
                         )
                     break # Success
                 elif llm_provider == "ollama":
+
+
                     with console.status(f"[bold green]Ollama is thinking... (Attempt {current_retry_attempt + 1})[/bold green]", spinner="dots") as status_spinner_ollama:
                         # Add user message to history
                         ollama_history.append({'role': 'user', 'content': user_input_str})
@@ -170,8 +174,10 @@ async def _process_command(
                     break # Success for Ollama
 
             except ServerError as e: # Gemini specific
+
                 # This exception block is now correctly aligned with the try block
                 if llm_provider == "gemini": # Check provider again here for provider-specific error handling
+
                     logger.warning(f"Gemini API ServerError (Attempt {current_retry_attempt + 1}/{MAX_API_RETRIES}): {e}")
                     current_retry_attempt += 1
                     if current_retry_attempt >= MAX_API_RETRIES:

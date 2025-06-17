@@ -2,6 +2,7 @@
 SETLOCAL ENABLEDELAYEDEXPANSION
 
 REM --- Configuration ---
+
 SET "VENV_DIR=venv"
 SET "SCRIPT_NAME=run_ollama_agent.bat"
 SET "PYTHON_EXE=python"
@@ -17,6 +18,7 @@ IF ERRORLEVEL 1 GOTO :Cleanup
 CALL :CheckOllamaInstallation
 IF "!OLLAMA_READY!"=="false" GOTO :Cleanup
 
+
 CALL :EnsureOllamaService
 IF "!OLLAMA_SERVICE_READY!"=="false" (
     echo.
@@ -24,15 +26,18 @@ IF "!OLLAMA_SERVICE_READY!"=="false" (
     echo [!SCRIPT_NAME!] Please try starting the Ollama application/service manually.
     CHOICE /C YN /M "[!SCRIPT_NAME!] Do you want to try running the agent anyway (Y/N)?"
     IF ERRORLEVEL 2 (
+
         echo [!SCRIPT_NAME!] Exiting due to Ollama service issue.
         GOTO :Cleanup
     )
     echo [!SCRIPT_NAME!] Proceeding despite potential Ollama service issue. Agent may fail.
+
 )
 
 CALL :SelectOllamaModel
 IF "!SELECTED_MODEL!"=="" (
     echo [!SCRIPT_NAME!] No model selected or invalid input. Exiting.
+
     GOTO :Cleanup
 )
 
@@ -63,6 +68,7 @@ IF ERRORLEVEL 1 (
     EXIT /B 1
 )
 echo [!SCRIPT_NAME!] Python virtual environment activated.
+
 GOTO :EOF
 
 
