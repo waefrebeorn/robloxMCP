@@ -1,8 +1,8 @@
 -- TeleportPlayerToPlace.luau
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
-local TeleportService = game:GetService("TeleportService")
-local PlayersService = game:GetService("Players")
+local TeleportService = ToolHelpers.GetTeleportService()
+local PlayersService = ToolHelpers.GetPlayersService()
 
 local function execute(args)
     -- Arguments are expected directly on args table

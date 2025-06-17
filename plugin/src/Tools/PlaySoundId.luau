@@ -82,7 +82,7 @@ local function execute(args: Types.PlaySoundIdArgs)
         if parentInstance then
             soundInstance.Parent = parentInstance
         else
-            soundInstance.Parent = game:GetService("SoundService")
+            soundInstance.Parent = ToolHelpers.GetSoundService()
             if not properties.PlayOnRemove then soundInstance.PlayOnRemove = true end
         end
 

@@ -13,7 +13,7 @@ local function execute(args: Types.GetWorkspacePropertyArgs) -- Type annotation 
 
         local propertyValue
         local getSuccess, valueOrError = pcall(function()
-            return workspace[propertyName]
+            return ToolHelpers.GetWorkspaceService()[propertyName]
         end)
 
         if not getSuccess then

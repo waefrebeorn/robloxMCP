@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types)
-local PlayersService = game:GetService("Players")
+local PlayersService = ToolHelpers.GetPlayersService()
 
 local function find_player(pathOrName)
     -- Try finding by full name first (more specific)
