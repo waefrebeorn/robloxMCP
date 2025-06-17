@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types)
-local PathfindingService = game:GetService("PathfindingService")
+local PathfindingService = ToolHelpers.GetPathfindingService()
 local HttpService = game:GetService("HttpService") -- Added
 
 local function execute(args: Types.ComputePathArgs)

@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types)
-local MarketplaceService = game:GetService("MarketplaceService")
+local MarketplaceService = ToolHelpers.GetMarketplaceService()
 
 local function execute(args: Types.GetProductInfoArgs)
     local success, pcall_result = pcall(function()

@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types) -- Added
-local TeamsService = game:GetService("Teams")
+local TeamsService = ToolHelpers.GetTeamsService()
 local HttpService = game:GetService("HttpService") -- Added
 
 local function execute(args: Types.CreateTeamArgs) -- Type annotation added

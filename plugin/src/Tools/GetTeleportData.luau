@@ -2,7 +2,7 @@
 local Main = script:FindFirstAncestor("MCPStudioPlugin")
 local ToolHelpers = require(Main.ToolHelpers)
 local Types = require(Main.Types)
-local PlayersService = game:GetService("Players")
+local PlayersService = ToolHelpers.GetPlayersService()
 
 local function execute(args: Types.GetTeleportDataArgs)
     -- This tool does not take arguments from the 'args' table for its core logic.
