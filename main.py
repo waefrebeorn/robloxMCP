@@ -20,7 +20,7 @@ from rich.panel import Panel
 # Status is imported where it's used, or can be imported here if preferred globally
 
 # Retry Parameters for Gemini API
-MAX_API_RETRIES = 3
+MAX_API_RETRIES = 1
 INITIAL_RETRY_DELAY_SECONDS = 1
 RETRY_BACKOFF_FACTOR = 2
 
@@ -319,8 +319,8 @@ async def main_loop():
                         file_command_errors += 1
 
                     if i < file_command_total - 1: # Don't sleep after the last command
-                        console.print(f"[dim]Waiting for 12 seconds before next command...[/dim]")
-                        await asyncio.sleep(12)
+                        console.print(f"[dim]Waiting for 25 seconds before next command...[/dim]")
+                        await asyncio.sleep(25)
 
                 console.print(f"\n[bold {'green' if file_command_errors == 0 else 'red'}]>>> Test file processing complete. {file_command_total - file_command_errors}/{file_command_total} commands succeeded. <<<[/bold {'green' if file_command_errors == 0 else 'red'}]")
 

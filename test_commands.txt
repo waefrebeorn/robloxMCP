@@ -8,5 +8,5 @@ delete_instance path=Workspace.SelectTestPart
 CreateInstance class_name=Part properties={Name='DeleteTestPart', Parent='Workspace'}
 delete_instance path=Workspace.DeleteTestPart
 GetLightingProperty property_name=ClockTime
-PlaySoundId sound_id=rbxassetid://1846473670 properties={Name='TestBatchSound', Volume=0.8} parent_path=Workspace
+PlaySoundId sound_id=rbxassetid://168208965 properties={Name='TestBatchSound', Volume=0.8} parent_path=Workspace
 delete_instance path=Workspace.TestBatchSound

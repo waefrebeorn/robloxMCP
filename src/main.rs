@@ -1,16 +1,21 @@
-use axum::routing::{get, post};
+// src/main.rs - FINAL, CORRECTED VERSION
+
+use axum::routing::post; // Changed from get/post to just post
 use clap::Parser;
 use color_eyre::eyre::Result;
-// Duplicate axum::routing import removed
-use rbx_studio_server::{StateManager, StateManagerCommand, AxumSharedState, discover_luau_tools, DiscoveredTool, RBXStudioServer, STUDIO_PLUGIN_PORT, request_handler, response_handler}; // Explicit imports
+// Corrected imports to use the new unified_handler
+use rbx_studio_server::{
+    discover_luau_tools, unified_handler, AxumSharedState, DiscoveredTool, RBXStudioServer,
+    StateManager, StateManagerCommand, STUDIO_PLUGIN_PORT,
+};
 use rmcp::ServiceExt;
 use std::io;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
-use tokio::sync::mpsc; // Mutex removed
+use tokio::sync::mpsc;
 use tracing_subscriber::{self, EnvFilter};
 use std::path::PathBuf;
-use std::collections::HashMap; // Added for HashMap type annotation
+use std::collections::HashMap;
 
 mod error;
 mod install;
@@ -26,19 +31,22 @@ struct Args {
     stdio: bool,
 }
 
-#[tokio::main]
+// You can keep or remove the worker_threads count; the new architecture is robust either way.
+// Let's keep it for good measure.
+#[tokio::main(worker_threads = 10)] 
 async fn main() -> Result<()> {
     color_eyre::install()?;
     let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("warn")) // Default to WARN for other crates if RUST_LOG is not set
-        .add_directive("rbx_studio_mcp=info".parse().expect("Failed to parse rbx_studio_mcp directive"))
-        .add_directive("mcp_server=info".parse().expect("Failed to parse mcp_server directive")); // For our custom targets
+        .unwrap_or_else(|_| EnvFilter::new("warn"))
+        .add_directive("rbx_studio_mcp=info".parse().unwrap())
+        .add_directive("mcp_server=info".parse().unwrap())
+        .add_directive("state_manager=info".parse().unwrap());
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)
-        .with_writer(io::stderr) // Keep directing to stderr
-        .with_target(true)       // Enable printing of log targets
-        .with_thread_ids(true)   // Keep thread IDs if they were there
+        .with_writer(io::stderr)
+        .with_target(true)
+        .with_thread_ids(true)
         .init();
 
     let args = Args::parse();
@@ -48,35 +56,33 @@ async fn main() -> Result<()> {
 
     tracing::debug!("Debug MCP tracing enabled");
 
-    // --- Start New State Initialization ---
-    let (sm_command_tx, sm_command_rx) = mpsc::channel::<StateManagerCommand>(100); // Buffer size 100
+    // --- State Initialization ---
+    let (sm_command_tx, sm_command_rx) = mpsc::channel::<StateManagerCommand>(100);
+    let state_manager = StateManager::new();
+    tokio::spawn(state_manager.run(sm_command_rx));
 
-    let state_manager = StateManager::new(); // Assuming StateManager::new() currently takes no args
-
-    tokio::spawn(state_manager.run(sm_command_rx)); // Spawn the StateManager task
-
-    // Initialize discovered_luau_tools
-    // Adjust the path as necessary for your project structure.
-    // This path is relative to where the binary is run from.
     let tools_dir = PathBuf::from("./plugin/src/Tools");
-    let discovered_luau_tools_map: HashMap<String, DiscoveredTool> = discover_luau_tools(&tools_dir);
+    let discovered_luau_tools_map: HashMap<String, DiscoveredTool> =
+        discover_luau_tools(&tools_dir);
     let arc_discovered_luau_tools = Arc::new(discovered_luau_tools_map);
 
-    // Create AxumSharedState
-    let axum_shared_state = AxumSharedState { sm_command_tx: sm_command_tx.clone() };
-    // --- End New State Initialization ---
-
+    let axum_shared_state = AxumSharedState {
+        sm_command_tx: sm_command_tx.clone(),
+    };
+    
+    // --- HTTP Server Setup ---
     let (close_tx, close_rx) = tokio::sync::oneshot::channel();
-
     let listener =
         tokio::net::TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), STUDIO_PLUGIN_PORT)).await;
 
-    // let server_state_clone = Arc::clone(&server_state); // OLD - REMOVED/COMMENTED
     let server_handle = if let Ok(listener) = listener {
+        // ===================================================================
+        // THE FIX IS HERE: We now only have one route to the unified_handler
+        // ===================================================================
         let app = axum::Router::new()
-            .route("/request", get(request_handler))
-            .route("/response", post(response_handler))
-            .with_state(axum_shared_state.clone()); // Use new axum_shared_state
+            .route("/mcp", post(unified_handler)) // Use the single endpoint
+            .with_state(axum_shared_state.clone());
+        
         tracing::info!("This MCP instance is HTTP server listening on {STUDIO_PLUGIN_PORT}");
         tokio::spawn(async {
             axum::serve(listener, app)
@@ -87,21 +93,13 @@ async fn main() -> Result<()> {
                 .unwrap();
         })
     } else {
-        tracing::warn!("Failed to bind to port {}. HTTP server/proxy functionality will be unavailable.", STUDIO_PLUGIN_PORT);
-        // Fallback: Spawn a task that does nothing but can be awaited, or handle error appropriately.
-        // For now, let server_handle be a task that immediately completes.
-        // This else block might need more robust handling depending on desired behavior if port is busy.
+        tracing::warn!("Failed to bind to port {}. HTTP server functionality will be unavailable.", STUDIO_PLUGIN_PORT);
         tokio::spawn(async move {
-             // close_rx needs to be consumed or handled if this path is taken.
-             // If dud_proxy_loop was essential, a replacement or alternative logic is needed here.
-             // For now, just await the close signal if no HTTP server is running.
             _ = close_rx.await;
-            tracing::info!("HTTP server/proxy was not started (port busy). Fallback path completed.");
         })
     };
 
-    // Create an instance of our counter router
-    // RBXStudioServer::new now expects sm_command_tx and arc_discovered_luau_tools
+    // --- Stdio Service Setup ---
     let service = RBXStudioServer::new(sm_command_tx.clone(), arc_discovered_luau_tools.clone())
         .serve(rmcp::transport::stdio())
         .await
