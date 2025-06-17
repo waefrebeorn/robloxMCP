@@ -2,16 +2,22 @@
 SETLOCAL ENABLEDELAYEDEXPANSION
 
 REM --- Configuration ---
-SET SCRIPT_NAME=run_ollama_agent.bat
-SET PYTHON_EXE=python
-SET MAIN_SCRIPT=main.py
-SET OLLAMA_SERVICE_LOG=ollama_service.log
-SET DEFAULT_MODEL=phi3:mini
-SET STARTUP_DELAY_SECONDS=7
+
+SET "VENV_DIR=venv"
+SET "SCRIPT_NAME=run_ollama_agent.bat"
+SET "PYTHON_EXE=python"
+SET "MAIN_SCRIPT=main.py"
+SET "OLLAMA_SERVICE_LOG=ollama_service.log"
+SET "DEFAULT_MODEL=phi3:mini"
+SET "STARTUP_DELAY_SECONDS=7"
 
 REM --- Main Script ---
+CALL :ActivateVenv
+IF ERRORLEVEL 1 GOTO :Cleanup
+
 CALL :CheckOllamaInstallation
-IF "!OLLAMA_READY!"=="false" GOTO :EOF
+IF "!OLLAMA_READY!"=="false" GOTO :Cleanup
+
 
 CALL :EnsureOllamaService
 IF "!OLLAMA_SERVICE_READY!"=="false" (
@@ -20,18 +26,49 @@ IF "!OLLAMA_SERVICE_READY!"=="false" (
     echo [!SCRIPT_NAME!] Please try starting the Ollama application/service manually.
     CHOICE /C YN /M "[!SCRIPT_NAME!] Do you want to try running the agent anyway (Y/N)?"
     IF ERRORLEVEL 2 (
-        echo [!SCRIPT_NAME!] Exiting.
-        GOTO :EOF
+
+        echo [!SCRIPT_NAME!] Exiting due to Ollama service issue.
+        GOTO :Cleanup
     )
+    echo [!SCRIPT_NAME!] Proceeding despite potential Ollama service issue. Agent may fail.
+
 )
 
 CALL :SelectOllamaModel
 IF "!SELECTED_MODEL!"=="" (
     echo [!SCRIPT_NAME!] No model selected or invalid input. Exiting.
-    GOTO :EOF
+
+    GOTO :Cleanup
 )
 
 CALL :RunAgent
+
+:Cleanup
+echo.
+echo [!SCRIPT_NAME!] Script finished.
+ENDLOCAL
+GOTO :EOF
+
+
+REM --- Subroutine: ActivateVenv ---
+:ActivateVenv
+echo.
+echo [!SCRIPT_NAME!] Looking for Python virtual environment in "!VENV_DIR!"...
+IF NOT EXIST "%~dp0!VENV_DIR!\Scripts\activate.bat" (
+    echo.
+    echo [!SCRIPT_NAME!] ERROR: Python virtual environment not found at "%~dp0!VENV_DIR%\Scripts\activate.bat".
+    echo [!SCRIPT_NAME!] Please run "setup_venv.bat" from the project root to create the virtual environment.
+    EXIT /B 1
+)
+echo [!SCRIPT_NAME!] Activating Python virtual environment...
+CALL "%~dp0!VENV_DIR!\Scripts\activate.bat"
+IF ERRORLEVEL 1 (
+    echo.
+    echo [!SCRIPT_NAME!] ERROR: Failed to activate the Python virtual environment.
+    EXIT /B 1
+)
+echo [!SCRIPT_NAME!] Python virtual environment activated.
+
 GOTO :EOF
 
 
