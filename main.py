@@ -4,6 +4,7 @@ import logging
 import sys
 import argparse # Added for command-line arguments
 from pathlib import Path
+import json # Ensure json is imported for Ollama tool call argument parsing
 # Remove List typing if no longer needed for ToolOutput specifically
 # from typing import List # For ToolOutput typing
 
@@ -137,7 +138,6 @@ async def _process_command(
         while current_retry_attempt < MAX_API_RETRIES:
             try:
                 if current_retry_attempt > 0:
-
                     # Common delay logic for retries, message customized by provider
                     delay_message_provider = "Gemini" if llm_provider == "gemini" else "Ollama"
                     with console.status(f"[bold yellow]{delay_message_provider} API error. Retrying in {current_delay:.1f}s (Attempt {current_retry_attempt + 1}/{MAX_API_RETRIES})...[/bold yellow]", spinner="dots") as status_spinner_retry:
@@ -145,7 +145,6 @@ async def _process_command(
 
                 # API call logic properly indented under the try block
                 if llm_provider == "gemini":
-
                     with console.status(f"[bold green]Gemini is thinking... (Attempt {current_retry_attempt + 1})[/bold green]", spinner="dots") as status_spinner_gemini:
                         response = await chat_session.send_message( # chat_session is the Gemini chat
                             message=user_input_str,
@@ -153,8 +152,6 @@ async def _process_command(
                         )
                     break # Success
                 elif llm_provider == "ollama":
-
-
                     with console.status(f"[bold green]Ollama is thinking... (Attempt {current_retry_attempt + 1})[/bold green]", spinner="dots") as status_spinner_ollama:
                         # Add user message to history
                         ollama_history.append({'role': 'user', 'content': user_input_str})
@@ -174,10 +171,8 @@ async def _process_command(
                     break # Success for Ollama
 
             except ServerError as e: # Gemini specific
-
                 # This exception block is now correctly aligned with the try block
                 if llm_provider == "gemini": # Check provider again here for provider-specific error handling
-
                     logger.warning(f"Gemini API ServerError (Attempt {current_retry_attempt + 1}/{MAX_API_RETRIES}): {e}")
                     current_retry_attempt += 1
                     if current_retry_attempt >= MAX_API_RETRIES:
@@ -224,17 +219,73 @@ async def _process_command(
                         if hasattr(part, 'function_call') and part.function_call and part.function_call.name:
                             pending_function_calls.append(part.function_call)
             elif llm_provider == "ollama":
-                if response and response.get('message') and response['message'].get('tool_calls'):
-                    for ollama_tc in response['message']['tool_calls']:
-                        # Adapt Ollama tool call to Gemini's FunctionCall like structure for ToolDispatcher
-                        # This assumes Ollama's tool call has 'name' and 'arguments' (or similar)
-                        # Example: ollama_tc might be {'function': {'name': 'tool_name', 'arguments': {...}}}
-                        if ollama_tc.get('function') and ollama_tc['function'].get('name'):
-                            fc_name = ollama_tc['function']['name']
-                            fc_args = ollama_tc['function'].get('arguments', {})
-                            pending_function_calls.append(FunctionCall(name=fc_name, args=fc_args))
-                        else:
-                            logger.warning(f"Ollama tool call in unexpected format: {ollama_tc}")
+                if response and response.get('message'):
+                    assistant_message = response['message']
+                    # ollama_history.append(assistant_message) was already done when response was received.
+
+                    # pending_function_calls is cleared at the start of this inner while True loop.
+                    # No need to clear it again here unless this logic moves outside that loop structure.
+
+                    if assistant_message.get('tool_calls'):
+                        logger.info(f"Ollama response contains tool_calls: {assistant_message['tool_calls']}")
+                        for ollama_tc in assistant_message['tool_calls']:
+                            if ollama_tc.get('function') and ollama_tc['function'].get('name'):
+                                fc_id = ollama_tc.get('id') # Extract the ID if available
+                                fc_name = ollama_tc['function']['name']
+                                fc_args_str = ollama_tc['function'].get('arguments', '{}') # Arguments are often a string
+                                fc_args = {}
+                                try:
+                                    fc_args = json.loads(fc_args_str)
+                                except json.JSONDecodeError:
+                                    logger.error(f"Ollama tool call arguments from 'tool_calls' for ID {fc_id} are not valid JSON: {fc_args_str}")
+                                    # Consider how to signal this error back to the LLM if necessary
+                                    continue # Skip this malformed tool call
+                                pending_function_calls.append(FunctionCall(id=fc_id, name=fc_name, args=fc_args)) # Store ID
+                                logger.info(f"Appended tool call from 'tool_calls': ID {fc_id}, Name {fc_name} with args {fc_args}")
+                            else:
+                                logger.warning(f"Ollama tool_call item in unexpected format (missing function/name): {ollama_tc}")
+                    elif assistant_message.get('content'):
+                        # Fallback: Check if the content itself is a JSON string representing a single tool call
+                        content_str = assistant_message['content']
+                        logger.info(f"Ollama response has content, trying to parse as potential tool call: {content_str[:200]}...") # Log snippet
+                        try:
+                            potential_tool_call = json.loads(content_str)
+                            if isinstance(potential_tool_call, dict) and \
+                               'name' in potential_tool_call and \
+                               'arguments' in potential_tool_call:
+
+                                fc_name = potential_tool_call['name']
+                                fc_args = potential_tool_call['arguments']
+
+                                # Ensure arguments are a dict, even if they came as a string from the content
+                                if isinstance(fc_args, str):
+                                    try:
+                                        fc_args = json.loads(fc_args)
+                                    except json.JSONDecodeError:
+                                        logger.error(f"Failed to parse string arguments from content-based tool call for '{fc_name}': {fc_args}")
+                                        continue # Skip this tool call if args are bad string
+
+                                if not isinstance(fc_args, dict):
+                                    logger.warning(f"Ollama tool call from content for '{fc_name}' has 'arguments' not as dict or parsable string: {type(fc_args)}. Skipping.")
+                                    continue # Skip if args are not a dict after potential parsing
+
+                                pending_function_calls.append(FunctionCall(name=fc_name, args=fc_args))
+                                logger.info(f"Appended tool call from 'content' JSON: {fc_name} with args {fc_args}")
+                            else:
+                                logger.info("Ollama content JSON does not match expected tool call structure (name/arguments keys). Treating as text.")
+                        except json.JSONDecodeError:
+                            # Content is not a JSON string, so it's likely a normal text response.
+                            logger.info("Ollama content is not JSON, treating as text response.")
+                            pass # No tool call from content
+                        except Exception as e: # Catch any other unexpected errors during content parsing
+                            logger.error(f"Unexpected error parsing Ollama content as tool call: {e}", exc_info=True)
+                            pass
+
+
+                    if pending_function_calls:
+                        logger.info(f"Proceeding with {len(pending_function_calls)} pending function calls for Ollama.")
+                    else:
+                        logger.info("No tool calls detected from Ollama response. Will print content if any.")
 
 
             if not pending_function_calls:
@@ -300,15 +351,21 @@ async def _process_command(
                 # Send tool results back to Ollama
                 # Ollama expects tool results in a specific format in the messages list
                 for result_dict in tool_call_results:
-                    # Find the original tool call ID if Ollama provides one and requires it for the response.
-                    # This part is highly dependent on how Ollama handles tool call IDs.
-                    # For now, assuming a simple list of tool results.
-                    # The 'response' from tool_dispatcher is already a dict, convert to string if needed by Ollama.
+                    # The 'response' from tool_dispatcher is already a dict.
+                    # 'content' should be a string, so we json.dumps the result_dict['response']
+                    # 'tool_call_id' is now correctly passed from execute_tool_call's return value
+                    tool_call_id_for_ollama = result_dict.get('id')
+                    if not tool_call_id_for_ollama:
+                        logger.warning(f"Tool result for '{result_dict.get('name')}' is missing an ID. Ollama might not be able to map this result correctly.")
+                        # Depending on strictness, one might skip appending this result or send without ID.
+                        # For now, we'll send it, Ollama might still handle it based on order or if only one tool was called.
+
                     ollama_history.append({
                         'role': 'tool',
-                        'content': json.dumps(result_dict['response']), # Ensure content is serializable (e.g. JSON string)
-                        'name': result_dict['name'] # Or however Ollama expects to map results to calls
+                        'content': json.dumps(result_dict.get('response', {})), # Ensure content is serializable
+                        'tool_call_id': tool_call_id_for_ollama
                     })
+                    logger.info(f"Appended tool result to Ollama history: ID {tool_call_id_for_ollama}, Name {result_dict.get('name')}")
 
                 current_retry_attempt_tool = 0
                 current_delay_tool = INITIAL_RETRY_DELAY_SECONDS

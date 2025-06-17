@@ -1,8 +1,6 @@
 @echo OFF
-
 REM This script does not activate the Python virtual environment as it primarily
 REM interacts with the system-level 'ollama' command and does not run project Python scripts.
-
 SETLOCAL ENABLEDELAYEDEXPANSION
 
 REM --- Main Script ---

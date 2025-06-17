@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 class FunctionCall:
     name: str
     args: Dict[str, Any]
+    id: str = None # New field for tool call ID, used by Ollama
 
 # --- Function to convert Gemini FunctionDeclaration to Ollama JSON Schema ---
 def get_ollama_tools_json_schema() -> List[Dict[str, Any]]:
@@ -1433,6 +1434,7 @@ class ToolDispatcher:
         # The input `function_call` is now our generic FunctionCall dataclass
         original_tool_name = function_call.name
         original_tool_args = function_call.args # Already a dict
+        tool_call_id = function_call.id # Get the ID
 
         mcp_tool_name = original_tool_name
         mcp_tool_args = original_tool_args
@@ -1627,5 +1629,5 @@ class ToolDispatcher:
             output_content_dict = {"status": "error", "details": f"An internal broker error occurred: {e}"}
             ConsoleFormatter.print_tool_error(output_content_dict)
 
-        # II.2. Return a dictionary using the original tool name
-        return {"name": original_tool_name, "response": output_content_dict}
+        # II.2. Return a dictionary using the original tool name, include ID
+        return {"id": tool_call_id, "name": original_tool_name, "response": output_content_dict}
