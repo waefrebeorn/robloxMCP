@@ -26,6 +26,9 @@ MAX_API_RETRIES = 1
 INITIAL_RETRY_DELAY_SECONDS = 1
 RETRY_BACKOFF_FACTOR = 2
 
+# Tool Looping Mitigation
+MAX_CONSECUTIVE_TOOL_CALLS = 3
+
 # Local module imports
 from config_manager import config, DEFAULT_CONFIG, ROOT_DIR
 from console_ui import ConsoleFormatter, console
@@ -131,6 +134,7 @@ async def _process_command(
     if not user_input_str.strip():
         return True # Considered processed, no actual error
 
+    consecutive_tool_calls_count = 0 # Initialize/reset for each user command
     command_processed_successfully = True
     try:
         current_retry_attempt = 0
@@ -331,9 +335,31 @@ async def _process_command(
                     else:
                         logger.info("No tool calls detected from Ollama response. Will print content if any.")
 
-
+            # Check for text response from LLM to reset consecutive tool call counter
             if not pending_function_calls:
+                # This means the LLM's last response was text, or it's the first pass after user input.
+                # If it was text, it broke any consecutive tool call chain.
+                consecutive_tool_calls_count = 0
                 break # No more function calls from the model, exit inner tool processing loop
+            else:
+                # LLM returned tool calls
+                consecutive_tool_calls_count += 1
+                logger.info(f"Consecutive tool call count: {consecutive_tool_calls_count}")
+
+                if consecutive_tool_calls_count > MAX_CONSECUTIVE_TOOL_CALLS:
+                    logger.warning(f"Ollama exceeded max consecutive tool calls ({MAX_CONSECUTIVE_TOOL_CALLS}). Intervening.")
+                    if llm_provider == "ollama":
+                        intervention_message_content = "You have called tools multiple times consecutively. Please stop and summarize your progress or ask the user for clarification instead of calling more tools."
+                        # Ensure ollama_history is the correct list to append to
+                        if isinstance(ollama_history, list):
+                             ollama_history.append({'role': 'user', 'content': intervention_message_content})
+                             logger.info(f"Sent intervention message to Ollama: {intervention_message_content}")
+                             ConsoleFormatter.print_system_message("Max consecutive tool calls reached. Attempting to guide the assistant to respond directly.")
+                        else: # Should not happen if ollama_history is correctly passed for ollama provider
+                            logger.error("Cannot send intervention message: ollama_history is not a list.")
+                    # For Gemini, a similar intervention might be possible by sending a user message,
+                    # but the current subtask focuses on Ollama.
+                    break # Break from tool processing loop for this turn
 
             tool_tasks = []
             for fc_to_execute in pending_function_calls:
@@ -547,10 +573,15 @@ async def main_loop():
             # The system prompt for Ollama might need different formatting or content.
             # For now, using a similar system prompt.
             ollama_system_prompt = (
-                "You are an expert AI assistant for Roblox Studio. "
-                "Your goal is to help users by using the provided tools to interact with their game development environment. "
-                "Think step-by-step. Call tools with correct arguments. Ask clarifying questions if needed. Summarize tool results."
-                " If a tool call results in an error, summarize the error in your text response. Do not attempt to call a 'log_error' tool or any other tool not explicitly defined in the list of available tools."
+                "You are an expert AI assistant for Roblox Studio. Your primary goal is to help users by using the provided tools to interact with their game development environment. "
+                "Follow these instructions carefully:\n"
+                "1. Think step-by-step about the user's request before acting.\n"
+                "2. Call tools with correctly formatted arguments as defined in their schemas. Refer to the provided tool list.\n"
+                "3. If a tool call results in an error, summarize the error in your text response to the user. Do NOT try to call the same tool again immediately with the exact same arguments if it just failed. Do NOT attempt to call a 'log_error', 'error_handler', or any other tool name that is not explicitly in the provided list of available tools.\n"
+                "4. If you are unsure how to proceed, or if a task is ambiguous, ask the user clarifying questions.\n"
+                "5. After a tool is used successfully, summarize the result for the user.\n"
+                "6. If you find yourself calling tools repeatedly without making progress or encountering repeated errors, stop calling tools and instead explain the situation to the user, summarizing what you've tried and what went wrong.\n"
+                "7. You cannot see the screen or the project explorer; rely solely on tool outputs for information about the Roblox Studio environment."
             )
             chat_session = [{'role': 'system', 'content': ollama_system_prompt}] # This is the history for Ollama
             logger.info(f"Ollama client initialized. Target model: {OLLAMA_MODEL_NAME}. System prompt set.")

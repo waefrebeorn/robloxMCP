@@ -1593,7 +1593,6 @@ class ToolDispatcher:
                 # is expected to be the exact Luau script name.
                 logger.warning(f"Tool name '{lookup_name}' not found in normalization map. Using as Luau script name. Ensure casing matches Luau script file.")
 
-
             # Argument transformation for CreateInstance (handles create_part and create_instance variations)
             if luau_tool_name_to_execute == "CreateInstance" and \
                (normalized_llm_intended_name == "createpart" or normalized_llm_intended_name == "createinstance"):
@@ -1618,14 +1617,17 @@ class ToolDispatcher:
 
                 # Populate properties_dict using specific mappings
                 arg_to_prop_map = {
-                    "part_name": "Name",   # from create_part
-                    "name": "Name",        # common for create_instance or direct property
+
+                    "part_name": "Name",         # from create_part
+                    "name": "Name",              # from create_instance
+                    "instance_name": "Name",     # new mapping
                     "parent_path": "Parent",
-                    "parent": "Parent",    # common for create_instance or direct property
+                    "parent": "Parent",          # common for create_instance or direct property
                     "size": "Size",
                     "position": "Position",
-                    "color": "Color",      # Assuming Color3 dict e.g. {'r':1,'g':0,'b':0}
-                    "material": "Material",# Assuming Enum string e.g. "Enum.Material.Plastic"
+                    "color": "Color",            # Assuming Color3 dict e.g. {'r':1,'g':0,'b':0}
+                    "material": "Material",      # Assuming Enum string e.g. "Enum.Material.Plastic"
+
                     "anchored": "Anchored",
                     "transparency": "Transparency"
                     # Add any other common direct mappings if necessary
@@ -1641,8 +1643,36 @@ class ToolDispatcher:
                 # Merge any remaining items in transformed_args directly into properties_dict
                 properties_dict.update(transformed_args)
 
+
+                # Helper function to normalize dictionary keys (e.g., for Vector3/Color3)
+                def normalize_dict_keys(obj):
+                    if isinstance(obj, dict):
+                        return {k.lower() if isinstance(k, str) else k: normalize_dict_keys(v) for k, v in obj.items()}
+                    elif isinstance(obj, list):
+                        return [normalize_dict_keys(elem) for elem in obj]
+                    return obj
+
+                # Normalize keys for known Vector3/Color3-like properties
+                vector3_like_props = ["Position", "Size"]
+                color3_like_props = ["Color"] # Could be extended for BrickColor if it's passed as dict by LLM
+
+                for prop_name in vector3_like_props:
+                    if prop_name in properties_dict and isinstance(properties_dict[prop_name], dict):
+                        original_prop_val = properties_dict[prop_name]
+                        properties_dict[prop_name] = normalize_dict_keys(original_prop_val)
+                        if properties_dict[prop_name] != original_prop_val: # Log only if change occurred
+                            logger.info(f"Normalized keys for Vector3-like property '{prop_name}': {properties_dict[prop_name]}")
+
+                for prop_name in color3_like_props:
+                    if prop_name in properties_dict and isinstance(properties_dict[prop_name], dict):
+                        original_prop_val = properties_dict[prop_name]
+                        properties_dict[prop_name] = normalize_dict_keys(original_prop_val)
+                        if properties_dict[prop_name] != original_prop_val: # Log only if change occurred
+                            logger.info(f"Normalized keys for Color3-like property '{prop_name}': {properties_dict[prop_name]}")
+
                 current_tool_args = {"class_name": class_name_val, "properties": properties_dict}
-                logger.info(f"Arguments for CreateInstance after transformation: class_name='{class_name_val}', properties={properties_dict}")
+                logger.info(f"Arguments for CreateInstance after transformation and V3/C3 normalization: class_name='{class_name_val}', properties={properties_dict}")
+
 
             # For all other tools, or if not matching the CreateInstance transformation conditions,
             # current_tool_args remains as it was (either a copy of original_tool_args or transformed by other specific logic like set_gravity)
