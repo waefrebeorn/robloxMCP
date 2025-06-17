@@ -17,31 +17,36 @@ local function execute(args: Types.GetDescendantsOfInstanceArgs) -- Type annotat
         end
 
         local descendants = instance:GetDescendants()
-        local descendantsInfo: {Types.InstanceInfo} = {}
+        local descendantPaths: {string} = {}
 
         for _, descendant in ipairs(descendants) do
-            table.insert(descendantsInfo, {
-                name = descendant.Name,
-                path = descendant:GetFullName(),
-                class_name = descendant.ClassName,
-            })
+            -- Small check to ensure it's an instance, GetDescendants should only return instances though.
+            if typeof(descendant) == "Instance" then
+                table.insert(descendantPaths, descendant:GetFullName())
+            end
         end
 
-        local resultData: Types.GetDescendantsOfInstanceResultData = {
-            instance_path = instancePath,
-            descendants = descendantsInfo,
-        }
-        return resultData
+        local HttpService = game:GetService("HttpService")
+        local jsonEncodedDescendantPaths = HttpService:JSONEncode(descendantPaths)
+
+        return jsonEncodedDescendantPaths -- This will be the actual data returned on success
     end)
 
     if success then
-        if type(resultOrError) == "string" then
-            return ToolHelpers.FormatErrorResult(resultOrError)
+        if type(resultOrError) == "string" and (string.find(resultOrError, "Instance not found") or string.find(resultOrError, "is required")) then
+            -- This was an error string returned from within the pcall (instance not found or invalid args)
+            local error_type = "InvalidArguments"
+            if string.find(resultOrError, "Instance not found") then error_type = "InstanceNotFound" end
+            return ToolHelpers.FormatErrorResult(resultOrError, {error_type = error_type})
         else
-            return ToolHelpers.FormatSuccessResult(resultOrError)
+            -- Successful execution, resultOrError is the JSON string of descendant paths
+            -- Manually construct the success response structure
+            return { content = { { type = "text", text = resultOrError } }, isError = false }
         end
     else
-        return ToolHelpers.FormatErrorResult("Internal error in GetDescendantsOfInstance: " .. tostring(resultOrError))
+        -- This is an error from the pcall itself (e.g. HttpService not available, or other script error)
+        local err_msg = "Internal error in GetDescendantsOfInstance: " .. tostring(resultOrError)
+        return ToolHelpers.FormatErrorResult(err_msg, {internal_error_details = tostring(resultOrError), is_luau_error = true})
     end
 end
 

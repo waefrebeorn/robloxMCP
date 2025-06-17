@@ -296,14 +296,64 @@ function ToolHelpers.TableLength(t)
     return count
 end
 
-function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instance)
+function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instanceOrClassName)
     if type(inputTable) ~= "table" then
         return inputTable, nil -- Not a table, no conversion needed
     end
 
-    -- Infer type from property name (case-insensitive)
+    local className = ""
+    local instance = nil
+    if typeof(instanceOrClassName) == "Instance" then
+        instance = instanceOrClassName
+        className = instance.ClassName
+    elseif type(instanceOrClassName) == "string" then
+        className = instanceOrClassName -- Assume it's a class name string for broader use
+    end
+
     local lowerPropName = string.lower(propertyName)
 
+    if lowerPropName == "value" and className ~= "" then
+        if className == "Vector3Value" then
+            if inputTable.x ~= nil and inputTable.y ~= nil and inputTable.z ~= nil then
+                local x, y, z = tonumber(inputTable.x), tonumber(inputTable.y), tonumber(inputTable.z)
+                if x and y and z then return Vector3.new(x, y, z), nil
+                else return inputTable, "Invalid Vector3 components for Value: x, y, z must be numbers." end
+            else return inputTable, "Missing x, y, or z fields for Vector3 Value." end
+        elseif className == "Color3Value" then
+            if inputTable.r ~= nil and inputTable.g ~= nil and inputTable.b ~= nil then
+                local r, g, b = tonumber(inputTable.r), tonumber(inputTable.g), tonumber(inputTable.b)
+                if r and g and b then return Color3.new(r, g, b), nil
+                else return inputTable, "Invalid Color3 components for Value: r, g, b must be numbers." end
+            else return inputTable, "Missing r, g, or b fields for Color3 Value." end
+        elseif className == "CFrameValue" then
+            -- Simplified: assumes x,y,z for position. CFrameValue can store full CFrame.
+            -- Users would need to provide more components for full CFrame representation.
+            local x,y,z = tonumber(inputTable.x), tonumber(inputTable.y), tonumber(inputTable.z)
+            if x and y and z then
+                -- This creates a CFrame at position x,y,z with no rotation.
+                -- For full CFrame, more fields like lookAt or rotation matrix components would be needed from inputTable.
+                return CFrame.new(x,y,z), nil
+            else
+                return inputTable, "Missing x,y,z components for CFrame Value. For full CFrame, provide more components."
+            end
+        elseif className == "BrickColorValue" then
+            if type(inputTable.name) == "string" then
+                 local success, result = pcall(BrickColor.new, inputTable.name)
+                 if success then return result, nil else return inputTable, "Invalid BrickColor name for Value: " .. tostring(result) end
+            elseif type(inputTable.number) == "number" then
+                local success, result = pcall(BrickColor.new, inputTable.number)
+                if success then return result, nil else return inputTable, "Invalid BrickColor number for Value: " .. tostring(result) end
+            else return inputTable, "Missing 'name' or 'number' field for BrickColor Value." end
+        -- Note: For primitive *Value types like StringValue, IntValue, BoolValue, NumberValue,
+        -- if the 'Value' property is already a Lua primitive (string, number, boolean),
+        -- the type(inputTable) ~= "table" check at the function start would mean this function
+        -- isn't called or returns early. This block is for when 'Value' is given as a table.
+        -- If a StringValue's 'Value' is given as {Text="Hi"}, it wouldn't match here.
+        -- This primarily targets Roblox datatypes that are represented as tables by users.
+        end
+    end
+
+    -- Infer type from property name (case-insensitive) - existing logic
     if string.find(lowerPropName, "color") then -- Matches "Color", "BackgroundColor3", "TextColor3", etc.
         if inputTable.r ~= nil and inputTable.g ~= nil and inputTable.b ~= nil then
             local r, g, b = tonumber(inputTable.r), tonumber(inputTable.g), tonumber(inputTable.b)
@@ -318,21 +368,20 @@ function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instance
     elseif lowerPropName == "position" or lowerPropName == "size" or string.find(lowerPropName, "vector3") then
         -- Check if it's for a GUI object's Position/Size (UDim2) vs a Part's Position/Size (Vector3)
         local isGui = false
-        if instance then
+        if instance then -- instance is defined if instanceOrClassName was an Instance
             pcall(function() if instance:IsA("GuiObject") or instance:IsA("GuiBase2d") then isGui = true end end)
         end
 
-        if isGui and (lowerPropName == "position" or lowerPropName == "size") then -- UDim2 for GuiObject
-            if inputTable.x_scale ~= nil and inputTable.x_offset ~= nil and inputTable.y_scale ~= nil and inputTable.y_offset ~= nil then
-                local xs, xo, ys, yo = tonumber(inputTable.x_scale), tonumber(inputTable.x_offset), tonumber(inputTable.y_scale), tonumber(inputTable.y_offset)
-                if xs and xo and ys and yo then
-                    return UDim2.new(xs, xo, ys, yo), nil
-                else
-                    return inputTable, "Invalid UDim2 components: x_scale, x_offset, y_scale, y_offset must be numbers."
-                end
-            else
-                return inputTable, "Missing x_scale, x_offset, y_scale, or y_offset for UDim2."
-            end
+        if (isGui and (lowerPropName == "position" or lowerPropName == "size")) then -- UDim2 for GuiObject (Position or Size)
+            -- Try to get components with primary names (x_scale), fallback to alternative (scale_x), default to 0
+            local xs = tonumber(inputTable.x_scale) or tonumber(inputTable.scale_x) or 0
+            local xo = tonumber(inputTable.x_offset) or tonumber(inputTable.offset_x) or 0
+            local ys = tonumber(inputTable.y_scale) or tonumber(inputTable.scale_y) or 0
+            local yo = tonumber(inputTable.y_offset) or tonumber(inputTable.offset_y) or 0
+
+            -- UDim2.new will error if any are nil. The 'or 0' ensures they are numbers.
+            return UDim2.new(xs, xo, ys, yo), nil
+
         elseif not isGui and (lowerPropName == "position" or lowerPropName == "size" or string.find(lowerPropName, "vector3")) then -- Vector3
             if inputTable.x ~= nil and inputTable.y ~= nil and inputTable.z ~= nil then
                 local x, y, z = tonumber(inputTable.x), tonumber(inputTable.y), tonumber(inputTable.z)
@@ -356,17 +405,15 @@ function ToolHelpers.ConvertTableToRobloxType(inputTable, propertyName, instance
         else
             return inputTable, "Missing x or y fields for Vector2."
         end
-    elseif string.find(lowerPropName, "udim2") then -- Explicit UDim2
-        if inputTable.x_scale ~= nil and inputTable.x_offset ~= nil and inputTable.y_scale ~= nil and inputTable.y_offset ~= nil then
-            local xs, xo, ys, yo = tonumber(inputTable.x_scale), tonumber(inputTable.x_offset), tonumber(inputTable.y_scale), tonumber(inputTable.y_offset)
-            if xs and xo and ys and yo then
-                return UDim2.new(xs, xo, ys, yo), nil
-            else
-                return inputTable, "Invalid UDim2 components: x_scale, x_offset, y_scale, y_offset must be numbers."
-            end
-        else
-            return inputTable, "Missing x_scale, x_offset, y_scale, or y_offset for UDim2."
-        end
+    elseif string.find(lowerPropName, "udim2") then -- Explicit UDim2 (e.g. property name is "MyUDim2Property")
+        -- Try to get components with primary names (x_scale), fallback to alternative (scale_x), default to 0
+        local xs = tonumber(inputTable.x_scale) or tonumber(inputTable.scale_x) or 0
+        local xo = tonumber(inputTable.x_offset) or tonumber(inputTable.offset_x) or 0
+        local ys = tonumber(inputTable.y_scale) or tonumber(inputTable.scale_y) or 0
+        local yo = tonumber(inputTable.y_offset) or tonumber(inputTable.offset_y) or 0
+
+        return UDim2.new(xs, xo, ys, yo), nil
+
     elseif string.find(lowerPropName, "udim") then -- Catch UDim (single scale/offset)
         if inputTable.scale ~= nil and inputTable.offset ~= nil then
             local s, o = tonumber(inputTable.scale), tonumber(inputTable.offset)

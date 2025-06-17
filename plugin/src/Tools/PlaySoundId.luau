@@ -68,8 +68,13 @@ local function execute(args: Types.PlaySoundIdArgs)
                 if conversionErrorMsg then
                     table.insert(propertyErrors, ("Property '%s': Conversion error: %s."):format(propName, conversionErrorMsg))
                 else
-                    local setSuccess, setError = pcall(function() soundInstance[propName] = finalValueToSet end)
-                    if not setSuccess then table.insert(propertyErrors, ("Property '%s': Error setting value: %s."):format(propName, tostring(setError))) end
+                    local actualPropName = propName
+                    if string.lower(propName) == "looping" then
+                        actualPropName = "Looped"
+                    end
+
+                    local setSuccess, setError = pcall(function() soundInstance[actualPropName] = finalValueToSet end)
+                    if not setSuccess then table.insert(propertyErrors, ("Property '%s' (attempted as '%s'): Error setting value: %s."):format(propName, actualPropName, tostring(setError))) end
                 end
             end
         end
