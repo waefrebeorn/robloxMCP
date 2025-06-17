@@ -133,8 +133,10 @@ CHOICE /C 1234 /M "[!SCRIPT_NAME!] Enter your choice (1-4): "
 SET MODEL_CHOICE=!ERRORLEVEL!
 
 IF "!MODEL_CHOICE!"=="1" SET SELECTED_MODEL=phi3:mini
-IF "!MODEL_CHOICE!"=="2" SET SELECTED_MODEL=qwen2:7b
-IF "!MODEL_CHOICE!"=="3" SET SELECTED_MODEL=qwen2:7b-q4_K_M
+
+IF "!MODEL_CHOICE!"=="2" SET SELECTED_MODEL=qwen2.5-coder:7b
+IF "!MODEL_CHOICE!"=="3" SET SELECTED_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
+
 IF "!MODEL_CHOICE!"=="4" (
     echo.
     SET /P "CUSTOM_MODEL=[!SCRIPT_NAME!] Enter the custom Ollama model name (e.g., mistral:latest): "
@@ -162,3 +164,6 @@ echo.
 echo.
 echo [!SCRIPT_NAME!] Agent execution finished.
 GOTO :EOF
+
+pause
+

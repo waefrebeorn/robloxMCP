@@ -1449,6 +1449,7 @@ class ToolDispatcher:
         # Refined structure for tool name mapping and argument preparation:
         mcp_tool_name_final = ""
         mcp_tool_args_final = {}
+
         current_tool_args = original_tool_args.copy() # Start with a copy for potential transformation
 
         if original_tool_name == "insert_model":
@@ -1586,11 +1587,14 @@ class ToolDispatcher:
                 logger.warning(f"Tool name '{lookup_name}' not found in normalization map. Using as Luau script name. Ensure casing matches Luau script file.")
 
             tool_arguments_luau_str = python_to_luau_table_string(current_tool_args) # Use current_tool_args
+
             mcp_tool_args_final = {
                 "tool_name": luau_tool_name_to_execute,
                 "tool_arguments_luau": tool_arguments_luau_str
             }
+
             logger.info(f"Dispatching ToolCall: '{original_tool_name}' (Luau: '{luau_tool_name_to_execute}') via MCP tool '{mcp_tool_name_final}'.")
+
 
         output_content_dict = {}
         try:
