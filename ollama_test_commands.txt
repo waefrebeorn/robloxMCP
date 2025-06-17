@@ -142,7 +142,8 @@ RunCode command="error('RunCode Test: This is a test error')" # Should report er
 # These tests will fail if the place is not published or if DataStore service is unavailable.
 # These tests might be flaky depending on DataStore availability and previous runs.
 # Test 6.1: Save, Load, Increment, Remove
-SaveData store_name=TestStore key=TestKey data={message='Hello DataStore', value=123}
+# Note for SaveData: The 'data' field must be a JSON string for complex data (e.g., '{"key":"value"}') or a string representation for primitives (e.g., '"text"', '"123"', '"true"').
+SaveData store_name=TestStore key=TestKey data='{"message":"Hello DataStore", "value":123}'
 LoadData store_name=TestStore key=TestKey # Check output for the saved data
 IncrementData store_name=TestStore key=NumericKey increment_by=5
 LoadData store_name=TestStore key=NumericKey # Check new value
