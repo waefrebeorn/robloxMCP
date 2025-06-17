@@ -1627,7 +1627,6 @@ class ToolDispatcher:
                     "position": "Position",
                     "color": "Color",            # Assuming Color3 dict e.g. {'r':1,'g':0,'b':0}
                     "material": "Material",      # Assuming Enum string e.g. "Enum.Material.Plastic"
-
                     "anchored": "Anchored",
                     "transparency": "Transparency"
                     # Add any other common direct mappings if necessary
@@ -1642,7 +1641,6 @@ class ToolDispatcher:
 
                 # Merge any remaining items in transformed_args directly into properties_dict
                 properties_dict.update(transformed_args)
-
 
                 # Helper function to normalize dictionary keys (e.g., for Vector3/Color3)
                 def normalize_dict_keys(obj):
@@ -1673,10 +1671,8 @@ class ToolDispatcher:
                 current_tool_args = {"class_name": class_name_val, "properties": properties_dict}
                 logger.info(f"Arguments for CreateInstance after transformation and V3/C3 normalization: class_name='{class_name_val}', properties={properties_dict}")
 
-
             # For all other tools, or if not matching the CreateInstance transformation conditions,
             # current_tool_args remains as it was (either a copy of original_tool_args or transformed by other specific logic like set_gravity)
-
 
             tool_arguments_luau_str = python_to_luau_table_string(current_tool_args)
 
