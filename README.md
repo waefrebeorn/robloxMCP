@@ -162,6 +162,14 @@ You can also run `main.py` directly with arguments to use Ollama:
     *   Selecting the "Enter custom model name" option in `run_ollama_agent.bat`.
     *   Using the `--ollama_model <another_model_name:tag>` command-line argument when running `main.py`.
 
+#### Testing the Ollama Integration
+To run a predefined set of test commands with the Ollama provider, you can use the `run_ollama_agent_test.bat` script. This script automates the execution of commands listed in `ollama_test_commands.txt` and is helpful for verifying that tool calls and responses are working as expected with your chosen Ollama model. It will use a default Ollama model specified within the batch file but calls `main.py` which allows for model override via its own arguments if you modify the batch script.
+
+Run it from the project root:
+```batch
+.\run_ollama_agent_test.bat
+```
+
 ## Known Issues
 
 ### Tool Execution Timeouts in Persistent Sessions

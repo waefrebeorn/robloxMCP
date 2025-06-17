@@ -539,6 +539,7 @@ async def main_loop():
                 "You are an expert AI assistant for Roblox Studio. "
                 "Your goal is to help users by using the provided tools to interact with their game development environment. "
                 "Think step-by-step. Call tools with correct arguments. Ask clarifying questions if needed. Summarize tool results."
+                " If a tool call results in an error, summarize the error in your text response. Do not attempt to call a 'log_error' tool or any other tool not explicitly defined in the list of available tools."
             )
             chat_session = [{'role': 'system', 'content': ollama_system_prompt}] # This is the history for Ollama
             logger.info(f"Ollama client initialized. Target model: {OLLAMA_MODEL_NAME}. System prompt set.")

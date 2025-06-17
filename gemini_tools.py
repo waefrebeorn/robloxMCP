@@ -1436,50 +1436,62 @@ class ToolDispatcher:
         original_tool_args = function_call.args # Already a dict
         tool_call_id = function_call.id # Get the ID
 
-        mcp_tool_name = original_tool_name
-        mcp_tool_args = original_tool_args
+        # mcp_tool_name = original_tool_name # This will be set by the new logic below
+        # mcp_tool_args = original_tool_args # This will be set by the new logic below
 
         ConsoleFormatter.print_tool_call(original_tool_name, original_tool_args)
 
         is_valid, error_msg = self._validate_args(original_tool_name, original_tool_args)
         if not is_valid:
             ConsoleFormatter.print_tool_error({"validation_error": f"Argument validation failed: {error_msg}"})
-
             return {"name": original_tool_name, "response": {"error": f"Invalid arguments provided by AI: {error_msg}"}}
 
+        # Refined structure for tool name mapping and argument preparation:
+        mcp_tool_name_final = ""
+        mcp_tool_args_final = {}
+        processed_tool_args_for_luau = original_tool_args.copy() # Start with a copy for potential transformation
+
         if original_tool_name == "insert_model":
-            mcp_tool_name = "insert_model"
-            mcp_tool_args = original_tool_args
-            logger.info(f"Dispatching ToolCall: '{original_tool_name}' directly to MCP tool '{mcp_tool_name}' with args: {mcp_tool_args}")
+            mcp_tool_name_final = "insert_model"
+            mcp_tool_args_final = processed_tool_args_for_luau # Use the (unmodified for this case) args
+            logger.info(f"Dispatching ToolCall: '{original_tool_name}' directly to MCP tool '{mcp_tool_name_final}' with args: {mcp_tool_args_final}")
         else:
-            # All other tools (CreateInstance, RunCode, GetSelection, etc.) are routed via execute_discovered_luau_tool
-            mcp_tool_name = "execute_discovered_luau_tool"
-            # Convert original_tool_args (Python dict) into a Luau table string
-            tool_arguments_luau_str = python_to_luau_table_string(original_tool_args) # NEW
-            luau_tool_name_to_execute = original_tool_name
-            # Mapping for specific tools if their Python-side name differs from Luau script name
-            # This mapping should align with the Luau script file names in plugin/src/Tools/
-            if original_tool_name == "set_instance_properties":
+            mcp_tool_name_final = "execute_discovered_luau_tool"
+            luau_tool_name_to_execute = original_tool_name # Default if no specific mapping
+
+            # Specific mappings for tool names and potential argument transformations
+            if original_tool_name == "set_gravity":
+                luau_tool_name_to_execute = "SetWorkspaceProperty"
+                gravity_value = processed_tool_args_for_luau.get("gravity_value")
+                if isinstance(gravity_value, (int, float)):
+                    # Transform args for SetWorkspaceProperty expecting "Gravity" and a scalar value
+                    processed_tool_args_for_luau = {"property_name": "Gravity", "value": gravity_value}
+                    logger.info(f"Remapped tool call from 'set_gravity' to 'SetWorkspaceProperty' with transformed args: {processed_tool_args_for_luau}")
+                else:
+                    logger.warning(f"'set_gravity' called with invalid 'gravity_value' type: {type(gravity_value)}. Args: {original_tool_args}. Luau tool will receive original or partially formed args.")
+                    # If gravity_value is not a number, SetWorkspaceProperty will likely fail or misinterpret.
+                    # We'll pass the current state of processed_tool_args_for_luau, which might be the original ones
+                    # or if 'gravity_value' was the only key, it might be just that.
+                    # This relies on Luau-side validation. A stricter approach here would be to return an error.
+            elif original_tool_name == "set_instance_properties":
                 luau_tool_name_to_execute = "SetInstanceProperties"
             elif original_tool_name == "get_instance_properties":
                 luau_tool_name_to_execute = "GetInstanceProperties"
             elif original_tool_name == "call_instance_method":
                 luau_tool_name_to_execute = "CallInstanceMethod"
             elif original_tool_name == "delete_instance":
-
-                luau_tool_name_to_execute = "delete_instance" # Corrected mapping
-
-            elif original_tool_name == "select_instances": # Python: select_instances, Luau: SelectInstances.luau
+                luau_tool_name_to_execute = "delete_instance"
+            elif original_tool_name == "select_instances":
                 luau_tool_name_to_execute = "SelectInstances"
             elif original_tool_name == "run_script":
                 luau_tool_name_to_execute = "RunScript"
             elif original_tool_name == "set_lighting_property":
                 luau_tool_name_to_execute = "SetLightingProperty"
-            elif original_tool_name == "get_lighting_property": # Python: get_lighting_property, Luau: GetLightingProperty.luau
+            elif original_tool_name == "get_lighting_property":
                 luau_tool_name_to_execute = "GetLightingProperty"
-            elif original_tool_name == "play_sound_id": # Python: play_sound_id, Luau: PlaySoundId.luau
+            elif original_tool_name == "play_sound_id":
                 luau_tool_name_to_execute = "PlaySoundId"
-            elif original_tool_name == "set_workspace_property":
+            elif original_tool_name == "set_workspace_property": # Note: set_gravity maps to this
                 luau_tool_name_to_execute = "SetWorkspaceProperty"
             elif original_tool_name == "get_workspace_property":
                 luau_tool_name_to_execute = "GetWorkspaceProperty"
@@ -1493,7 +1505,7 @@ class ToolDispatcher:
                 luau_tool_name_to_execute = "AddTag"
             elif original_tool_name == "remove_tag":
                 luau_tool_name_to_execute = "RemoveTag"
-            elif original_tool_name == "get_instances_with_tag": # Python: get_instances_with_tag, Luau: GetInstancesWithTag.luau
+            elif original_tool_name == "get_instances_with_tag":
                 luau_tool_name_to_execute = "GetInstancesWithTag"
             elif original_tool_name == "has_tag":
                 luau_tool_name_to_execute = "HasTag"
@@ -1501,7 +1513,7 @@ class ToolDispatcher:
                 luau_tool_name_to_execute = "ComputePath"
             elif original_tool_name == "create_proximity_prompt":
                 luau_tool_name_to_execute = "CreateProximityPrompt"
-            elif original_tool_name == "get_product_info": # Python: get_product_info, Luau: GetProductInfo.luau
+            elif original_tool_name == "get_product_info":
                 luau_tool_name_to_execute = "GetProductInfo"
             elif original_tool_name == "prompt_purchase":
                 luau_tool_name_to_execute = "PromptPurchase"
@@ -1509,9 +1521,9 @@ class ToolDispatcher:
                 luau_tool_name_to_execute = "AddDebrisItem"
             elif original_tool_name == "create_gui_element":
                 luau_tool_name_to_execute = "CreateGuiElement"
-            elif original_tool_name == "get_mouse_position": # Python: get_mouse_position, Luau: GetMousePosition.luau
+            elif original_tool_name == "get_mouse_position":
                 luau_tool_name_to_execute = "GetMousePosition"
-            elif original_tool_name == "get_mouse_hit_cframe": # Python: get_mouse_hit_cframe, Luau: GetMouseHitCFrame.luau
+            elif original_tool_name == "get_mouse_hit_cframe":
                 luau_tool_name_to_execute = "GetMouseHitCFrame"
             elif original_tool_name == "is_key_down":
                 luau_tool_name_to_execute = "IsKeyDown"
@@ -1527,7 +1539,7 @@ class ToolDispatcher:
                 luau_tool_name_to_execute = "RemoveData"
             elif original_tool_name == "teleport_player_to_place":
                 luau_tool_name_to_execute = "TeleportPlayerToPlace"
-            elif original_tool_name == "get_teleport_data": # Python: get_teleport_data, Luau: GetTeleportData.luau
+            elif original_tool_name == "get_teleport_data":
                 luau_tool_name_to_execute = "GetTeleportData"
             elif original_tool_name == "send_chat_message":
                 luau_tool_name_to_execute = "SendChatMessage"
@@ -1537,31 +1549,32 @@ class ToolDispatcher:
                 luau_tool_name_to_execute = "CreateTextChannel"
             elif original_tool_name == "get_teams":
                 luau_tool_name_to_execute = "GetTeams"
-            elif original_tool_name == "get_players_in_team": # Python: get_players_in_team, Luau: GetPlayersInTeam.luau
+            elif original_tool_name == "get_players_in_team":
                 luau_tool_name_to_execute = "GetPlayersInTeam"
             elif original_tool_name == "load_asset_by_id":
                 luau_tool_name_to_execute = "LoadAssetById"
-            elif original_tool_name == "get_children_of_instance": # Python: get_children_of_instance, Luau: GetChildrenOfInstance.luau
+            elif original_tool_name == "get_children_of_instance":
                 luau_tool_name_to_execute = "GetChildrenOfInstance"
-            elif original_tool_name == "get_descendants_of_instance": # Python: get_descendants_of_instance, Luau: GetDescendantsOfInstance.luau
+            elif original_tool_name == "get_descendants_of_instance":
                 luau_tool_name_to_execute = "GetDescendantsOfInstance"
-            elif original_tool_name == "find_first_child_matching": # Python: find_first_child_matching, Luau: FindFirstChildMatching.luau
+            elif original_tool_name == "find_first_child_matching":
                 luau_tool_name_to_execute = "FindFirstChildMatching"
-            # Default to original_tool_name if no specific mapping (should match Luau script name by convention)
+            # Ensure original_tool_name default is fine if no mapping applies.
 
-
-            mcp_tool_args = {
+            tool_arguments_luau_str = python_to_luau_table_string(processed_tool_args_for_luau)
+            mcp_tool_args_final = {
                 "tool_name": luau_tool_name_to_execute,
-                "tool_arguments_luau": tool_arguments_luau_str # CHANGED KEY and VALUE
+                "tool_arguments_luau": tool_arguments_luau_str
             }
-            logger.info(f"Dispatching ToolCall: '{original_tool_name}' via MCP tool '{mcp_tool_name}' for Luau script '{luau_tool_name_to_execute}'. Luau script args (as Luau table string): {{tool_arguments_luau_str}}") # UPDATED LOG
+            logger.info(f"Dispatching ToolCall: '{original_tool_name}' via MCP tool '{mcp_tool_name_final}' for Luau script '{luau_tool_name_to_execute}'. Luau script args (from processed_tool_args_for_luau): {tool_arguments_luau_str}")
 
         output_content_dict = {}
         try:
-            mcp_response = await self.mcp_client.send_tool_execution_request(mcp_tool_name, mcp_tool_args)
+            # Use mcp_tool_name_final and mcp_tool_args_final for the actual MCP call
+            mcp_response = await self.mcp_client.send_tool_execution_request(mcp_tool_name_final, mcp_tool_args_final)
 
-            if mcp_tool_name == "insert_model": # insert_model returns result directly, not nested
-                if "result" in mcp_response:
+            if mcp_tool_name_final == "insert_model": # Check using mcp_tool_name_final
+                if "result" in mcp_response: # This path for insert_model result
                     output_content_dict = {"status": "success", "output": mcp_response["result"]}
                     ConsoleFormatter.print_tool_result(mcp_response["result"])
                 elif "error" in mcp_response:
