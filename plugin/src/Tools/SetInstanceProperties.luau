@@ -30,9 +30,25 @@ local function execute(args: Types.SetInstancePropertiesArgs) -- Type annotation
         for propName, propValueInput in pairs(propertiesToSet) do
             local finalValueToSet = propValueInput
             local conversionErrorMsg = nil
-            local propertySetSuccessfully = false
+            -- propertySetSuccessfully is implicitly handled by whether conversionErrorMsg is set or pcall succeeds
 
-            if type(propValueInput) == "table" then
+            if propName:lower() == "parent" then
+                if type(propValueInput) == "string" then
+                    -- Attempt to find the new parent instance by path
+                    local newParentInstance, findError = ToolHelpers.FindInstanceByPath(propValueInput)
+                    if newParentInstance then
+                        finalValueToSet = newParentInstance
+                    else
+                        conversionErrorMsg = ("Invalid Parent path: %s - %s"):format(propValueInput, findError or "not found")
+                    end
+                elseif propValueInput == nil then
+                    finalValueToSet = nil -- Explicitly allow setting Parent to nil (detach)
+                else
+                    -- If Parent value is not a string and not nil, it's an invalid type for a path
+                    conversionErrorMsg = ("Invalid type for Parent property: expected string path or nil, got %s."):format(type(propValueInput))
+                end
+            elseif type(propValueInput) == "table" then
+                -- For other properties, or if Parent was passed as a table (though schema implies path string for Parent)
                 local converted_value, err_msg = ToolHelpers.ConvertTableToRobloxType(propValueInput, propName, instance)
                 if err_msg then
                     conversionErrorMsg = err_msg
@@ -42,16 +58,17 @@ local function execute(args: Types.SetInstancePropertiesArgs) -- Type annotation
             end
 
             if conversionErrorMsg then
-                failedProps[propName] = "Conversion error: " .. conversionErrorMsg
+                -- This handles errors from Parent path resolution/type check, or from ConvertTableToRobloxType
+                failedProps[propName] = "Conversion/Resolution error: " .. conversionErrorMsg
                 overallSuccess = false
             else
+                -- Attempt to set the property
                 local setSuccess, setError = pcall(function()
                     instance[propName] = finalValueToSet
                 end)
 
                 if setSuccess then
                     table.insert(succeededProps, propName)
-                    propertySetSuccessfully = true
                 else
                     failedProps[propName] = "Error setting property: " .. tostring(setError)
                     overallSuccess = false

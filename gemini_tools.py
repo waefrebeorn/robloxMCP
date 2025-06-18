@@ -174,14 +174,14 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
         # --- Core Instance Manipulation Tools (Phase 1) ---
         types.FunctionDeclaration(
             name="CreateInstance",
-            description="Creates any Roblox Instance (e.g., Part, SpotLight, Sound, Script) with initial properties. For Parent, use its string path. For Vector3, use {'x':0,'y':0,'z':0}. For Color3 (0-1 range), use {'r':0,'g':0,'b':0}. For CFrame (position & orientation in degrees), use {'position': vec3_dict, 'orientation': vec3_dict_degrees}. For Enums, use string like 'Enum.Material.Plastic'. For ColorSequence properties (e.g., on ParticleEmitters), provide as `{'start_color':color3_dict, 'end_color':color3_dict}` or full `{'keys': [{'time':t, 'value':color3_dict}, ...]}`. For NumberSequence (e.g., ParticleEmitter.Transparency), use `{'start_value':num, 'end_value':num}` or full `{'keys': [{'time':t, 'value':num}, ...]}`.",
+            description="Creates a new Roblox Instance of a specified class with given initial properties. For properties like Parent, provide its string path. For Vector3 values (e.g., Size, Position), use a dictionary like {'x':0,'y':0,'z':0}. For Color3 values (0-1 range for r,g,b), use {'r':0,'g':0,'b':0}. For Enum values, provide the full enum string like 'Enum.Material.Plastic'. Complex types like CFrame, ColorSequence, and NumberSequence also have specific dictionary structures described in the general type formatting notes.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "class_name": types.Schema(type=types.Type.STRING, description="Class name of the instance to create (e.g., 'Part', 'SpotLight', 'Script')."),
+                    "class_name": types.Schema(type=types.Type.STRING, description="The exact ClassName of the instance to create (e.g., 'Part', 'SpotLight', 'Script'). This parameter is mandatory."),
                     "properties": types.Schema(
                         type=types.Type.OBJECT,
-                        description="Dictionary of property names and initial values. E.g., {'Name': 'MyCoolPart', 'Parent': 'Workspace.Model', 'Size': {'x':1,'y':1,'z':1}, 'Color': {'r':1,'g':0,'b':0}}."
+                        description="A dictionary of property names and their initial values. Property names should match valid Instance properties. E.g., `{'Name': 'MyCoolPart', 'Parent': 'Workspace.Model', 'Size': {'x':1,'y':1,'z':1}, 'Anchored': true}`."
                     )
                 },
                 required=["class_name", "properties"]
@@ -206,18 +206,18 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
 
             name="GetInstanceProperties",
 
-            description="Retrieves properties of an existing Roblox instance. If 'property_names' is provided, only those are fetched. Otherwise, many common scriptable properties are returned. Returns a dictionary of property names and their values. Complex types will be returned in their described dictionary/string formats.",
+            description="Retrieves specified properties of an existing Roblox instance. Returns a dictionary where keys are property names and values are their current values. Complex data types like Vector3 or Color3 will be returned in their dictionary formats.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "path": types.Schema(type=types.Type.STRING, description="Path to the instance (e.g., 'Workspace.ExistingPart')."),
+                    "path": types.Schema(type=types.Type.STRING, description="Full path to the existing instance (e.g., 'Workspace.MyPart', 'ReplicatedStorage.MyFolder.MyValue')."),
                     "property_names": types.Schema(
                         type=types.Type.ARRAY,
                         items=types.Schema(type=types.Type.STRING),
-                        description="Optional. List of property names to retrieve (e.g., ['Size', 'Color', 'CFrame', 'Material']). If omitted, common properties are fetched."
+                        description="An optional list of specific property names (strings) to retrieve. E.g., `['Size', 'Color', 'Material']`. If omitted or empty, a set of common scriptable properties for that instance type will be fetched."
                     )
                 },
-                required=["path"] # property_names is now optional
+                required=["path"] # property_names is optional
             )
         ),
         types.FunctionDeclaration(
@@ -239,11 +239,11 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
         ),
         types.FunctionDeclaration(
             name="delete_instance",
-            description="Deletes the specified instance from the game.",
+            description="Deletes the specified Roblox instance from the game's hierarchy.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "path": types.Schema(type=types.Type.STRING, description="Path to the instance to delete (e.g., 'Workspace.ObsoletePart').")
+                    "path": types.Schema(type=types.Type.STRING, description="Full path to the instance to be deleted (e.g., 'Workspace.ObsoletePart', 'ServerStorage.OldFolder').")
                 },
                 required=["path"]
             )
@@ -1501,7 +1501,7 @@ class ToolDispatcher:
                 "callinstancemethod": "CallInstanceMethod",
                 "deleteinstance": "delete_instance", # Luau script is lowercase
                 "selectinstances": "SelectInstances",
-                "getselection": "GetSelection",
+                "getselection": "get_selection", # Luau script is lowercase
                 "runcode": "RunCode",
                 "runscript": "RunScript",
                 "setlightingproperty": "SetLightingProperty",
@@ -1548,7 +1548,7 @@ class ToolDispatcher:
                 "call_instance_method": "CallInstanceMethod",
                 "delete_instance": "delete_instance", # Explicitly map snake_case to lowercase if Luau is lowercase
                 "select_instances": "SelectInstances",
-                "get_selection": "GetSelection",
+                "get_selection": "get_selection", # Luau script is lowercase
                 "run_code": "RunCode",
                 "run_script": "RunScript",
                 "set_lighting_property": "SetLightingProperty",

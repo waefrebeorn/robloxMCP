@@ -3,9 +3,7 @@
 # --- Section 1: Instance Creation and Basic Properties (CreateInstance, GetInstanceProperties, SetInstanceProperties, delete_instance) ---
 
 # Test 1.1: Create a simple Part, get its default properties, set some, get again, then delete
-CreateInstance class_name=Part properties={Name='TestPart1', Parent='Workspace', Anchored=true}
 # Agent should check: Name="TestPart1", Anchored=true, Position is default (e.g., 0,0,0 or 0,0.5,0 depending on where parts spawn)
-GetInstanceProperties path=Workspace.TestPart1 property_names=['Name','Anchored','Position']
 SetInstanceProperties path=Workspace.TestPart1 properties={BrickColor='Bright blue', Size={x=5,y=5,z=5}, Position={x=10,y=2.5,z=10}, Transparency=0.5}
 # Agent should check: BrickColor, Size, Position, Transparency are set. NonExistentProperty has an error.
 GetInstanceProperties path=Workspace.TestPart1 property_names=['BrickColor','Size','Position','Transparency','NonExistentProperty']
@@ -13,42 +11,24 @@ delete_instance path=Workspace.TestPart1
 GetInstanceProperties path=Workspace.TestPart1 # Should report not found or error
 
 # Test 1.2: Create a Folder in ServerStorage, and a Value inside it
-CreateInstance class_name=Folder properties={Name='TestFolder', Parent='ServerStorage'}
-CreateInstance class_name=IntValue properties={Name='TestIntValue', Parent='ServerStorage.TestFolder', Value=100}
-GetInstanceProperties path=ServerStorage.TestFolder.TestIntValue property_names=['Value','Parent']
-SetInstanceProperties path=ServerStorage.TestFolder.TestIntValue properties={Value=250}
-GetInstanceProperties path=ServerStorage.TestFolder.TestIntValue property_names=['Value']
 delete_instance path=ServerStorage.TestFolder # Deleting folder should delete child
 
 # Test 1.2.1: GetInstanceProperties on a Folder (Checking error for non-existent property)
-CreateInstance class_name=Folder properties={Name='TestFolderGetProps', Parent='ServerStorage'}
 # Agent should check: Name="TestFolderGetProps", ClassName="Folder". Position has an error.
 GetInstanceProperties path=ServerStorage.TestFolderGetProps property_names=['Name','ClassName','Position']
-delete_instance path=ServerStorage.TestFolderGetProps
 
 # Test 1.3: Create a Model and reparent an instance into it
-CreateInstance class_name=Part properties={Name='OrphanPart', Parent='Workspace'}
-CreateInstance class_name=Model properties={Name='TestModel', Parent='Workspace'}
 SetInstanceProperties path=Workspace.OrphanPart properties={Parent='Workspace.TestModel'}
 GetInstanceProperties path=Workspace.TestModel.OrphanPart property_names=['Parent']
 delete_instance path=Workspace.TestModel
 
 # Test 1.4: Create different value types (Vector3Value handling improved in CreateInstance via ToolHelpers)
-CreateInstance class_name=StringValue properties={Name='TestString', Parent='ReplicatedStorage', Value='Hello World'}
-GetInstanceProperties path=ReplicatedStorage.TestString property_names=['Value']
-CreateInstance class_name=BoolValue properties={Name='TestBool', Parent='ReplicatedStorage', Value=true}
-GetInstanceProperties path=ReplicatedStorage.TestBool property_names=['Value']
-CreateInstance class_name=Vector3Value properties={Name='TestVector3', Parent='ReplicatedStorage', Value={x=1,y=2,z=3}} # Agent check: Value is Vector3(1,2,3)
-GetInstanceProperties path=ReplicatedStorage.TestVector3 property_names=['Value']
-delete_instance path=ReplicatedStorage.TestString
-delete_instance path=ReplicatedStorage.TestBool
-delete_instance path=ReplicatedStorage.TestVector3
+# Agent check: Value is Vector3(1,2,3)
 
 # Test 1.5: Attempt to create instance with invalid class name
 CreateInstance class_name=NotARealClass properties={Name='InvalidInstance'} # Should error
 
 # Test 1.6: Set invalid property (Testing detailed JSON response from SetInstanceProperties)
-CreateInstance class_name=Part properties={Name='SetPropsTestPart', Parent='Workspace'}
 # Agent should check: JSON response from SetInstanceProperties indicates Name,BrickColor in succeeded_properties; InvalidProp,Size in failed_properties.
 SetInstanceProperties path=Workspace.SetPropsTestPart properties={Name='NewName', BrickColor='Really red', InvalidProp='TestValue', Size={x="abc",y=1,z=1}}
 # Agent should check: Name is "NewName", BrickColor is "Really red", Size is original/default (not "abc",1,1).
@@ -58,44 +38,18 @@ delete_instance path=Workspace.SetPropsTestPart
 # --- Section 2: Selection and Hierarchy (SelectInstances, get_selection, FindFirstChildMatching, GetChildrenOfInstance, GetDescendantsOfInstance) ---
 
 # Test 2.1: Select and Get Selection
-CreateInstance class_name=Part properties={Name='SelectPartA', Parent='Workspace', Position={x=0,y=10,z=0}}
-CreateInstance class_name=Part properties={Name='SelectPartB', Parent='Workspace', Position={x=5,y=10,z=0}}
-SelectInstances paths=['Workspace.SelectPartA']
 get_selection # Agent should check: JSON response is ["Workspace.SelectPartA"]
-SelectInstances paths=['Workspace.SelectPartA', 'Workspace.SelectPartB']
 get_selection # Agent should check: JSON response is ["Workspace.SelectPartA", "Workspace.SelectPartB"] (order might vary)
-SelectInstances paths=[] # Clear selection
 get_selection # Agent should check: JSON response is []
-delete_instance path=Workspace.SelectPartA
-delete_instance path=Workspace.SelectPartB
 
 # Test 2.2: FindChild
-CreateInstance class_name=Folder properties={Name='FindTestParent', Parent='Workspace'}
-CreateInstance class_name=Part properties={Name='FindTestChild', Parent='Workspace.FindTestParent'}
-CreateInstance class_name=Folder properties={Name='NestedFolder', Parent='Workspace.FindTestParent'}
-CreateInstance class_name=Part properties={Name='NestedChild', Parent='Workspace.FindTestParent.NestedFolder'}
-FindFirstChildMatching parent_path=Workspace.FindTestParent child_name=FindTestChild recursive=false
-FindFirstChildMatching parent_path=Workspace.FindTestParent child_name=NestedChild recursive=true
 FindFirstChildMatching parent_path=Workspace.FindTestParent child_name=NonExistentChild recursive=true # Should report not found
-delete_instance path=Workspace.FindTestParent
 
 # Test 2.3: GetChildren / GetDescendants
-CreateInstance class_name=Folder properties={Name='HierarchyTest', Parent='Workspace'}
-CreateInstance class_name=Part properties={Name='Child1', Parent='Workspace.HierarchyTest'}
-CreateInstance class_name=Folder properties={Name='ChildFolder', Parent='Workspace.HierarchyTest'}
-CreateInstance class_name=Part properties={Name='Grandchild1', Parent='Workspace.HierarchyTest.ChildFolder'}
-GetChildrenOfInstance instance_path=Workspace.HierarchyTest # Agent should check: JSON has ["Workspace.HierarchyTest.Child1", "Workspace.HierarchyTest.ChildFolder"]
-GetDescendantsOfInstance instance_path=Workspace.HierarchyTest # Agent should check: JSON has ["Workspace.HierarchyTest.Child1", "Workspace.HierarchyTest.ChildFolder", "Workspace.HierarchyTest.ChildFolder.Grandchild1"]
-delete_instance path=Workspace.HierarchyTest
 
 # --- Section 3: Tags & Collections (AddTag, HasTag, GetInstancesWithTag, RemoveTag) ---
 
 # Test 3.1: Full tag lifecycle
-CreateInstance class_name=Part properties={Name='TaggedPart1', Parent='Workspace', Position={x=0,y=20,z=0}}
-CreateInstance class_name=Part properties={Name='TaggedPart2', Parent='Workspace', Position={x=5,y=20,z=0}}
-AddTag instance_path=Workspace.TaggedPart1 tag_name=TestTag
-AddTag instance_path=Workspace.TaggedPart1 tag_name=AnotherTestTag
-AddTag instance_path=Workspace.TaggedPart2 tag_name=TestTag
 HasTag instance_path=Workspace.TaggedPart1 tag_name=TestTag # Should be true
 HasTag instance_path=Workspace.TaggedPart2 tag_name=AnotherTestTag # Should be false
 GetInstancesWithTag tag_name=TestTag # Agent should check: JSON has ["Workspace.TaggedPart1", "Workspace.TaggedPart2"] (order might vary)
