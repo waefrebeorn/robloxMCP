@@ -174,14 +174,14 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
         # --- Core Instance Manipulation Tools (Phase 1) ---
         types.FunctionDeclaration(
             name="CreateInstance",
-            description="Creates any Roblox Instance (e.g., Part, SpotLight, Sound, Script) with initial properties. For Parent, use its string path. For Vector3, use {'x':0,'y':0,'z':0}. For Color3 (0-1 range), use {'r':0,'g':0,'b':0}. For CFrame (position & orientation in degrees), use {'position': vec3_dict, 'orientation': vec3_dict_degrees}. For Enums, use string like 'Enum.Material.Plastic'. For ColorSequence properties (e.g., on ParticleEmitters), provide as `{'start_color':color3_dict, 'end_color':color3_dict}` or full `{'keys': [{'time':t, 'value':color3_dict}, ...]}`. For NumberSequence (e.g., ParticleEmitter.Transparency), use `{'start_value':num, 'end_value':num}` or full `{'keys': [{'time':t, 'value':num}, ...]}`.",
+            description="Creates a new Roblox Instance of a specified class with given initial properties. For properties like Parent, provide its string path. For Vector3 values (e.g., Size, Position), use a dictionary like {'x':0,'y':0,'z':0}. For Color3 values (0-1 range for r,g,b), use {'r':0,'g':0,'b':0}. For Enum values, provide the full enum string like 'Enum.Material.Plastic'. Complex types like CFrame, ColorSequence, and NumberSequence also have specific dictionary structures described in the general type formatting notes.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "class_name": types.Schema(type=types.Type.STRING, description="Class name of the instance to create (e.g., 'Part', 'SpotLight', 'Script')."),
+                    "class_name": types.Schema(type=types.Type.STRING, description="The exact ClassName of the instance to create (e.g., 'Part', 'SpotLight', 'Script'). This parameter is mandatory."),
                     "properties": types.Schema(
                         type=types.Type.OBJECT,
-                        description="Dictionary of property names and initial values. E.g., {'Name': 'MyCoolPart', 'Parent': 'Workspace.Model', 'Size': {'x':1,'y':1,'z':1}, 'Color': {'r':1,'g':0,'b':0}}."
+                        description="A dictionary of property names and their initial values. Property names should match valid Instance properties. E.g., `{'Name': 'MyCoolPart', 'Parent': 'Workspace.Model', 'Size': {'x':1,'y':1,'z':1}, 'Anchored': true}`."
                     )
                 },
                 required=["class_name", "properties"]
@@ -206,18 +206,18 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
 
             name="GetInstanceProperties",
 
-            description="Retrieves properties of an existing Roblox instance. If 'property_names' is provided, only those are fetched. Otherwise, many common scriptable properties are returned. Returns a dictionary of property names and their values. Complex types will be returned in their described dictionary/string formats.",
+            description="Retrieves specified properties of an existing Roblox instance. Returns a dictionary where keys are property names and values are their current values. Complex data types like Vector3 or Color3 will be returned in their dictionary formats.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "path": types.Schema(type=types.Type.STRING, description="Path to the instance (e.g., 'Workspace.ExistingPart')."),
+                    "path": types.Schema(type=types.Type.STRING, description="Full path to the existing instance (e.g., 'Workspace.MyPart', 'ReplicatedStorage.MyFolder.MyValue')."),
                     "property_names": types.Schema(
                         type=types.Type.ARRAY,
                         items=types.Schema(type=types.Type.STRING),
-                        description="Optional. List of property names to retrieve (e.g., ['Size', 'Color', 'CFrame', 'Material']). If omitted, common properties are fetched."
+                        description="An optional list of specific property names (strings) to retrieve. E.g., `['Size', 'Color', 'Material']`. If omitted or empty, a set of common scriptable properties for that instance type will be fetched."
                     )
                 },
-                required=["path"] # property_names is now optional
+                required=["path"] # property_names is optional
             )
         ),
         types.FunctionDeclaration(
@@ -239,11 +239,11 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
         ),
         types.FunctionDeclaration(
             name="delete_instance",
-            description="Deletes the specified instance from the game.",
+            description="Deletes the specified Roblox instance from the game's hierarchy.",
             parameters=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "path": types.Schema(type=types.Type.STRING, description="Path to the instance to delete (e.g., 'Workspace.ObsoletePart').")
+                    "path": types.Schema(type=types.Type.STRING, description="Full path to the instance to be deleted (e.g., 'Workspace.ObsoletePart', 'ServerStorage.OldFolder').")
                 },
                 required=["path"]
             )
@@ -557,7 +557,7 @@ ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE = types.Tool(
                 properties={
                     "store_name": types.Schema(type=types.Type.STRING, description="Name of the DataStore."),
                     "key": types.Schema(type=types.Type.STRING, description="The key to save data under."),
-                    "data": types.Schema(type=types.Type.STRING, description="Data to save (JSON object/array, string, number, or boolean). Complex Lua tables will be JSON encoded by the client; provide as valid JSON structure. Value will be parsed by Luau.")
+                    "data": types.Schema(type=types.Type.STRING, description="Data to save. If the data is a simple primitive (string, number, boolean), provide its string representation (e.g., \"'hello'\", \"'123'\", \"'true'\"). If the data is a table or array, YOU MUST PROVIDE IT AS A VALID JSON STRING (e.g., '{\"key\":\"value\",\"num\":123}' or '[1,2,3]'). This JSON string will be parsed by the Luau environment.")
                 },
                 required=["store_name", "key", "data"]
             )
@@ -1441,16 +1441,33 @@ class ToolDispatcher:
 
         ConsoleFormatter.print_tool_call(original_tool_name, original_tool_args)
 
-        is_valid, error_msg = self._validate_args(original_tool_name, original_tool_args)
+        current_tool_args = original_tool_args.copy() # Start with a copy for potential transformation
+
+        # Pre-validation argument transformation for specific tools
+        # Example: delete_instance might be called with "instance_path" by LLM, but schema/validator expects "path"
+        normalized_original_tool_name_for_pre_validation = original_tool_name.replace("_", "").lower()
+
+        if normalized_original_tool_name_for_pre_validation == "deleteinstance":
+            if "instance_path" in current_tool_args and "path" not in current_tool_args:
+                current_tool_args["path"] = current_tool_args.pop("instance_path")
+                logger.info(f"Pre-validation: Transformed 'instance_path' to 'path' for '{original_tool_name}'. Args: {current_tool_args}")
+
+        # Add other pre-validation transformations here if needed for other tools
+
+        is_valid, error_msg = self._validate_args(original_tool_name, current_tool_args) # Validate the (potentially modified) current_tool_args
         if not is_valid:
             ConsoleFormatter.print_tool_error({"validation_error": f"Argument validation failed: {error_msg}"})
+            # Return current_tool_args in error if it was modified, else original_tool_args
+            failed_args_for_log = current_tool_args if current_tool_args != original_tool_args else original_tool_args
+            logger.error(f"Validation failed for tool {original_tool_name} with args {failed_args_for_log}: {error_msg}")
             return {"name": original_tool_name, "response": {"error": f"Invalid arguments provided by AI: {error_msg}"}}
 
         # Refined structure for tool name mapping and argument preparation:
         mcp_tool_name_final = ""
         mcp_tool_args_final = {}
 
-        current_tool_args = original_tool_args.copy() # Start with a copy for potential transformation
+        # current_tool_args is already a copy from original_tool_args and potentially modified by pre-validation.
+        # No need to copy again unless further specific, isolated transformations are done.
 
         if original_tool_name == "insert_model":
             mcp_tool_name_final = "insert_model"
@@ -1484,7 +1501,7 @@ class ToolDispatcher:
                 "callinstancemethod": "CallInstanceMethod",
                 "deleteinstance": "delete_instance", # Luau script is lowercase
                 "selectinstances": "SelectInstances",
-                "getselection": "GetSelection",
+                "getselection": "get_selection", # Luau script is lowercase
                 "runcode": "RunCode",
                 "runscript": "RunScript",
                 "setlightingproperty": "SetLightingProperty",
@@ -1531,7 +1548,7 @@ class ToolDispatcher:
                 "call_instance_method": "CallInstanceMethod",
                 "delete_instance": "delete_instance", # Explicitly map snake_case to lowercase if Luau is lowercase
                 "select_instances": "SelectInstances",
-                "get_selection": "GetSelection",
+                "get_selection": "get_selection", # Luau script is lowercase
                 "run_code": "RunCode",
                 "run_script": "RunScript",
                 "set_lighting_property": "SetLightingProperty",
@@ -1651,25 +1668,39 @@ class ToolDispatcher:
                     return obj
 
                 # Normalize keys for known Vector3/Color3-like properties
-                vector3_like_props = ["Position", "Size"]
-                color3_like_props = ["Color"] # Could be extended for BrickColor if it's passed as dict by LLM
+                vector3_like_props_for_key_normalization = ["Position", "Size"] # Specific for key normalization
+                color3_like_props_for_key_normalization = ["Color"] # Specific for key normalization
 
-                for prop_name in vector3_like_props:
+                for prop_name in vector3_like_props_for_key_normalization:
                     if prop_name in properties_dict and isinstance(properties_dict[prop_name], dict):
                         original_prop_val = properties_dict[prop_name]
                         properties_dict[prop_name] = normalize_dict_keys(original_prop_val)
                         if properties_dict[prop_name] != original_prop_val: # Log only if change occurred
                             logger.info(f"Normalized keys for Vector3-like property '{prop_name}': {properties_dict[prop_name]}")
 
-                for prop_name in color3_like_props:
+                for prop_name in color3_like_props_for_key_normalization:
                     if prop_name in properties_dict and isinstance(properties_dict[prop_name], dict):
                         original_prop_val = properties_dict[prop_name]
                         properties_dict[prop_name] = normalize_dict_keys(original_prop_val)
                         if properties_dict[prop_name] != original_prop_val: # Log only if change occurred
                             logger.info(f"Normalized keys for Color3-like property '{prop_name}': {properties_dict[prop_name]}")
 
+                # Transform specific list/tuple Vector3-like values to {"x": v1, "y": v2, "z": v3}
+                VECTOR3_TRANSFORMATION_KEYS = ["Position", "Size", "PivotOffset", "PhysicalOffset"]
+                for prop_key in VECTOR3_TRANSFORMATION_KEYS:
+                    if prop_key in properties_dict:
+                        prop_value = properties_dict[prop_key]
+                        if isinstance(prop_value, (list, tuple)) and len(prop_value) == 3:
+                            if all(isinstance(v, (int, float)) for v in prop_value):
+                                properties_dict[prop_key] = {"x": prop_value[0], "y": prop_value[1], "z": prop_value[2]}
+                                logger.info(f"Transformed list/tuple to dict for Vector3 property '{prop_key}': {properties_dict[prop_key]}")
+                            else:
+                                logger.warning(f"Property '{prop_key}' is a list/tuple of 3 but not all elements are numbers: {prop_value}. Skipping transformation.")
+                        # If it's already a dict (e.g. {"x":1, "y":1, "z":1}), it's fine, no transformation needed.
+                        # If it's some other type, it will be handled by python_to_luau_table_string or Luau-side validation.
+
                 current_tool_args = {"class_name": class_name_val, "properties": properties_dict}
-                logger.info(f"Arguments for CreateInstance after transformation and V3/C3 normalization: class_name='{class_name_val}', properties={properties_dict}")
+                logger.info(f"Arguments for CreateInstance after all transformations: class_name='{class_name_val}', properties={properties_dict}")
 
             # For all other tools, or if not matching the CreateInstance transformation conditions,
             # current_tool_args remains as it was (either a copy of original_tool_args or transformed by other specific logic like set_gravity)
