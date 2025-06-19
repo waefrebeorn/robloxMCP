@@ -1,4 +1,5 @@
 @echo off
+
 SETLOCAL ENABLEDELAYEDEXPANSION
 
 :: ============================================================================
@@ -109,4 +110,5 @@ echo.
 echo [!SCRIPT_NAME!] Script finished.
 ENDLOCAL
 REM Adding a pause here so the user can see the output before the window closes if run by double-click
+
 pause
