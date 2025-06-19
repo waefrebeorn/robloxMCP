@@ -60,19 +60,19 @@ echo [OLLAMA SETUP] Attempting to download required Ollama models...
 echo [OLLAMA SETUP] This may take some time depending on your internet connection.
 echo.
 
-SET MODEL_PHI3=phi3:mini
+SET MODEL_PHI4=phi4-mini
 
-SET MODEL_QWEN2_7B=qwen2:7b
-SET MODEL_QWEN2_7B_Q4=qwen2:7b-q4_K_M
+SET MODEL_QWEN2_7B=qwen2.5-coder:7b
+SET MODEL_QWEN2_7B_Q4=qwen2.5-coder:7b-instruct-q4_K_M
 
 REM Using qwen2:7b-q4_K_M as q4_0 is less common. User can change if needed.
 
-echo [OLLAMA SETUP] Pulling model: !MODEL_PHI3!
-ollama pull "!MODEL_PHI3!"
+echo [OLLAMA SETUP] Pulling model: !MODEL_PHI4!
+ollama pull "!MODEL_PHI4!"
 IF !ERRORLEVEL! EQU 0 (
-    echo [OLLAMA SETUP] Successfully pulled !MODEL_PHI3!.
+    echo [OLLAMA SETUP] Successfully pulled !MODEL_PHI4!.
 ) ELSE (
-    echo [OLLAMA SETUP] ERROR: Failed to pull !MODEL_PHI3!. Please check your internet connection and ensure Ollama is running. (Error Code: !ERRORLEVEL!)
+    echo [OLLAMA SETUP] ERROR: Failed to pull !MODEL_PHI4!. Please check your internet connection and ensure Ollama is running. (Error Code: !ERRORLEVEL!)
 )
 echo.
 

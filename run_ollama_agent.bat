@@ -123,16 +123,16 @@ REM --- Subroutine: SelectOllamaModel ---
 SET SELECTED_MODEL=
 echo.
 echo [!SCRIPT_NAME!] Please select an Ollama model to use:
-echo   1. Phi-3 Mini (phi3:mini)
-echo   2. Qwen2 7B (qwen2:7b)
-echo   3. Qwen2 7B Quantized (qwen2:7b-q4_K_M)
+echo   1. Phi-4 Mini (phi4-mini)
+echo   2. Qwen2.5 7B (qqwen2.5-coder:7b)
+echo   3. Qwen2.5 7B Quantized (qwen2.5-coder:7b-instruct-q4_K_M)
 echo   4. Enter custom model name
 echo.
 
 CHOICE /C 1234 /M "[!SCRIPT_NAME!] Enter your choice (1-4): "
 SET MODEL_CHOICE=!ERRORLEVEL!
 
-IF "!MODEL_CHOICE!"=="1" SET SELECTED_MODEL=phi3:mini
+IF "!MODEL_CHOICE!"=="1" SET SELECTED_MODEL=phi4-mini
 
 IF "!MODEL_CHOICE!"=="2" SET SELECTED_MODEL=qwen2.5-coder:7b
 IF "!MODEL_CHOICE!"=="3" SET SELECTED_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
