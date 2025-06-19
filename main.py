@@ -256,73 +256,107 @@ async def _process_command(
                     elif assistant_message.get('content'):
                         raw_content_str = assistant_message['content']
                         if raw_content_str and isinstance(raw_content_str, str):
-                            json_to_parse = raw_content_str.strip()
-                            logger.info(f"Ollama response has content, attempting to parse as potential tool call. Initial content (stripped, snippet): {json_to_parse[:200]}...")
+                            content_str_stripped = raw_content_str.strip()
+                            logger.info(f"Ollama response has content, attempting to parse. Initial content (stripped, snippet): {content_str_stripped[:200]}...")
 
-                            is_markdown_json = False
-                            # Detect and strip Markdown JSON block markers
-                            if json_to_parse.startswith("```") and json_to_parse.endswith("```"):
-                                is_markdown_json = True
-                                logger.info("Markdown ``` detected at start and end.")
-                                # Strip the ``` from both ends
-                                json_to_parse = json_to_parse[3:-3].strip()
-
-                                # If it started with ```json, remove 'json' and potential newline
-                                if raw_content_str.strip().startswith("```json"): # Check original stripped string for 'json'
-                                    logger.info("Potential 'json' prefix after ``` found.")
-                                    if json_to_parse.lower().startswith("json"): # json_to_parse now has ``` stripped
-                                        json_to_parse = json_to_parse[4:].lstrip() # Remove 'json' and leading whitespace (like newline)
-                                        logger.info(f"Removed 'json' prefix. String for parsing (snippet): {json_to_parse[:200]}...")
-                                    else: # Case where it was ```json but content after ``` was not json
-                                        logger.info(f"Prefix was ```json but 'json' not at start of inner content: {json_to_parse[:10]}")
-                                else: # Was just ``` ... ```
-                                     logger.info(f"Standard ``` block. String for parsing (snippet): {json_to_parse[:200]}...")
-
-                            if not json_to_parse:
-                                logger.info("Content became empty after stripping potential Markdown markers. Treating as text.")
-                            else:
+                            # Phi4-mini specific parsing for "functools[...]"
+                            if content_str_stripped.startswith("functools[") and content_str_stripped.endswith("]"):
+                                logger.info("Detected 'functools[]' wrapper in Ollama content.")
+                                json_list_str = content_str_stripped[len("functools["):-1]
                                 try:
-                                    potential_tool_call = json.loads(json_to_parse)
-                                    if isinstance(potential_tool_call, dict) and \
-                                       ('name' in potential_tool_call or 'function_name' in potential_tool_call) and \
-                                       'arguments' in potential_tool_call:
+                                    tool_call_list = json.loads(json_list_str)
+                                    if isinstance(tool_call_list, list):
+                                        logger.info(f"Successfully parsed 'functools[]' content as JSON list. Number of tool calls: {len(tool_call_list)}")
+                                        for tc_dict in tool_call_list:
+                                            if isinstance(tc_dict, dict) and \
+                                               ('name' in tc_dict or 'function_name' in tc_dict) and \
+                                               'arguments' in tc_dict:
 
-                                        fc_name = potential_tool_call.get('name') or potential_tool_call.get('function_name')
-                                        fc_args = potential_tool_call['arguments']
+                                                fc_name = tc_dict.get('name') or tc_dict.get('function_name')
+                                                fc_args = tc_dict.get('arguments', {})
 
-                                        if not fc_name:
-                                            logger.warning(f"Tool call from content JSON is missing a valid 'name' or 'function_name'. Full potential tool call dictionary: {potential_tool_call}. Skipping.")
-                                            continue
-                                        else:
-                                            logger.info(f"Identified potential tool call from content: '{fc_name}'")
-
-                                            # MODIFIED SECTION START
-                                            if fc_args is None:
-                                                fc_args = {}
-                                            elif isinstance(fc_args, str):
-                                                try:
-                                                    fc_args = json.loads(fc_args)
-                                                except json.JSONDecodeError as e_inner:
-                                                    logger.error(f"Failed to parse string 'arguments' from content-based tool call for '{fc_name}': {fc_args}. Error: {e_inner}")
+                                                if not fc_name:
+                                                    logger.warning(f"Tool call from 'functools[]' list is missing 'name' or 'function_name'. Item: {tc_dict}. Skipping.")
                                                     continue
 
-                                            if not isinstance(fc_args, dict):
-                                                logger.warning(f"Ollama tool call from content for '{fc_name}' has 'arguments' not as dict or parsable string (and not None): {type(fc_args)}. Skipping.")
-                                                continue
-                                            tool_call_id = uuid.uuid4().hex
-                                            pending_function_calls.append(FunctionCall(id=tool_call_id, name=fc_name, args=fc_args))
-                                            logger.info(f"Appended tool call from 'content' JSON with generated ID {tool_call_id}: {fc_name} with args {fc_args}")
+                                                # Ensure fc_args is a dict, parsing if it's a string
+                                                if isinstance(fc_args, str):
+                                                    try:
+                                                        fc_args = json.loads(fc_args)
+                                                    except json.JSONDecodeError as e_inner:
+                                                        logger.error(f"Failed to parse string 'arguments' from 'functools[]' tool call for '{fc_name}': {fc_args}. Error: {e_inner}. Skipping.")
+                                                        continue
+
+                                                if not isinstance(fc_args, dict):
+                                                    logger.warning(f"Tool call from 'functools[]' for '{fc_name}' has 'arguments' not as dict or parsable string: {type(fc_args)}. Skipping.")
+                                                    continue
+
+                                                tool_call_id = uuid.uuid4().hex # Generate ID as phi4-mini might not provide one here
+                                                pending_function_calls.append(FunctionCall(id=tool_call_id, name=fc_name, args=fc_args))
+                                                logger.info(f"Appended tool call from 'functools[]' list with generated ID {tool_call_id}: {fc_name} with args {fc_args}")
+                                            else:
+                                                logger.warning(f"Item in 'functools[]' JSON list is not a valid tool call dict: {tc_dict}. Skipping.")
                                     else:
-                                        logger.info("Ollama content JSON (after potential Markdown stripping) does not match expected tool call structure (name/function_name + arguments keys). Treating as text.")
-                                except json.JSONDecodeError:
-                                    if is_markdown_json:
-                                        logger.error(f"Failed to parse JSON extracted from Markdown: '{json_to_parse}'")
+                                        logger.warning(f"'functools[]' content parsed, but not as a JSON list: {type(tool_call_list)}. Content: {json_list_str[:100]}. Falling back.")
+                                        # Fall through to general JSON parsing
+                                except json.JSONDecodeError as e:
+                                    logger.error(f"Failed to parse JSON from 'functools[]' content: '{json_list_str}'. Error: {e}. Falling back.")
+                                    # Fall through to general JSON parsing
+
+                            # Fallback to existing markdown/JSON object parsing if not functools or if functools parsing failed and didn't populate pending_function_calls
+                            if not pending_function_calls: # Only try this if the functools[] parsing didn't yield calls
+                                json_to_parse = content_str_stripped # Use already stripped content
+                                is_markdown_json = False
+                                if json_to_parse.startswith("```") and json_to_parse.endswith("```"):
+                                    is_markdown_json = True
+                                    logger.info("Markdown ``` detected at start and end (fallback path).")
+                                    json_to_parse = json_to_parse[3:-3].strip()
+                                    if content_str_stripped.startswith("```json"):
+                                        logger.info("Potential 'json' prefix after ``` found (fallback path).")
+                                        if json_to_parse.lower().startswith("json"):
+                                            json_to_parse = json_to_parse[4:].lstrip()
+                                            logger.info(f"Removed 'json' prefix. String for parsing (fallback, snippet): {json_to_parse[:200]}...")
+                                        else:
+                                            logger.info(f"Prefix was ```json but 'json' not at start of inner content (fallback): {json_to_parse[:10]}")
                                     else:
-                                        logger.info(f"Ollama content is not JSON, treating as text response. Content snippet: {json_to_parse[:100]}")
-                                    pass
-                                except Exception as e:
-                                    logger.error(f"Unexpected error parsing Ollama content as tool call: {e}", exc_info=True)
-                                    pass
+                                        logger.info(f"Standard ``` block. String for parsing (fallback, snippet): {json_to_parse[:200]}...")
+
+                                if not json_to_parse:
+                                    logger.info("Content became empty after stripping potential Markdown markers (fallback path). Treating as text.")
+                                else:
+                                    try:
+                                        potential_tool_call = json.loads(json_to_parse)
+                                        if isinstance(potential_tool_call, dict) and \
+                                           ('name' in potential_tool_call or 'function_name' in potential_tool_call) and \
+                                           'arguments' in potential_tool_call:
+
+                                            fc_name = potential_tool_call.get('name') or potential_tool_call.get('function_name')
+                                            fc_args = potential_tool_call['arguments']
+
+                                            if not fc_name:
+                                                logger.warning(f"Tool call from content JSON (fallback) is missing a valid 'name' or 'function_name'. Dict: {potential_tool_call}. Skipping.")
+                                            else:
+                                                logger.info(f"Identified potential single tool call from content (fallback): '{fc_name}'")
+                                                if fc_args is None: fc_args = {}
+                                                elif isinstance(fc_args, str):
+                                                    try: fc_args = json.loads(fc_args)
+                                                    except json.JSONDecodeError as e_inner:
+                                                        logger.error(f"Failed to parse string 'arguments' (fallback) for '{fc_name}': {fc_args}. Error: {e_inner}. Skipping.")
+                                                        fc_name = None # Prevent appending
+
+                                                if fc_name and not isinstance(fc_args, dict):
+                                                    logger.warning(f"Tool call (fallback) for '{fc_name}' has 'arguments' not as dict/parsable string (and not None): {type(fc_args)}. Skipping.")
+                                                elif fc_name: # fc_name is still valid and fc_args is a dict
+                                                    tool_call_id = uuid.uuid4().hex
+                                                    pending_function_calls.append(FunctionCall(id=tool_call_id, name=fc_name, args=fc_args))
+                                                    logger.info(f"Appended tool call from 'content' JSON (fallback) with ID {tool_call_id}: {fc_name} with args {fc_args}")
+                                        else:
+                                            logger.info("Ollama content JSON (fallback, after potential Markdown stripping) does not match tool call structure. Treating as text.")
+                                    except json.JSONDecodeError:
+                                        if is_markdown_json: logger.error(f"Failed to parse JSON extracted from Markdown (fallback): '{json_to_parse}'")
+                                        else: logger.info(f"Ollama content is not JSON (fallback), treating as text. Snippet: {json_to_parse[:100]}")
+                                    except Exception as e:
+                                        logger.error(f"Unexpected error parsing Ollama content as tool call (fallback): {e}", exc_info=True)
                         else:
                             logger.info("Ollama message content is empty or not a string. No fallback tool call parsing.")
 
