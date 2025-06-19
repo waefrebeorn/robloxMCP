@@ -37,6 +37,7 @@ IF EXIST "!MODFILE_NAME!" (
 )
 echo.
 
+
 :: --- Prepare Modelfile by copying from source ---
 echo [!SCRIPT_NAME!] Ensuring source Modelfile 'phi4_fc_ollama.Modelfile' exists...
 IF NOT EXIST "phi4_fc_ollama.Modelfile" (
@@ -45,6 +46,7 @@ IF NOT EXIST "phi4_fc_ollama.Modelfile" (
     GOTO :EndScript
 )
 echo [!SCRIPT_NAME!] Source Modelfile 'phi4_fc_ollama.Modelfile' found.
+
 
 echo [!SCRIPT_NAME!] Copying 'phi4_fc_ollama.Modelfile' to '!MODFILE_NAME!'...
 COPY /Y "phi4_fc_ollama.Modelfile" "!MODFILE_NAME!"
