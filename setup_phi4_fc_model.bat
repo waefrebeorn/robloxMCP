@@ -23,21 +23,6 @@ echo [!SCRIPT_NAME!] SCRIPT START
 echo [!SCRIPT_NAME!] Using custom model name: !CUSTOM_MODEL_NAME!, base model: !BASE_MODEL_NAME!
 echo.
 
-:: --- Clean up old Modelfile ---
-IF EXIST "!MODFILE_NAME!" (
-    echo [!SCRIPT_NAME!] Deleting existing Modelfile: !MODFILE_NAME!
-    DEL /F /Q "!MODFILE_NAME!"
-    IF ERRORLEVEL 1 (
-        echo [!SCRIPT_NAME!] ERROR: Could not delete old Modelfile "!MODFILE_NAME!". Permissions?
-        SET "ERROR_FLAG=1"
-        GOTO :EndScript
-    ) ELSE (
-        echo [!SCRIPT_NAME!] Old Modelfile deleted.
-    )
-)
-echo.
-
-
 :: --- Prepare Modelfile by copying from source ---
 echo [!SCRIPT_NAME!] Ensuring source Modelfile 'phi4_fc_ollama.Modelfile' exists...
 IF NOT EXIST "phi4_fc_ollama.Modelfile" (
@@ -45,6 +30,7 @@ IF NOT EXIST "phi4_fc_ollama.Modelfile" (
     SET "ERROR_FLAG=1"
     GOTO :EndScript
 )
+
 echo [!SCRIPT_NAME!] Source Modelfile 'phi4_fc_ollama.Modelfile' found.
 
 
