@@ -23,123 +23,23 @@ echo [!SCRIPT_NAME!] SCRIPT START
 echo [!SCRIPT_NAME!] Using custom model name: !CUSTOM_MODEL_NAME!, base model: !BASE_MODEL_NAME!
 echo.
 
-:: --- Clean up old Modelfile ---
-IF EXIST "!MODFILE_NAME!" (
-    echo [!SCRIPT_NAME!] Deleting existing Modelfile: !MODFILE_NAME!
-    DEL /F /Q "!MODFILE_NAME!"
-    IF ERRORLEVEL 1 (
-        echo [!SCRIPT_NAME!] ERROR: Could not delete old Modelfile "!MODFILE_NAME!". Permissions?
-        SET "ERROR_FLAG=1"
-        GOTO :EndScript
-    ) ELSE (
-        echo [!SCRIPT_NAME!] Old Modelfile deleted.
-    )
-)
-echo.
-
-:: --- Define Modelfile Content as Variables ---
-SET "MF_LINE_01=FROM !BASE_MODEL_NAME!"
-SET "MF_LINE_02=# Note: If your base model is named differently (e.g., after a specific download),"
-SET "MF_LINE_03=# change '!BASE_MODEL_NAME!' above to match the name you see in 'ollama list'."
-SET "MF_LINE_04="
-SET "MF_LINE_05=# Template for phi4-mini to encourage functools format"
-SET "MF_LINE_06=TEMPLATE !TQ!"
-SET "MF_LINE_07=^<\|user\|^\>"
-SET "MF_LINE_08={{ .Prompt }}^<\|end\|^\>"
-SET "MF_LINE_09=^<\|assistant\|^\>"
-SET "MF_LINE_10={{if .ToolCalls }}functools[{{ range $idx, $tool := .ToolCalls }}"
-SET "MF_LINE_11= { "
-SET "MF_LINE_12=  "name": "{{$tool.Function.Name}}","
-SET "MF_LINE_13=  "arguments": {{$tool.Function.Arguments}}"
-SET "MF_LINE_14= }{{end}}"
-SET "MF_LINE_15=]{{else}}{{ .Response }}{{end}}^<\|end\|^\>"
-SET "MF_LINE_16=!TQ!"
-SET "MF_LINE_17="
-SET "MF_LINE_18=SYSTEM !TQ!"
-SET "MF_LINE_19=You are a helpful AI assistant."
-SET "MF_LINE_20=You have access to the following tools:"
-SET "MF_LINE_21={{ range .Tools }}"
-SET "MF_LINE_22=^<tool_name^\>"
-SET "MF_LINE_23={{ .Name }}"
-SET "MF_LINE_24=^</tool_name^\>"
-SET "MF_LINE_25=^<tool_description^\>"
-SET "MF_LINE_26={{ .Description }}"
-SET "MF_LINE_27=^</tool_description^\>"
-SET "MF_LINE_28=^<tool_parameters^\>"
-SET "MF_LINE_29={{ .Parameters }}"
-SET "MF_LINE_30=^</tool_parameters^\>"
-SET "MF_LINE_31={{ end }}"
-SET "MF_LINE_32=When you need to use a tool, respond with a JSON object in the following format inside `functools[...]`:"
-SET "MF_LINE_33=`functools[{"name": "^<tool_name^>", "arguments": {"^<param_name^>": "^<param_value^>"}}]`"
-SET "MF_LINE_34=If you need to use multiple tools, include them in the list:"
-SET "MF_LINE_35=`functools[{"name": "^<tool_name_1^>", "arguments": {...}}, {"name": "^<tool_name_2^>", "arguments": {...}}]`"
-SET "MF_LINE_36=Only respond with the `functools[...]` structure if a tool is being called. Do not add any other text before or after it."
-SET "MF_LINE_37=If no tool is needed, respond with a regular text message."
-SET "MF_LINE_38=!TQ!"
-SET "MF_LINE_39="
-SET "MF_LINE_40=# Recommended Parameters (adjust as needed)"
-SET "MF_LINE_41=PARAMETER stop ^<\|end\|^\>"
-SET "MF_LINE_42=PARAMETER stop ^<\|user\|^\>"
-SET "MF_LINE_43=PARAMETER stop ^<\|assistant\|^\>"
-SET "MF_LINE_44=PARAMETER stop functools["
-echo [!SCRIPT_NAME!] Modelfile content defined.
-echo.
-
-:: --- Write Modelfile from Variables ---
-echo [!SCRIPT_NAME!] Writing Modelfile "!MODFILE_NAME!"...
-(
-    echo(!MF_LINE_01!
-    echo(!MF_LINE_02!
-    echo(!MF_LINE_03!
-    echo(!MF_LINE_04!
-    echo(!MF_LINE_05!
-    echo(!MF_LINE_06!
-    echo(!MF_LINE_07!
-    echo(!MF_LINE_08!
-    echo(!MF_LINE_09!
-    echo(!MF_LINE_10!
-    echo(!MF_LINE_11!
-    echo(!MF_LINE_12!
-    echo(!MF_LINE_13!
-    echo(!MF_LINE_14!
-    echo(!MF_LINE_15!
-    echo(!MF_LINE_16!
-    echo(!MF_LINE_17!
-    echo(!MF_LINE_18!
-    echo(!MF_LINE_19!
-    echo(!MF_LINE_20!
-    echo(!MF_LINE_21!
-    echo(!MF_LINE_22!
-    echo(!MF_LINE_23!
-    echo(!MF_LINE_24!
-    echo(!_MF_LINE_25!
-    echo(!MF_LINE_26!
-    echo(!MF_LINE_27!
-    echo(!MF_LINE_28!
-    echo(!MF_LINE_29!
-    echo(!MF_LINE_30!
-    echo(!MF_LINE_31!
-    echo(!MF_LINE_32!
-    echo(!MF_LINE_33!
-    echo(!MF_LINE_34!
-    echo(!MF_LINE_35!
-    echo(!MF_LINE_36!
-    echo(!MF_LINE_37!
-    echo(!MF_LINE_38!
-    echo(!MF_LINE_39!
-    echo(!MF_LINE_40!
-    echo(!MF_LINE_41!
-    echo(!MF_LINE_42!
-    echo(!MF_LINE_43!
-    echo(!MF_LINE_44!
-) > "!MODFILE_NAME!"
-
-IF !ERRORLEVEL! NEQ 0 (
-    echo [!SCRIPT_NAME!] CRITICAL ERROR: Failed to write Modelfile "%MODFILE_NAME%".
+:: --- Prepare Modelfile by copying from source ---
+echo [!SCRIPT_NAME!] Ensuring source Modelfile 'phi4_fc_ollama.Modelfile' exists...
+IF NOT EXIST "phi4_fc_ollama.Modelfile" (
+    echo [!SCRIPT_NAME!] CRITICAL ERROR: Source Modelfile 'phi4_fc_ollama.Modelfile' not found in current directory.
     SET "ERROR_FLAG=1"
     GOTO :EndScript
 )
-echo [!SCRIPT_NAME!] Modelfile "%MODFILE_NAME%" written successfully.
+echo [!SCRIPT_NAME!] Source Modelfile 'phi4_fc_ollama.Modelfile' found.
+
+echo [!SCRIPT_NAME!] Copying 'phi4_fc_ollama.Modelfile' to '!MODFILE_NAME!'...
+COPY /Y "phi4_fc_ollama.Modelfile" "!MODFILE_NAME!"
+IF !ERRORLEVEL! NEQ 0 (
+    echo [!SCRIPT_NAME!] CRITICAL ERROR: Failed to copy 'phi4_fc_ollama.Modelfile' to '!MODFILE_NAME!'.
+    SET "ERROR_FLAG=1"
+    GOTO :EndScript
+)
+echo [!SCRIPT_NAME!] Modelfile '!MODFILE_NAME!' prepared successfully by copying.
 echo.
 
 :: --- Run ollama create ---
