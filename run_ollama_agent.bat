@@ -152,7 +152,7 @@ IF DEFINED SELECTED_MODEL (
     echo [!SCRIPT_NAME!] Using model: !SELECTED_MODEL!
 )
 GOTO :EOF
-
+pause
 
 REM --- Subroutine: RunAgent ---
 :RunAgent
@@ -163,6 +163,7 @@ echo.
 "!PYTHON_EXE!" "!MAIN_SCRIPT!" --llm_provider ollama --ollama_model "!SELECTED_MODEL!"
 echo.
 echo [!SCRIPT_NAME!] Agent execution finished.
+pause
 GOTO :EOF
 
 pause

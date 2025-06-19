@@ -18,13 +18,13 @@ ROOT_DIR = Path(__file__).resolve().parent
 
 DEFAULT_CONFIG = {
     "GEMINI_MODEL_NAME": "gemini-1.5-flash-latest",
-    "RBX_MCP_SERVER_PATH": "./target/release/rbx-studio-mcp", # Relative to ROOT_DIR
+    "RBX_MCP_SERVER_PATH": "./target/release/rbx-studio-mcp.exe", # Relative to ROOT_DIR
     "GEMINI_API_KEY": None, # Encouraging use of environment variable via .env
     "MCP_MAX_INITIAL_START_ATTEMPTS": 3,
     "MCP_RECONNECT_ATTEMPTS": 5,
     "HISTORY_FILE_PATH": str(Path.home() / ".roblox_agent_history"),
     "OLLAMA_API_URL": "http://localhost:11434",
-    "OLLAMA_DEFAULT_MODEL": "phi3:mini",
+    "OLLAMA_DEFAULT_MODEL": "phi4:mini",
     "LLM_PROVIDER": "gemini" # Can be "gemini" or "ollama"
 }
 
