@@ -58,30 +58,43 @@ SET "MF_LINE_17="
 SET "MF_LINE_18=SYSTEM !TQ!"
 SET "MF_LINE_19=You are a helpful AI assistant."
 SET "MF_LINE_20=You have access to the following tools:"
-SET "MF_LINE_21={{ range .Tools }}"
+SET "MF_LINE_21=REMEMBER: THIS IS A PLACEHOLDER. REPLACE WITH ACTUAL TOOL DEFINITIONS."
 SET "MF_LINE_22=^<tool_name^\>"
-SET "MF_LINE_23={{ .Name }}"
+SET "MF_LINE_23=mcp_tool_listing"
 SET "MF_LINE_24=^</tool_name^\>"
-SET "MF_LINE_25=^<tool_description^\>"
-SET "MF_LINE_26={{ .Description }}"
-SET "MF_LINE_27=^</tool_description^\>"
-SET "MF_LINE_28=^<tool_parameters^\>"
-SET "MF_LINE_29={{ .Parameters }}"
-SET "MF_LINE_30=^</tool_parameters^\>"
-SET "MF_LINE_31={{ end }}"
-SET "MF_LINE_32=When you need to use a tool, respond with a JSON object in the following format inside `functools[...]`:"
-SET "MF_LINE_33=`functools[{"name": "^<tool_name^>", "arguments": {"^<param_name^>": "^<param_value^>"}}]`"
-SET "MF_LINE_34=If you need to use multiple tools, include them in the list:"
-SET "MF_LINE_35=`functools[{"name": "^<tool_name_1^>", "arguments": {...}}, {"name": "^<tool_name_2^>", "arguments": {...}}]`"
-SET "MF_LINE_36=Only respond with the `functools[...]` structure if a tool is being called. Do not add any other text before or after it."
-SET "MF_LINE_37=If no tool is needed, respond with a regular text message."
-SET "MF_LINE_38=!TQ!"
-SET "MF_LINE_39="
-SET "MF_LINE_40=# Recommended Parameters (adjust as needed)"
-SET "MF_LINE_41=PARAMETER stop ^<\|end\|^\>"
-SET "MF_LINE_42=PARAMETER stop ^<\|user\|^\>"
-SET "MF_LINE_43=PARAMETER stop ^<\|assistant\|^\>"
-SET "MF_LINE_44=PARAMETER stop functools["
+SET "MF_LINE_25="
+SET "MF_LINE_26=^<tool_description^\>"
+SET "MF_LINE_27=Lists all available MCP tools."
+SET "MF_LINE_28=^</tool_description^\>"
+SET "MF_LINE_29="
+SET "MF_LINE_30=^<tool_parameters^\>"
+SET "MF_LINE_31={}"
+SET "MF_LINE_32=^</tool_parameters^\>"
+SET "MF_LINE_33="
+SET "MF_LINE_34={{ range .Tools }}"
+SET "MF_LINE_35=^<tool_name^\>"
+SET "MF_LINE_36={{ .Name }}"
+SET "MF_LINE_37=^</tool_name^\>"
+SET "MF_LINE_38=^<tool_description^\>"
+SET "MF_LINE_39={{ .Description }}"
+SET "MF_LINE_40=^</tool_description^\>"
+SET "MF_LINE_41=^<tool_parameters^\>"
+SET "MF_LINE_42={{ .Parameters }}"
+SET "MF_LINE_43=^</tool_parameters^\>"
+SET "MF_LINE_44={{ end }}"
+SET "MF_LINE_45=When you need to use a tool, respond with a JSON object in the following format inside `functools[...]`:"
+SET "MF_LINE_46=`functools[{"name": "^<tool_name^>", "arguments": {"^<param_name^>": "^<param_value^>"}}]`"
+SET "MF_LINE_47=If you need to use multiple tools, include them in the list:"
+SET "MF_LINE_48=`functools[{"name": "^<tool_name_1^>", "arguments": {...}}, {"name": "^<tool_name_2^>", "arguments": {...}}]`"
+SET "MF_LINE_49=Only respond with the `functools[...]` structure if a tool is being called. Do not add any other text before or after it."
+SET "MF_LINE_50=If no tool is needed, respond with a regular text message."
+SET "MF_LINE_51=!TQ!"
+SET "MF_LINE_52="
+SET "MF_LINE_53=# Recommended Parameters (adjust as needed)"
+SET "MF_LINE_54=PARAMETER stop ^<\|end\|^\>"
+SET "MF_LINE_55=PARAMETER stop ^<\|user\|^\>"
+SET "MF_LINE_56=PARAMETER stop ^<\|assistant\|^\>"
+SET "MF_LINE_57=PARAMETER stop functools["
 echo [!SCRIPT_NAME!] Modelfile content defined.
 echo.
 
@@ -112,7 +125,7 @@ echo [!SCRIPT_NAME!] Writing Modelfile "!MODFILE_NAME!"...
     echo(!MF_LINE_22!
     echo(!MF_LINE_23!
     echo(!MF_LINE_24!
-    echo(!_MF_LINE_25!
+    echo(!MF_LINE_25!
     echo(!MF_LINE_26!
     echo(!MF_LINE_27!
     echo(!MF_LINE_28!
@@ -132,6 +145,19 @@ echo [!SCRIPT_NAME!] Writing Modelfile "!MODFILE_NAME!"...
     echo(!MF_LINE_42!
     echo(!MF_LINE_43!
     echo(!MF_LINE_44!
+    echo(!MF_LINE_45!
+    echo(!MF_LINE_46!
+    echo(!MF_LINE_47!
+    echo(!MF_LINE_48!
+    echo(!MF_LINE_49!
+    echo(!MF_LINE_50!
+    echo(!MF_LINE_51!
+    echo(!MF_LINE_52!
+    echo(!MF_LINE_53!
+    echo(!MF_LINE_54!
+    echo(!MF_LINE_55!
+    echo(!MF_LINE_56!
+    echo(!MF_LINE_57!
 ) > "!MODFILE_NAME!"
 
 IF !ERRORLEVEL! NEQ 0 (
