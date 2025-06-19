@@ -1,0 +1,44 @@
+FROM phi4-mini:latest
+# Note: If your base model is named differently (e.g., after a specific download),
+# change 'phi4-mini:latest' above to match the name you see in 'ollama list'.
+
+# Template for phi4-mini to encourage functools format
+TEMPLATE """
+^<\|user\|^\>
+{{ .Prompt }}^<\|end\|^\>
+^<\|assistant\|^\>
+{{if .ToolCalls }}functools[{{ range $idx, $tool := .ToolCalls }}
+ { 
+  "name": "{{$tool.Function.Name}}",
+  "arguments": {{$tool.Function.Arguments}}
+ }{{end}}
+]{{else}}{{ .Response }}{{end}}^<\|end\|^\>
+"""
+
+SYSTEM """
+You are a helpful AI assistant.
+You have access to the following tools:
+{{ range .Tools }}
+^<tool_name^\>
+{{ .Name }}
+^</tool_name^\>
+
+{{ .Description }}
+^</tool_description^\>
+^<tool_parameters^\>
+{{ .Parameters }}
+^</tool_parameters^\>
+{{ end }}
+When you need to use a tool, respond with a JSON object in the following format inside `functools[...]`:
+`functools[{"name": "<tool_name>", "arguments": {"<param_name>": "<param_value>"}}]`
+If you need to use multiple tools, include them in the list:
+`functools[{"name": "<tool_name_1>", "arguments": {...}}, {"name": "<tool_name_2>", "arguments": {...}}]`
+Only respond with the `functools[...]` structure if a tool is being called. Do not add any other text before or after it.
+If no tool is needed, respond with a regular text message.
+"""
+
+# Recommended Parameters (adjust as needed)
+PARAMETER stop ^<\|end\|^\>
+PARAMETER stop ^<\|user\|^\>
+PARAMETER stop ^<\|assistant\|^\>
+PARAMETER stop functools[

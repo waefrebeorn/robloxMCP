@@ -1,95 +1,160 @@
-@echo off
-
+@echo OFF
 SETLOCAL ENABLEDELAYEDEXPANSION
 
 :: ============================================================================
 :: Batch File: setup_phi4_fc_model.bat
-:: Version: 1.0
+:: Version: 2.4 (Production Ready)
 :: Description: Creates a custom Ollama model for phi4-mini with a specific
 ::              template for reliable function calling (functools format).
-:: Design Doc: Batch File Design Document v1.0 (inferred)
 :: ============================================================================
 
 :: --- Configuration ---
 SET "MODFILE_NAME=phi4_fc_ollama.Modelfile"
 SET "CUSTOM_MODEL_NAME=phi4-mini-functools"
 SET "BASE_MODEL_NAME=phi4-mini:latest"
-SET "SCRIPT_NAME=setup_phi4_fc_model.bat"
+SET "SCRIPT_NAME=%~nx0"
+SET "ERROR_FLAG=0"
 
-echo [!SCRIPT_NAME!] Starting setup for custom Ollama model: !CUSTOM_MODEL_NAME!
-echo [!SCRIPT_NAME!] Using Modelfile name: !MODFILE_NAME!
-echo [!SCRIPT_NAME!] Base model for FROM line: !BASE_MODEL_NAME!
+:: Define a single quote and triple quote reliably
+SET "Q="" 
+SET "TQ=!Q!!Q!!Q!"
+
+echo [!SCRIPT_NAME!] SCRIPT START
+echo [!SCRIPT_NAME!] Using custom model name: !CUSTOM_MODEL_NAME!, base model: !BASE_MODEL_NAME!
 echo.
 
-:: --- Prepare Modelfile Content ---
-echo [!SCRIPT_NAME!] Preparing Modelfile content...
+:: --- Clean up old Modelfile ---
+IF EXIST "!MODFILE_NAME!" (
+    echo [!SCRIPT_NAME!] Deleting existing Modelfile: !MODFILE_NAME!
+    DEL /F /Q "!MODFILE_NAME!"
+    IF ERRORLEVEL 1 (
+        echo [!SCRIPT_NAME!] ERROR: Could not delete old Modelfile "!MODFILE_NAME!". Permissions?
+        SET "ERROR_FLAG=1"
+        GOTO :EndScript
+    ) ELSE (
+        echo [!SCRIPT_NAME!] Old Modelfile deleted.
+    )
+)
+echo.
 
+:: --- Define Modelfile Content as Variables ---
+SET "MF_LINE_01=FROM !BASE_MODEL_NAME!"
+SET "MF_LINE_02=# Note: If your base model is named differently (e.g., after a specific download),"
+SET "MF_LINE_03=# change '!BASE_MODEL_NAME!' above to match the name you see in 'ollama list'."
+SET "MF_LINE_04="
+SET "MF_LINE_05=# Template for phi4-mini to encourage functools format"
+SET "MF_LINE_06=TEMPLATE !TQ!"
+SET "MF_LINE_07=^<\|user\|^\>"
+SET "MF_LINE_08={{ .Prompt }}^<\|end\|^\>"
+SET "MF_LINE_09=^<\|assistant\|^\>"
+SET "MF_LINE_10={{if .ToolCalls }}functools[{{ range $idx, $tool := .ToolCalls }}"
+SET "MF_LINE_11= { "
+SET "MF_LINE_12=  "name": "{{$tool.Function.Name}}","
+SET "MF_LINE_13=  "arguments": {{$tool.Function.Arguments}}"
+SET "MF_LINE_14= }{{end}}"
+SET "MF_LINE_15=]{{else}}{{ .Response }}{{end}}^<\|end\|^\>"
+SET "MF_LINE_16=!TQ!"
+SET "MF_LINE_17="
+SET "MF_LINE_18=SYSTEM !TQ!"
+SET "MF_LINE_19=You are a helpful AI assistant."
+SET "MF_LINE_20=You have access to the following tools:"
+SET "MF_LINE_21={{ range .Tools }}"
+SET "MF_LINE_22=^<tool_name^\>"
+SET "MF_LINE_23={{ .Name }}"
+SET "MF_LINE_24=^</tool_name^\>"
+SET "MF_LINE_25=^<tool_description^\>"
+SET "MF_LINE_26={{ .Description }}"
+SET "MF_LINE_27=^</tool_description^\>"
+SET "MF_LINE_28=^<tool_parameters^\>"
+SET "MF_LINE_29={{ .Parameters }}"
+SET "MF_LINE_30=^</tool_parameters^\>"
+SET "MF_LINE_31={{ end }}"
+SET "MF_LINE_32=When you need to use a tool, respond with a JSON object in the following format inside `functools[...]`:"
+SET "MF_LINE_33=`functools[{"name": "^<tool_name^>", "arguments": {"^<param_name^>": "^<param_value^>"}}]`"
+SET "MF_LINE_34=If you need to use multiple tools, include them in the list:"
+SET "MF_LINE_35=`functools[{"name": "^<tool_name_1^>", "arguments": {...}}, {"name": "^<tool_name_2^>", "arguments": {...}}]`"
+SET "MF_LINE_36=Only respond with the `functools[...]` structure if a tool is being called. Do not add any other text before or after it."
+SET "MF_LINE_37=If no tool is needed, respond with a regular text message."
+SET "MF_LINE_38=!TQ!"
+SET "MF_LINE_39="
+SET "MF_LINE_40=# Recommended Parameters (adjust as needed)"
+SET "MF_LINE_41=PARAMETER stop ^<\|end\|^\>"
+SET "MF_LINE_42=PARAMETER stop ^<\|user\|^\>"
+SET "MF_LINE_43=PARAMETER stop ^<\|assistant\|^\>"
+SET "MF_LINE_44=PARAMETER stop functools["
+echo [!SCRIPT_NAME!] Modelfile content defined.
+echo.
+
+:: --- Write Modelfile from Variables ---
+echo [!SCRIPT_NAME!] Writing Modelfile "!MODFILE_NAME!"...
 (
-    echo FROM !BASE_MODEL_NAME!
-    echo # Note: If your base model is named differently (e.g., after a specific download),
-    echo # change '!BASE_MODEL_NAME!' above to match the name you see in 'ollama list'.
-    echo.
-    echo # Template for phi4-mini to encourage functools format
-    echo TEMPLATE ^"""^<\|user\|^\>
-    echo {{ .Prompt }}^<\|end\|^\>
-    echo ^<\|assistant\|^\>
-    echo {{if .ToolCalls }}functools[{{ range $idx, $tool := .ToolCalls }}
-    echo  {
-    echo   "name": "{{$tool.Function.Name}}",
-    echo   "arguments": {{$tool.Function.Arguments}}
-    echo  }{{end}}
-    echo ]{{else}}{{ .Response }}{{end}}^<\|end\|^\>
-    echo ^"""
-    echo.
-    echo SYSTEM ^"""You are a helpful AI assistant.
-    echo You have access to the following tools:
-    echo {{ range .Tools }}
-    echo ^<tool_name^\>
-    echo {{ .Name }}
-    echo ^</tool_name^\>
-    echo ^<tool_description^\>
-    echo {{ .Description }}
-    echo ^</tool_description^\>
-    echo ^<tool_parameters^\>
-    echo {{ .Parameters }}
-    echo ^</tool_parameters^\>
-    echo {{ end }}
-    echo When you need to use a tool, respond with a JSON object in the following format inside `functools[...]`:
-    echo `functools[{"name": "^<tool_name^>", "arguments": {"^<param_name^>": "^<param_value^>"}}]`
-    echo If you need to use multiple tools, include them in the list:
-    echo `functools[{"name": "^<tool_name_1^>", "arguments": {...}}, {"name": "^<tool_name_2^>", "arguments": {...}}]`
-    echo Only respond with the `functools[...]` structure if a tool is being called. Do not add any other text before or after it.
-    echo If no tool is needed, respond with a regular text message.
-    echo ^"""
-    echo.
-    echo # Recommended Parameters (adjust as needed)
-    echo PARAMETER stop "^<\|end\|^\>"
-    echo PARAMETER stop "^<\|user\|^\>"
-    echo PARAMETER stop "^<\|assistant\|^\>"
-    echo PARAMETER stop "functools["
+    echo(!MF_LINE_01!
+    echo(!MF_LINE_02!
+    echo(!MF_LINE_03!
+    echo(!MF_LINE_04!
+    echo(!MF_LINE_05!
+    echo(!MF_LINE_06!
+    echo(!MF_LINE_07!
+    echo(!MF_LINE_08!
+    echo(!MF_LINE_09!
+    echo(!MF_LINE_10!
+    echo(!MF_LINE_11!
+    echo(!MF_LINE_12!
+    echo(!MF_LINE_13!
+    echo(!MF_LINE_14!
+    echo(!MF_LINE_15!
+    echo(!MF_LINE_16!
+    echo(!MF_LINE_17!
+    echo(!MF_LINE_18!
+    echo(!MF_LINE_19!
+    echo(!MF_LINE_20!
+    echo(!MF_LINE_21!
+    echo(!MF_LINE_22!
+    echo(!MF_LINE_23!
+    echo(!MF_LINE_24!
+    echo(!_MF_LINE_25!
+    echo(!MF_LINE_26!
+    echo(!MF_LINE_27!
+    echo(!MF_LINE_28!
+    echo(!MF_LINE_29!
+    echo(!MF_LINE_30!
+    echo(!MF_LINE_31!
+    echo(!MF_LINE_32!
+    echo(!MF_LINE_33!
+    echo(!MF_LINE_34!
+    echo(!MF_LINE_35!
+    echo(!MF_LINE_36!
+    echo(!MF_LINE_37!
+    echo(!MF_LINE_38!
+    echo(!MF_LINE_39!
+    echo(!MF_LINE_40!
+    echo(!MF_LINE_41!
+    echo(!MF_LINE_42!
+    echo(!MF_LINE_43!
+    echo(!MF_LINE_44!
 ) > "!MODFILE_NAME!"
 
 IF !ERRORLEVEL! NEQ 0 (
-    echo [!SCRIPT_NAME!] ERROR: Failed to write Modelfile "%MODFILE_NAME%".
+    echo [!SCRIPT_NAME!] CRITICAL ERROR: Failed to write Modelfile "%MODFILE_NAME%".
+    SET "ERROR_FLAG=1"
     GOTO :EndScript
 )
-
-echo [!SCRIPT_NAME!] Modelfile "%MODFILE_NAME%" created successfully.
+echo [!SCRIPT_NAME!] Modelfile "%MODFILE_NAME%" written successfully.
 echo.
 
 :: --- Run ollama create ---
 echo [!SCRIPT_NAME!] Attempting to create Ollama model "!CUSTOM_MODEL_NAME!"...
-echo [!SCRIPT_NAME!] This command may take a few moments if the base model needs to be downloaded.
-echo [!SCRIPT_NAME!] Executing: ollama create "!CUSTOM_MODEL_NAME!" -f "!MODFILE_NAME!"
 ollama create "!CUSTOM_MODEL_NAME!" -f "!MODFILE_NAME!"
+SET "OLLAMA_CREATE_ERRORLEVEL=!ERRORLEVEL!"
+echo [!SCRIPT_NAME!] 'ollama create' command finished with ERRORLEVEL: !OLLAMA_CREATE_ERRORLEVEL!
 
-IF !ERRORLEVEL! NEQ 0 (
+SET "TEST_VAR=Value" & REM This simple command seems to prevent a cmd.exe parsing error after ollama create. Do not remove.
+
+IF "!OLLAMA_CREATE_ERRORLEVEL!" NEQ "0" (
     echo.
-    echo [!SCRIPT_NAME!] ERROR: 'ollama create' command failed with error code !ERRORLEVEL!.
-    echo [!SCRIPT_NAME!] Please check the output above for error messages from Ollama.
-    echo [!SCRIPT_NAME!] Ensure Ollama service is running and the base model '!BASE_MODEL_NAME!' is available.
-    echo [!SCRIPT_NAME!] You can verify by running 'ollama list' in a separate terminal.
-    echo [!SCRIPT_NAME!] Also, check Ollama server logs for more detailed information.
+    echo [!SCRIPT_NAME!] ERROR: 'ollama create' command failed with error code !OLLAMA_CREATE_ERRORLEVEL!.
+    echo [!SCRIPT_NAME!] Please check Ollama output above and its server logs for more details.
+    SET "ERROR_FLAG=1"
     GOTO :EndScript
 )
 
@@ -97,18 +162,21 @@ echo.
 echo [!SCRIPT_NAME!] Successfully created Ollama model: "!CUSTOM_MODEL_NAME!"
 echo.
 echo   --- Next Steps ---
-echo   1. If you are using this with an agent (like the Roblox Studio AI Broker),
-echo      update its configuration to use the model name: "!CUSTOM_MODEL_NAME!"
-echo      (e.g., via command-line argument '--ollama_model !CUSTOM_MODEL_NAME!' or in a config file).
+echo   1. If using with an agent, update its configuration to use: "!CUSTOM_MODEL_NAME!"
 echo   2. Relaunch your agent.
+echo   The Modelfile ("!MODFILE_NAME!") is in the current directory for reference.
 echo.
-echo [!SCRIPT_NAME!] The Modelfile ("!MODFILE_NAME!") has been created in the current directory.
-echo [!SCRIPT_NAME!] You can keep it for reference or delete it if no longer needed.
-echo.
+
+GOTO :EndScript
 
 :EndScript
-echo [!SCRIPT_NAME!] Script finished.
+IF "!ERROR_FLAG!" EQU "1" (
+    echo [!SCRIPT_NAME!] SCRIPT FINISHED WITH ERRORS.
+) ELSE (
+    echo [!SCRIPT_NAME!] SCRIPT FINISHED SUCCESSFULLY.
+)
 ENDLOCAL
-REM Adding a pause here so the user can see the output before the window closes if run by double-click
-
+echo.
+echo Press any key to continue . . .
 pause
+EXIT /B %ERROR_FLAG%
