@@ -123,21 +123,22 @@ REM --- Subroutine: SelectOllamaModel ---
 SET SELECTED_MODEL=
 echo.
 echo [!SCRIPT_NAME!] Please select an Ollama model to use:
-echo   1. Phi-4 Mini (phi4-mini)
-echo   2. Qwen2.5 7B (qqwen2.5-coder:7b)
-echo   3. Qwen2.5 7B Quantized (qwen2.5-coder:7b-instruct-q4_K_M)
-echo   4. Enter custom model name
+echo   1. Phi-4 Mini - Function Calling (phi4-mini-functools) (Recommended if you ran setup_phi4_fc_model.bat)
+echo   2. Phi-4 Mini - Standard (phi4-mini)
+echo   3. Qwen2.5 7B (qwen2.5-coder:7b)
+echo   4. Qwen2.5 7B Quantized (qwen2.5-coder:7b-instruct-q4_K_M)
+echo   5. Enter custom model name
 echo.
 
-CHOICE /C 1234 /M "[!SCRIPT_NAME!] Enter your choice (1-4): "
+CHOICE /C 12345 /M "[!SCRIPT_NAME!] Enter your choice (1-5): "
 SET MODEL_CHOICE=!ERRORLEVEL!
 
-IF "!MODEL_CHOICE!"=="1" SET SELECTED_MODEL=phi4-mini
+IF "!MODEL_CHOICE!"=="1" SET SELECTED_MODEL=phi4-mini-functools
+IF "!MODEL_CHOICE!"=="2" SET SELECTED_MODEL=phi4-mini
+IF "!MODEL_CHOICE!"=="3" SET SELECTED_MODEL=qwen2.5-coder:7b
+IF "!MODEL_CHOICE!"=="4" SET SELECTED_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
 
-IF "!MODEL_CHOICE!"=="2" SET SELECTED_MODEL=qwen2.5-coder:7b
-IF "!MODEL_CHOICE!"=="3" SET SELECTED_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
-
-IF "!MODEL_CHOICE!"=="4" (
+IF "!MODEL_CHOICE!"=="5" (
     echo.
     SET /P "CUSTOM_MODEL=[!SCRIPT_NAME!] Enter the custom Ollama model name (e.g., mistral:latest): "
     IF DEFINED CUSTOM_MODEL (
