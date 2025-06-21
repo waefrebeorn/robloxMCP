@@ -18,14 +18,18 @@ ROOT_DIR = Path(__file__).resolve().parent
 
 DEFAULT_CONFIG = {
     "GEMINI_MODEL_NAME": "gemini-1.5-flash-latest",
-    "RBX_MCP_SERVER_PATH": "./target/release/rbx-studio-mcp.exe", # Relative to ROOT_DIR
     "GEMINI_API_KEY": None, # Encouraging use of environment variable via .env
-    "MCP_MAX_INITIAL_START_ATTEMPTS": 3,
-    "MCP_RECONNECT_ATTEMPTS": 5,
     "HISTORY_FILE_PATH": str(Path.home() / ".roblox_agent_history"),
     "OLLAMA_API_URL": "http://localhost:11434",
-    "OLLAMA_DEFAULT_MODEL": "phi4:mini",
-    "LLM_PROVIDER": "gemini" # Can be "gemini" or "ollama"
+    "OLLAMA_DEFAULT_MODEL": "phi4:mini", # Default model for Ollama
+    "LLM_PROVIDER": "gemini", # Can be "gemini" or "ollama"
+    "MOONDREAM_API_URL": "", # API endpoint for Moondream v2, if applicable
+    "SCREENSHOT_SAVE_PATH": "", # Path to save screenshots, if empty, don't save.
+    "PYAUTOGUI_FAILSAFE_ENABLED": True, # Enable/disable PyAutoGUI's failsafe (corner mouse move)
+    "PYAUTOGUI_PAUSE_PER_ACTION": 0.1, # Default pause in seconds after each PyAutoGUI action
+    "VOICE_RECORDING_DURATION": 5, # Default duration for voice recording in seconds
+    "WHISPER_MODEL_NAME": "base", # Default Whisper model (e.g., "tiny", "base", "small")
+    "ENABLE_TTS": True # Enable or disable Text-to-Speech output
 }
 
 def load_or_create_config(r_console=None) -> dict: # Optionally pass rich console

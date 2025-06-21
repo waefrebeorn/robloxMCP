@@ -1,263 +1,131 @@
-# Roblox Studio MCP Server
+# Desktop AI Assistant (Windows MCP Agent)
 
-This repository contains a reference implementation of the Model Context Protocol (MCP). The primary workflow enables communication between Roblox Studio (via a plugin) and Google's Gemini models through a Python-based agent. It also supports legacy integrations with [Claude Desktop](https://claude.ai/download) or [Cursor](https://www.cursor.com/).
-It consists of the following Rust-based components, which communicate through internal shared
-objects.
+This project is a Python-based agent designed to control a Windows desktop environment. It leverages Large Language Models (LLMs like Google's Gemini or local models via Ollama) for understanding user commands. It uses dedicated libraries for screen interaction, OCR (via Tesseract and potentially Moondream v2 for general vision), Speech-to-Text (via Whisper), and Text-to-Speech (via pyttsx3). Users can interact with the assistant via a command-line interface (text or voice) to automate desktop tasks.
 
-- A web server built on `axum` that a Studio plugin long polls.
-- A `rmcp` server that talks to Claude via `stdio` transport (for legacy setups) or directly to the Roblox Studio plugin when used with the Python agent.
+## Features
 
-When LLM requests to run a tool, the plugin will get a request through the long polling and post a
-response. It will cause responses to be sent to the LLM application.
+*   **Desktop Control**: Programmatic control over mouse and keyboard actions.
+*   **Screen Interaction**:
+    *   Capture the full screen or specific regions.
+    *   OCR (Optical Character Recognition) using Tesseract to find text and its coordinates on screen.
+    *   Click on text found via OCR.
+*   **Vision Analysis**: Utilizes Moondream v2 (or a similar vision model if configured) for general image description tasks.
+*   **Window Management**: List open windows, get active window title, focus windows, get window geometry.
+*   **File System (Read-Only)**: List directory contents and read text files.
+*   **Voice Interaction**:
+    *   Speech-to-Text (STT) using local Whisper models.
+    *   Text-to-Speech (TTS) using pyttsx3 for spoken responses.
+*   **LLM Integration**: Supports Google Gemini (via API) and local LLMs (e.g., Llama, Phi, Qwen) through Ollama for natural language understanding and tool orchestration.
+*   **Command-Line Interface**: Allows users to type commands or use voice to interact with their desktop.
+*   **Configurable**: Settings for API keys, model names, and behavior can be managed through `config.json` and `.env` files.
 
-**Please note** that this MCP server will be accessed by third-party tools, allowing them to modify
-and read the contents of your opened place. Third-party data handling and privacy practices are
-subject to their respective terms and conditions.
+## Prerequisites
 
-![Scheme](MCP-Server.png)
+*   **Python**: Version 3.9 or higher is recommended. Ensure Python is added to your system's PATH.
+*   **Git**: For cloning the repository.
+*   **Tesseract OCR**: Required for the `find_text_on_screen_and_click` tool and other precise text-location tasks.
+    *   Installation instructions: [Tesseract OCR Documentation](https://tesseract-ocr.github.io/tessdoc/Installation.html)
+    *   Ensure Tesseract is added to your system's PATH, or you may need to configure `pytesseract.tesseract_cmd` within the `ocr_service.py` if issues arise (not currently implemented as a config option).
+*   **Ollama**: (Optional, if using local LLMs/Moondream) Install from [ollama.com](https://ollama.com).
+*   **ffmpeg**: (Required by `openai-whisper`) A cross-platform solution to record, convert and stream audio and video.
+    *   Linux: `sudo apt update && sudo apt install ffmpeg`
+    *   macOS: `brew install ffmpeg`
+    *   Windows: Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH, or via Chocolatey: `choco install ffmpeg`
 
-The setup process installs a Roblox Studio plugin and helps configure the system for the chosen workflow.
-
-## Getting Started with Gemini (Python Agent Workflow)
-
-This project now primarily supports interacting with Google's Gemini models through a Python-based agent. This provides a flexible and powerful way to connect Gemini's capabilities to Roblox Studio.
-
-The `rbx-studio-mcp.exe` (Rust application) acts as a vital bridge, running as an MCP server that directly communicates with a Roblox Studio plugin. The Python agent then connects to this Rust MCP server to send commands to and receive data from Roblox Studio.
-
-### Prerequisites
-
-*   **Python**: Version 3.9 or higher recommended. Ensure Python is added to your system's PATH.
-*   **Rust and Cargo**: If not already installed, the `build_rust_server.bat` script (see step 2 below) will attempt to download and install them for you using `rustup`.
-*   **Roblox Studio**: Must be installed.
-
-### Setup Instructions
-
-Follow these steps to set up and run the Gemini Python agent with Roblox Studio:
+## Setup Instructions
 
 1.  **Clone the Repository**:
     ```bash
-    git clone https://github.com/Roblox/studio-rust-mcp-server.git
-    cd studio-rust-mcp-server
+    git clone <repository_url> # Replace <repository_url> with the actual URL
+    cd <repository_directory>   # Replace <repository_directory>
     ```
 
-2.  **Build the Rust MCP Server & Install Studio Plugin**:
-    Run the `build_rust_server.bat` script:
-    ```batch
-    build_rust_server.bat
+2.  **Create and Activate Python Virtual Environment**:
+    ```bash
+    python -m venv venv
     ```
-    This script performs several key actions:
-    *   Checks if Rust/Cargo is installed. If not, it will attempt to download and run `rustup-init.exe` to install them. If this happens, you **must restart your terminal/command prompt after `rustup` finishes and re-run `build_rust_server.bat`** for the PATH changes to take effect.
-    *   Compiles the `rbx-studio-mcp.exe` application with the `gemini_python_broker` feature enabled.
-    *   Automatically runs the compiled `rbx-studio-mcp.exe` in its one-time "installer" mode. This installs the `MCPStudioPlugin.rbxm` into your Roblox Studio plugins folder and provides guidance for the Python workflow.
+    Activate:
+    *   Windows: `.\venv\Scripts\activate`
+    *   macOS/Linux: `source venv/bin/activate`
 
-3.  **Set up Python Virtual Environment & Dependencies**:
-    Run the `setup_venv.bat` script:
-    ```batch
-    setup_venv.bat
+3.  **Install Dependencies**:
+    ```bash
+    pip install -r requirements.txt
     ```
-    This creates a Python virtual environment in a folder named `venv` and installs dependencies from `requirements.txt`.
+    This installs all necessary Python packages including `pyautogui`, `Pillow`, `requests`, `pytesseract`, `pandas`, `openai-whisper`, `sounddevice`, `scipy`, `pyttsx3`, `PyGetWindow`, and `PyWinCtl`.
 
-4.  **Configure Your Gemini API Key**:
-    Create a `.env` file in the project root directory with your Gemini API key:
-    ```env
-    GEMINI_API_KEY="YOUR_API_KEY_HERE"
-    ```
-    Replace `"YOUR_API_KEY_HERE"` with your actual key. This file is gitignored.
-
-### Running the System
-
-To use the Gemini agent with Roblox Studio:
-
-1.  **Open Roblox Studio**: And open your target place. Ensure the "MCPStudioPlugin" is enabled (it should be by default after installation).
-2.  **Start the Rust MCP Server**: In a terminal, run:
-    ```batch
-    run_rust_server.bat
-    ```
-    Keep this window open. It will display connection information and logs.
-3.  **Start the Python Agent**: In another terminal, run:
-    ```batch
-    run_agent.bat
-    ```
-    This starts the console interface for the Gemini agent.
-
-### Using the Agent
-
-Type your prompts into the Python agent's console. It will interact with Gemini and relay actions to Roblox Studio via the Rust MCP server.
-
-## Using Local LLMs with Ollama
-
-This project also supports using local Large Language Models (LLMs) through [Ollama](https://ollama.com/). This allows you to run powerful models directly on your own machine.
-
-**Benefits of using Ollama:**
-*   **Privacy**: Your prompts and code are processed locally, not sent to a third-party cloud service.
-*   **Offline Capability**: Once models are downloaded, you can use the agent without an active internet connection (though initial setup and model downloads require internet).
-*   **Custom Models**: Ollama supports a wide range of open-source models, and you can easily switch between them or even use customized versions.
-
-### Installation and Setup (Ollama)
-
-1.  **Prerequisites**:
-    *   Ensure your Python environment is set up as described in the "Getting Started with Gemini" section (virtual environment, `requirements.txt` installed, especially the `ollama` package).
-    *   Ollama itself needs to be installed on your system.
-
-2.  **Ollama Setup Script**:
-    This project includes a batch script to help you set up Ollama and download recommended models.
-    *   **What it does**:
-        *   Checks if Ollama is already installed.
-        *   If not installed, it provides a download link and instructions.
-        *   Pulls several common Ollama models suitable for coding tasks (e.g., `phi3:mini`, `qwen2:7b`).
-    *   **How to run it**:
-        Open a command prompt or terminal in the project root and run:
-        ```batch
-        .\ollama_setup.bat
+4.  **Configuration**:
+    *   **Copy Example Configuration**:
+        ```bash
+        cp config.example.json config.json
         ```
-        Follow the on-screen prompts.
+    *   **Edit `config.json`**: Review and update the settings:
+        *   `LLM_PROVIDER`: `"gemini"` or `"ollama"`.
+        *   `OLLAMA_API_URL`: (If Ollama) Defaults to `"http://localhost:11434"`.
+        *   `OLLAMA_DEFAULT_MODEL`: (If Ollama) Default text LLM (e.g., `"phi3:mini"`).
+        *   `MOONDREAM_API_URL`: Endpoint for Moondream v2 (if used, e.g., via Ollama: `"http://localhost:11434/api/generate"`).
+        *   `OLLAMA_MOONDREAM_MODEL`: Name of Moondream model in Ollama (e.g., `"moondream"`).
+        *   `SCREENSHOT_SAVE_PATH`: Optional path to save screenshots (e.g., `"./screenshots"`).
+        *   `GEMINI_MODEL_NAME`: (If Gemini) e.g., `"gemini-1.5-flash-latest"`.
+        *   `PYAUTOGUI_FAILSAFE_ENABLED`: `true` or `false`.
+        *   `PYAUTOGUI_PAUSE_PER_ACTION`: e.g., `0.1`.
+        *   `VOICE_RECORDING_DURATION`: Default recording time in seconds for voice input (e.g., `5`).
+        *   `WHISPER_MODEL_NAME`: Whisper model for STT (e.g., `"base"`, `"tiny"`).
+        *   `ENABLE_TTS`: `true` or `false` to enable/disable spoken responses.
+    *   **Gemini API Key (if using Gemini)**:
+        Create a `.env` file in the project root:
+        ```env
+        GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+        ```
+    *   **Ollama Setup (if using Ollama)**:
+        *   Ensure Ollama is installed and running.
+        *   Pull your chosen LLM: `ollama pull <your_llm_name>` (e.g., `ollama pull phi3:mini`).
+        *   Pull Moondream (if using for vision): `ollama pull moondream`.
+    *   **Microphone Access**: Ensure the application has permission to access your microphone for voice input.
 
-### Running the Agent with Ollama
+## Running the Assistant
 
-A dedicated batch script is provided to simplify running the agent with Ollama.
-
-1.  **Ensure Rust MCP Server is Running**:
-    Just like with the Gemini workflow, the Rust MCP server (`rbx-studio-mcp.exe`) must be running. Open a terminal and execute:
-    ```batch
-    run_rust_server.bat
+1.  **Activate your virtual environment**.
+2.  **Run `main.py`**:
+    ```bash
+    python main.py
     ```
-    Keep this window open.
+    **Command-Line Arguments**:
+    *   `--voice`: Enable voice input mode (uses Whisper).
+    *   `--llm_provider {gemini,ollama}`: Override `LLM_PROVIDER` from `config.json`.
+    *   `--ollama_model <model_name>`: (If Ollama) Override `OLLAMA_DEFAULT_MODEL`.
+    *   `--test_command "<command>"`: Execute a single command.
+    *   `--test_file <filepath>`: Execute commands from a file.
 
-2.  **Run the Ollama Agent Script**:
-    In another terminal, run the `run_ollama_agent.bat` script:
-    ```batch
-    .\run_ollama_agent.bat
-    ```
-    *   **What it does**:
-        *   Checks if Ollama is installed and if the Ollama service/daemon is running.
-        *   Attempts to start the Ollama service if it's not detected (by running a small model in the background).
-        *   Presents a menu to select which Ollama model you want to use (from the ones downloaded by `ollama_setup.bat` or a custom one).
-        *   Starts the Python agent (`main.py`) configured to use Ollama with your selected model.
+### Interactive Mode
+Type commands or use voice (if `--voice` flag is used). For voice, the system will prompt you to speak.
 
-### Configuration Options (Ollama)
+Examples:
+*   "List all open windows."
+*   "What is the title of the active window?"
+*   "Focus the window titled 'Notepad'." (Ensure Notepad is open)
+*   "Read the first 100 characters of requirements.txt."
+*   "Capture the screen and tell me what text you see near the top." (Uses screenshot + Moondream)
+*   "Find the text 'File' on screen and click it." (Uses screenshot + Tesseract OCR)
 
-The primary way to configure Ollama is through command-line arguments or the interactive menu in `run_ollama_agent.bat`. However, you can also view or (less commonly) manually edit these settings in `config.json` (created after the first run or if you manually copy `config.example.json`):
+## Available Tools (Examples)
 
-*   `"LLM_PROVIDER"`: Set this to `"ollama"` to use Ollama by default (can be overridden by command-line).
-*   `"OLLAMA_API_URL"`: The API endpoint for your Ollama instance. Defaults to `"http://localhost:11434"`.
-*   `"OLLAMA_DEFAULT_MODEL"`: The default Ollama model to use if not specified by other means. Defaults to `"phi3:mini"`.
+*   **Screen & Vision**: `capture_screen_region`, `capture_full_screen`, `get_screen_resolution`, `analyze_image_with_vision_model` (Moondream), `find_text_on_screen_and_click` (Tesseract).
+*   **Mouse & Keyboard**: `mouse_move`, `mouse_click`, `mouse_drag`, `mouse_scroll`, `keyboard_type`, `keyboard_press_key`, `keyboard_hotkey`.
+*   **Window Management**: `list_windows`, `get_active_window_title`, `focus_window`, `get_window_geometry`.
+*   **File System (Read-Only)**: `list_directory`, `read_text_file`.
 
-### Command-Line Arguments for Ollama (`main.py`)
+## Example Workflow
 
-You can also run `main.py` directly with arguments to use Ollama:
+1.  **User (Voice/Text)**: "List all windows that have 'Editor' in their title."
+2.  **Agent (LLM Decision)**: Calls `list_windows` tool with `title_filter="Editor"`.
+3.  **Agent (Response to User - Text/TTS)**: "Found windows: [List of titles]."
+4.  **User**: "Focus the window '[Specific Editor Title]'."
+5.  **Agent**: Calls `focus_window` tool.
+6.  **Agent**: "Okay, I've attempted to focus '[Specific Editor Title]'."
+7.  **User**: "Type 'This is a test.' into the active window."
+8.  **Agent**: Calls `keyboard_type` tool.
+9.  **Agent**: "Done."
 
-*   `--llm_provider {gemini,ollama}`: Specifies the LLM provider.
-    *   Example: `python main.py --llm_provider ollama`
-*   `--ollama_model <model_name>`: Specifies which Ollama model to use. This overrides the `OLLAMA_DEFAULT_MODEL` from `config.json` and the selection from `run_ollama_agent.bat` if you run `main.py` directly.
-    *   Example: `python main.py --llm_provider ollama --ollama_model qwen2:7b`
-
-### Model Notes (Ollama)
-
-*   The `ollama_setup.bat` script attempts to download the following models:
-    *   `phi3:mini` (a capable small model)
-    *   `qwen2:7b` (a larger, powerful model)
-    *   `qwen2:7b-q4_K_M` (a quantized version of Qwen2 7B, offering a balance of performance and resource usage)
-*   You can download other models compatible with Ollama by using the command `ollama pull <another_model_name:tag>`.
-*   Once downloaded, you can use these additional models by:
-    *   Selecting the "Enter custom model name" option in `run_ollama_agent.bat`.
-    *   Using the `--ollama_model <another_model_name:tag>` command-line argument when running `main.py`.
-
-#### Testing the Ollama Integration
-To run a predefined set of test commands with the Ollama provider, you can use the `run_ollama_agent_test.bat` script. This script automates the execution of commands listed in `ollama_test_commands.txt` and is helpful for verifying that tool calls and responses are working as expected with your chosen Ollama model. It will use a default Ollama model specified within the batch file but calls `main.py` which allows for model override via its own arguments if you modify the batch script.
-
-Run it from the project root:
-```batch
-.\run_ollama_agent_test.bat
-```
-
-## Known Issues
-
-### Tool Execution Timeouts in Persistent Sessions
-
--   **Symptom**: Luau tools executed via the Python agent (e.g., `delete_instance`, `RunCode`, `GetInstanceProperties`) may consistently time out after approximately 20 seconds when `main.py` is run with the `--test_file` argument. This mode keeps the MCP server and its connection to the Python agent alive across multiple commands.
--   **Associated MCP Server Log**: When these timeouts occur, the `rbx-studio-mcp.exe` (Rust server) console often displays a critical error message in its STDERR output similar to: `Client that was waiting for task is gone. Task was not queued as it was consumed by send attempt.`
--   **Hypothesis**: This behavior suggests a potential issue within the Rust-based MCP server's task management, state handling, or client communication logic when dealing with multiple, sequential requests from a single, persistent client session (the Python agent). The linkage between the Luau script execution (initiated by the plugin) and the MCP server task awaiting its response might be prematurely lost or mishandled for subsequent commands in a session.
--   **Impact**: This issue prevents the reliable execution of command sequences when using the `--test_file` feature or any other mode that relies on a persistent session between the Python agent and the MCP server for multiple tool calls. Individual commands run via `--test_command` (which restart the agent and thus establish a new, brief MCP session) or single commands in interactive mode might appear to work more reliably regarding this specific timeout, but this is inefficient for sequences.
--   **Workaround/Current Status**: The previous behavior of the system, where each command effectively restarted the Python agent (e.g., running `python main.py --test_command "some command"` repeatedly via a batch script for each command), did not exhibit this specific 20-second timeout for each tool call. However, that approach is significantly slower due to the overhead of restarting the Python agent and re-establishing the MCP session for every command. The timeout issue became prominent after `main.py` was modified to keep the MCP session alive for processing multiple commands from a file or in a prolonged interactive session. Further investigation into the MCP server's handling of persistent client sessions and task lifecycles is needed.
-
-## Legacy / Alternative Setups (Claude, Cursor, Manual)
-
-The following sections describe older setup methods, primarily for integrating with Claude Desktop or Cursor, or for manual configuration.
-
-### Setup with Release Binaries (Claude/Cursor Focus)
-
-Note: This setup method is primarily for the legacy Claude/Cursor integration. For the Gemini Python workflow, please see the "Getting Started with Gemini" section above.
-
-This MCP Server supports pretty much any MCP Client but will automatically set up only [Claude Desktop](https://claude.ai/download) and [Cursor](https://www.cursor.com/) if found.
-
-To set up automatically:
-
-1. Ensure you have [Roblox Studio](https://create.roblox.com/docs/en-us/studio/setup),
-   and [Claude Desktop](https://claude.ai/download)/[Cursor](https://www.cursor.com/) installed and started at least once.
-1. Exit MCP Clients and Roblox Studio if they are running.
-1. Download and run the installer:
-   1. Go to the [releases](https://github.com/Roblox/studio-rust-mcp-server/releases) page and
-      download the latest release for your platform.
-   1. Unzip the downloaded file if necessary and run the installer.
-   1. Restart Claude/Cursor and Roblox Studio if they are running.
-
-### Manual Configuration (Claude/Cursor)
-
-Note: This setup method is primarily for the legacy Claude/Cursor integration.
-
-To set up manually add following to your MCP Client config:
-
-```json
-{
-  "mcpServers": {
-    "Roblox Studio": {
-      "args": [
-        "--stdio"
-      ],
-      "command": "Path-to-downloaded\\rbx-studio-mcp.exe"
-    }
-  }
-}
-```
-
-On macOS the path would be something like `"/Applications/RobloxStudioMCP.app/Contents/MacOS/rbx-studio-mcp"` if you move the app to the Applications directory.
-
-### Building from Source (Legacy Claude/Cursor Setup)
-
-The `build_rust_server.bat` script described in the "Getting Started with Gemini" section is the primary way to build the server from source, as it also handles the `gemini_python_broker` feature.
-
-If you wish to build for the legacy Claude/Cursor integration specifically (without the Gemini feature by default, though the installer script will still run), you can use `cargo run`. This was the original method for Claude/Cursor setup:
-
-1.  Ensure you have [Roblox Studio](https://create.roblox.com/docs/en-us/studio/setup) and [Claude Desktop](https://claude.ai/download)/[Cursor](https://www.cursor.com/) installed and started at least once.
-2.  Exit Claude/Cursor and Roblox Studio if they are running.
-3.  [Install Rust](https://www.rust-lang.org/tools/install).
-4.  Download or clone this repository.
-5.  Run `cargo run` from the root of this repository. This will:
-    *   Build the Rust MCP server app (without the `gemini_python_broker` feature by default).
-    *   Run the installer logic which, in this mode, attempts to set up Claude/Cursor and installs the Studio plugin.
-
-After the command completes, the Studio MCP Server is installed and ready for your prompts from Claude Desktop.
-
-### Verifying Claude/Cursor Setup
-
-To make sure everything is set up correctly for Claude/Cursor, follow these steps:
-
-1. In Roblox Studio, click on the **Plugins** tab and verify that the MCP plugin appears. Clicking on
-   the icon toggles the MCP communication with Claude Desktop on and off, which you can verify in
-   the Roblox Studio console output.
-1. In the console, verify that `The MCP Studio plugin is ready for prompts.` appears in the output.
-   Clicking on the plugin's icon toggles MCP communication with Claude Desktop on and off,
-   which you can also verify in the console output.
-1. Verify that Claude Desktop is correctly configured by clicking on the hammer icon for MCP tools
-   beneath the text field where you enter prompts. This should open a window with the list of
-   available Roblox Studio tools (`insert_model` and `run_code`).
-
-**Note**: You can fix common issues with setup by restarting Studio and Claude Desktop. Claude
-sometimes is hidden in the system tray, so ensure you've exited it completely.
-
-### Sending Requests (Claude/Cursor)
-
-1. Open a place in Studio.
-1. Type a prompt in Claude Desktop and accept any permissions to communicate with Studio.
-1. Verify that the intended action is performed in Studio by checking the console, inspecting the
-   data model in Explorer, or visually confirming the desired changes occurred in your place.
+---
+*The batch scripts (`.bat` files) previously in the repository are legacy and not relevant for this desktop assistant. Rely on `python main.py`.*

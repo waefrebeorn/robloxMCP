@@ -32,9 +32,12 @@ MAX_CONSECUTIVE_TOOL_CALLS = 3
 # Local module imports
 from config_manager import config, DEFAULT_CONFIG, ROOT_DIR
 from console_ui import ConsoleFormatter, console
-from mcp_client import MCPClient, MCPConnectionError
-# III.1. Import ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE
-from gemini_tools import ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE, ToolDispatcher, FunctionCall, get_ollama_tools_json_schema # Added FunctionCall and get_ollama_tools_json_schema
+# Removed MCPClient and MCPConnectionError imports as they are no longer used.
+# from mcp_client import MCPClient, MCPConnectionError
+
+# Import new Desktop Tools and Dispatcher
+from desktop_tools.desktop_tools_definitions import DESKTOP_TOOLS_INSTANCE, get_ollama_tools_json_schema as get_desktop_ollama_schema
+from desktop_tools.tool_dispatcher import DesktopToolDispatcher, FunctionCall # Assuming FunctionCall is also in tool_dispatcher or a shared types module
 
 # --- Script Configuration & Constants using loaded config ---
 load_dotenv()
@@ -43,7 +46,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__) # Logger for this main application file
 
 # --- Argument Parsing ---
-parser = argparse.ArgumentParser(description="Roblox Studio AI Broker")
+parser = argparse.ArgumentParser(description="Desktop AI Assistant with Voice Support")
+parser.add_argument(
+    "--voice",
+    action="store_true",
+    help="Enable voice input mode (records audio, transcribes with Whisper)."
+)
 parser.add_argument(
     "--llm_provider",
     type=str,
@@ -91,17 +99,8 @@ else:
     logger.error(f"Invalid LLM_PROVIDER: {LLM_PROVIDER}. Exiting.")
     sys.exit(1)
 
-
-RBX_MCP_SERVER_PATH_STR = config.get("RBX_MCP_SERVER_PATH", DEFAULT_CONFIG["RBX_MCP_SERVER_PATH"])
-_rbx_mcp_path = Path(RBX_MCP_SERVER_PATH_STR)
-if not _rbx_mcp_path.is_absolute():
-    RBX_MCP_SERVER_PATH = (ROOT_DIR / _rbx_mcp_path).resolve()
-else:
-    RBX_MCP_SERVER_PATH = _rbx_mcp_path
-logger.info(f"RBX_MCP_SERVER_PATH set to: {RBX_MCP_SERVER_PATH}")
-
-MCP_MAX_INITIAL_START_ATTEMPTS = config.get("MCP_MAX_INITIAL_START_ATTEMPTS", DEFAULT_CONFIG["MCP_MAX_INITIAL_START_ATTEMPTS"])
-MCP_RECONNECT_ATTEMPTS = config.get("MCP_RECONNECT_ATTEMPTS", DEFAULT_CONFIG["MCP_RECONNECT_ATTEMPTS"])
+# Removed RBX_MCP_SERVER_PATH, MCP_MAX_INITIAL_START_ATTEMPTS, MCP_RECONNECT_ATTEMPTS
+# as they are no longer needed for desktop automation.
 
 history_file_path_str = config.get("HISTORY_FILE_PATH", DEFAULT_CONFIG["HISTORY_FILE_PATH"])
 history_file = Path(history_file_path_str)
@@ -154,7 +153,7 @@ async def _process_command(
                     with console.status(f"[bold green]Gemini is thinking... (Attempt {current_retry_attempt + 1})[/bold green]", spinner="dots") as status_spinner_gemini:
                         response = await chat_session.send_message( # chat_session is the Gemini chat
                             message=user_input_str,
-                            config=types.GenerateContentConfig(tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE])
+                            config=types.GenerateContentConfig(tools=[DESKTOP_TOOLS_INSTANCE]) # Use new DESKTOP_TOOLS_INSTANCE
                         )
                     break # Success
                 elif llm_provider == "ollama":
@@ -162,8 +161,8 @@ async def _process_command(
                         # Add user message to history
                         ollama_history.append({'role': 'user', 'content': user_input_str})
 
-                        # Get tools in Ollama format
-                        ollama_formatted_tools = get_ollama_tools_json_schema()
+                        # Get tools in Ollama format using the new schema function
+                        ollama_formatted_tools = get_desktop_ollama_schema()
 
                         response = await asyncio.to_thread(
                             chat_session.chat, # chat_session is the Ollama client
@@ -426,7 +425,7 @@ async def _process_command(
                         with console.status(f"[bold green]Gemini is processing tool results...[/bold green]", spinner="dots"):
                             response_tool_call = await chat_session.send_message(
                                 message=tool_response_parts,
-                                config=types.GenerateContentConfig(tools=[ROBLOX_MCP_TOOLS_NEW_SDK_INSTANCE])
+                                config=types.GenerateContentConfig(tools=[DESKTOP_TOOLS_INSTANCE]) # Use new DESKTOP_TOOLS_INSTANCE
                             )
                         break # Success
                     except ServerError as e:
@@ -492,7 +491,7 @@ async def _process_command(
                                 chat_session.chat, # Ollama client
                                 model=ollama_model_name,
                             messages=ollama_history,
-                            tools=get_ollama_tools_json_schema() if get_ollama_tools_json_schema() else None # Resend tools if needed by Ollama
+                            tools=get_desktop_ollama_schema() if get_desktop_ollama_schema() else None # Resend tools if needed by Ollama
                             )
                         if response_tool_call and response_tool_call.get('message'):
                              ollama_history.append(response_tool_call['message']) # Add Ollama's new response to history
@@ -538,42 +537,51 @@ async def _process_command(
         # Print final response from LLM
         if llm_provider == "gemini":
             if response and response.text:
-                ConsoleFormatter.print_provider_response_header("Gemini")
-                for char_chunk in response.text:
-                    ConsoleFormatter.print_provider_response_chunk("Gemini", char_chunk)
-                console.print()
-            elif response and response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
-                text_content = "".join(part.text for part in response.candidates[0].content.parts if hasattr(part, 'text') and part.text)
-                if text_content:
+                final_text_response = ""
+                if response and response.text:
+                    final_text_response = response.text
                     ConsoleFormatter.print_provider_response_header("Gemini")
-                    for char_chunk in text_content:
+                    for char_chunk in final_text_response:
                         ConsoleFormatter.print_provider_response_chunk("Gemini", char_chunk)
                     console.print()
+                elif response and response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+                    final_text_response = "".join(part.text for part in response.candidates[0].content.parts if hasattr(part, 'text') and part.text)
+                    if final_text_response:
+                        ConsoleFormatter.print_provider_response_header("Gemini")
+                        for char_chunk in final_text_response: # Iterate over the joined string
+                            ConsoleFormatter.print_provider_response_chunk("Gemini", char_chunk)
+                        console.print()
+                    else:
+                        ConsoleFormatter.print_provider_message("Gemini", "(No text content found in final response parts)")
                 else:
-                    ConsoleFormatter.print_provider_message("Gemini", "(No text content found in final response parts)")
-            else:
-                ConsoleFormatter.print_provider_message("Gemini", "(No text response or recognizable content from Gemini)")
-        elif llm_provider == "ollama":
-            # If intervention_occurred_this_turn and Ollama's last response was a tool_call,
-            # the above block will have printed a message and returned.
-            # So, this part will only execute if Ollama responded with text, or no intervention occurred.
-            if response and response.get('message') and response['message'].get('content'):
-                ConsoleFormatter.print_provider_response_header("Ollama")
-                ConsoleFormatter.print_provider_response_chunk("Ollama", response['message']['content'])
-                console.print()
-            # It's possible that if an intervention occurred and Ollama DIDN'T respond with a tool call OR content,
-            # we might want a fallback message. However, the current structure implies it would just print nothing.
-            # Let's add a small check for the case where an intervention happened but Ollama's response was empty/unexpected.
-            elif intervention_occurred_this_turn:
-                 ConsoleFormatter.print_provider_message("Ollama", "(Intervention occurred, and Ollama did not provide a subsequent text response or tool call.)")
-            else:
-                ConsoleFormatter.print_provider_message("Ollama", "(No text content in final response from Ollama)")
+                    ConsoleFormatter.print_provider_message("Gemini", "(No text response or recognizable content from Gemini)")
 
-    except MCPConnectionError as e:
-        logger.warning(f"MCP Connection Error while processing command '{user_input_str}' with {llm_provider}: {e}")
-        console.print(Panel(f"[yellow]Connection issue: {e}. Check MCP server and Roblox Studio.[/yellow]", title="[yellow]MCP Warning[/yellow]"))
-        if is_test_file_command:
-            command_processed_successfully = False
+                if final_text_response and config.get("ENABLE_TTS", True):
+                    from desktop_tools import voice_output # Import late to avoid issues if not used
+                    await voice_output.speak_text_async(final_text_response)
+
+            elif llm_provider == "ollama":
+                final_text_response = ""
+                if response and response.get('message') and response['message'].get('content'):
+                    final_text_response = response['message']['content']
+                    ConsoleFormatter.print_provider_response_header("Ollama")
+                    ConsoleFormatter.print_provider_response_chunk("Ollama", final_text_response)
+                    console.print()
+                elif intervention_occurred_this_turn:
+                    ConsoleFormatter.print_provider_message("Ollama", "(Intervention occurred, and Ollama did not provide a subsequent text response or tool call.)")
+                else:
+                    ConsoleFormatter.print_provider_message("Ollama", "(No text content in final response from Ollama)")
+
+                if final_text_response and config.get("ENABLE_TTS", True):
+                    from desktop_tools import voice_output
+                    await voice_output.speak_text_async(final_text_response)
+
+    # Removed MCPConnectionError handling as MCPClient is no longer used.
+    # except MCPConnectionError as e:
+    #     logger.warning(f"MCP Connection Error while processing command '{user_input_str}' with {llm_provider}: {e}")
+    #     console.print(Panel(f"[yellow]Connection issue: {e}. Check MCP server and Roblox Studio.[/yellow]", title="[yellow]MCP Warning[/yellow]"))
+    #     if is_test_file_command:
+    #         command_processed_successfully = False
     except asyncio.TimeoutError: # General timeout for the whole command processing
         logger.error(f"A request to {llm_provider} or a tool timed out for command: {user_input_str}.")
         console.print(Panel(f"[bold red]A request to {llm_provider} or a tool timed out. Please try again.[/bold red]", title="[red]Timeout Error[/red]"))
@@ -600,19 +608,22 @@ async def main_loop():
             gemini_model_resource_name = f"models/{GEMINI_MODEL_NAME}"
             llm_client = client # For Gemini, llm_client is the genai.Client itself
             system_instruction_text = (
-                "You are an expert AI assistant for Roblox Studio, named Gemini-Roblox-Broker. "
-                "Your goal is to help users by using the provided tools to interact with their game development environment. "
+                "You are an expert AI assistant for Windows Desktop Automation. "
+                "Your goal is to help users by using the provided tools to interact with their desktop environment. "
+                "You can control the mouse, keyboard, capture screen content, and analyze images using a vision model. "
                 "First, think step-by-step about the user's request. "
                 "Then, call the necessary tools with correctly formatted arguments. "
                 "If a request is ambiguous, ask clarifying questions. "
                 "After a tool is used, summarize the result for the user. "
-                "You cannot see the screen or the project explorer, so rely on the tool outputs for information."
+                "Use `capture_full_screen` or `capture_screen_region` first if you need to see something on the screen, "
+                "then use `analyze_image_with_vision_model` with the captured image and a specific prompt to understand its content or find text. "
+                "Be precise with coordinates when using mouse tools. (0,0) is the top-left corner of the primary screen."
             )
             chat_session = llm_client.aio.chats.create( # Gemini chat session
                 model=gemini_model_resource_name,
                 history=[
                     types.Content(role="user", parts=[types.Part(text=system_instruction_text)]),
-                    types.Content(role="model", parts=[types.Part(text="Understood. I will act as an expert AI assistant for Roblox Studio.")])
+                    types.Content(role="model", parts=[types.Part(text="Understood. I will act as an expert AI assistant for Windows Desktop Automation.")])
                 ]
             )
             logger.info(f"Gemini client and chat session initialized for model {GEMINI_MODEL_NAME}.")
@@ -623,31 +634,27 @@ async def main_loop():
     elif LLM_PROVIDER == "ollama":
         try:
             import ollama # Dynamic import
-            # Note: ollama.AsyncClient could be used if available and preferred for async operations
             llm_client = ollama.Client(host=OLLAMA_API_URL)
-            # Test connection to Ollama by listing local models or a similar lightweight call
             try:
                 await asyncio.to_thread(llm_client.list) # Test call
                 logger.info(f"Successfully connected to Ollama at {OLLAMA_API_URL}")
-            except Exception as e: # Catch connection errors specifically if possible
+            except Exception as e:
                 logger.error(f"Failed to connect to Ollama at {OLLAMA_API_URL}: {e}")
                 console.print(Panel(f"[bold red]Warning:[/bold red] Could not connect to Ollama server at '{OLLAMA_API_URL}'. "
                                     f"Please ensure Ollama is running and accessible. Error: {e}", title="[yellow]Ollama Connection Error[/yellow]"))
-                # Decide if you want to exit or proceed with a non-functional Ollama client
-                # For now, let's proceed, _process_command will handle failures.
 
-            # Ollama uses a list of messages for history.
-            # The system prompt for Ollama might need different formatting or content.
             ollama_system_prompt = (
-                "You are an AI assistant for Roblox Studio. Use tools to interact with the game development environment. "
-                "Analyze requests, then call tools with correct arguments.\n\n"
+                "You are an AI assistant for Windows Desktop Automation. Use tools to interact with the desktop environment. "
+                "You can control mouse, keyboard, capture screen, and analyze images. "
+                "Analyze requests, then call tools with correct arguments. Use `capture_full_screen` or `capture_screen_region` first if you need to see something, "
+                "then use `analyze_image_with_vision_model` to understand its content or find text.\n\n"
                 "IMPORTANT: If you need to use a tool, your response MUST BE ONLY a JSON object for the tool call. "
                 "Do not add any other text before or after the JSON. "
                 "The JSON should be a single object with 'name' (or 'function_name') and 'arguments' keys. Example: "
                 "{{\"name\": \"ToolName\", \"arguments\": {{\"arg1\": \"value1\"}}}}\n\n"
                 "Ensure tool names and arguments match the provided schema exactly.\n\n"
-                "Error Handling: If a tool call fails, analyze the error. If you can fix it, try ONCE. Otherwise, explain the error and ask the user for guidance. Do not invent error handling tools.\n\n"
-                "Progress: If unsure or stuck, explain what you tried and ask the user for guidance. Do not repeat failed calls."
+                "Error Handling: If a tool call fails, analyze the error. If you can fix it, try ONCE. Otherwise, explain the error and ask the user for guidance.\n\n"
+                "Progress: If unsure or stuck, explain what you tried and ask the user for guidance."
             )
             chat_session = [{'role': 'system', 'content': ollama_system_prompt}] # This is the history for Ollama
             logger.info(f"Ollama client initialized. Target model: {OLLAMA_MODEL_NAME}. System prompt set.")
@@ -660,21 +667,14 @@ async def main_loop():
             console.print(Panel(f"[bold red]Critical Error:[/bold red] Failed to initialize Ollama: {e}", title="[red]LLM Init Error[/red]"))
             return
 
-
-    mcp_client = MCPClient(
-        RBX_MCP_SERVER_PATH,
-        max_initial_start_attempts=MCP_MAX_INITIAL_START_ATTEMPTS,
-        reconnect_attempts=MCP_RECONNECT_ATTEMPTS
-    )
-    # ToolDispatcher needs to be compatible with both Gemini's FunctionCall and adapted Ollama tool calls
-    tool_dispatcher = ToolDispatcher(mcp_client)
-    mcp_client_instance = None
+    # Instantiate the new DesktopToolDispatcher
+    tool_dispatcher = DesktopToolDispatcher()
+    # mcp_client and mcp_client_instance are no longer needed.
 
     try:
-        mcp_client_instance = mcp_client
-        from rich.status import Status # Import here if not already global
-        with console.status("[bold green]Starting MCP Server...", spinner="dots") as status_spinner_mcp:
-            await mcp_client.start()
+        # Removed MCP server startup logic.
+        # The application now starts directly into LLM interaction mode.
+        from rich.status import Status # Ensure Status is imported if not globally
 
         active_model_display = ""
         if LLM_PROVIDER == "gemini":
@@ -682,13 +682,9 @@ async def main_loop():
         elif LLM_PROVIDER == "ollama":
             active_model_display = f"Ollama Model: {OLLAMA_MODEL_NAME} (via {OLLAMA_API_URL})"
 
-        console.print(Panel(f"[bold green]Roblox Studio AI Broker Initialized ({LLM_PROVIDER.capitalize()})[/bold green]",
+        console.print(Panel(f"[bold green]Desktop AI Assistant Initialized ({LLM_PROVIDER.capitalize()})[/bold green]",
                             title="[white]System Status[/white]",
-                            subtitle=f"{active_model_display} | MCP Server: {'[bold green]Running[/bold green]' if mcp_client.is_alive() else '[bold red]Failed[/bold red]'}"))
-
-        if not mcp_client.is_alive():
-            console.print(Panel("[bold red]MCP Server failed to start. Please check the logs and try restarting the broker.[/bold red]", title="[red]Critical Error[/red]"))
-            return
+                            subtitle=f"{active_model_display}"))
 
         # args are already parsed globally now
         if args.test_file:
@@ -706,7 +702,7 @@ async def main_loop():
                     process_args = {
                         "user_input_str": user_input_str,
                         "llm_provider": LLM_PROVIDER,
-                        "chat_session": chat_session, # This is Gemini chat or Ollama history list
+                        "chat_session": chat_session,
                         "tool_dispatcher": tool_dispatcher,
                         "console": console,
                         "logger": logger,
@@ -714,17 +710,16 @@ async def main_loop():
                     }
                     if LLM_PROVIDER == "ollama":
                         process_args["ollama_model_name"] = OLLAMA_MODEL_NAME
-                        process_args["ollama_history"] = chat_session # Pass history for ollama
-                        process_args["chat_session"] = llm_client # Pass ollama client for ollama
+                        process_args["ollama_history"] = chat_session
+                        process_args["chat_session"] = llm_client
                     elif LLM_PROVIDER == "gemini":
                          process_args["gemini_model_resource_name"] = gemini_model_resource_name
 
-
                     if not await _process_command(**process_args):
                         file_command_errors += 1
-                    if i < file_command_total - 1:
-                        console.print(f"[dim]Waiting for 25 seconds before next command...[/dim]")
-                        await asyncio.sleep(25)
+                    if i < file_command_total - 1: # Optional delay between commands in test file
+                        console.print(f"[dim]Waiting for 5 seconds before next command...[/dim]")
+                        await asyncio.sleep(5)
                 console.print(f"\n[bold {'green' if file_command_errors == 0 else 'red'}]>>> Test file processing complete. {file_command_total - file_command_errors}/{file_command_total} commands succeeded. <<<[/bold {'green' if file_command_errors == 0 else 'red'}]")
 
             except FileNotFoundError:
@@ -733,7 +728,7 @@ async def main_loop():
             except Exception as e:
                 logger.error(f"Error processing test file '{args.test_file}': {e}", exc_info=True)
                 console.print(f"[bold red]An unexpected error occurred while processing the test file: {e}[/bold red]")
-            return # Exit after test file processing
+            return
 
         elif args.test_command:
             user_input_str = args.test_command
@@ -741,15 +736,15 @@ async def main_loop():
             process_args = {
                 "user_input_str": user_input_str,
                 "llm_provider": LLM_PROVIDER,
-                "chat_session": chat_session, # Gemini chat or Ollama history list
+                "chat_session": chat_session,
                 "tool_dispatcher": tool_dispatcher,
                 "console": console,
                 "logger": logger,
             }
             if LLM_PROVIDER == "ollama":
                 process_args["ollama_model_name"] = OLLAMA_MODEL_NAME
-                process_args["ollama_history"] = chat_session # Pass history for ollama
-                process_args["chat_session"] = llm_client # Pass ollama client
+                process_args["ollama_history"] = chat_session
+                process_args["chat_session"] = llm_client
             elif LLM_PROVIDER == "gemini":
                 process_args["gemini_model_resource_name"] = gemini_model_resource_name
 
@@ -758,27 +753,51 @@ async def main_loop():
             return
 
         else: # Interactive Mode
-            console.print(f"Type your commands for Roblox Studio ({LLM_PROVIDER.capitalize()} backend), or 'exit' to quit.", style="dim")
+            console.print(f"Type your commands for Desktop Automation ({LLM_PROVIDER.capitalize()} backend), or 'exit' to quit.", style="dim")
             while True:
-                if not mcp_client.is_alive():
-                    console.print(Panel("[bold yellow]Connection to Roblox Studio lost. Attempting to reconnect...[/bold yellow]", title="[yellow]Connection Issue[/yellow]"))
-                    with console.status("[bold yellow]Reconnecting to MCP server...", spinner="dots") as status_spinner:
-                        if await mcp_client.reconnect():
-                            status_spinner.update("[bold green]Reconnected successfully![/bold green]")
-                            console.print(Panel("[bold green]Successfully reconnected to Roblox Studio.[/bold green]", title="[green]Connection Restored[/green]"))
-                        else:
-                            status_spinner.update("[bold red]Failed to reconnect.[/bold red]")
-                            console.print(Panel("[bold red]Failed to reconnect to Roblox Studio after multiple attempts. Please restart Roblox Studio and the broker.[/bold red]", title="[red]Connection Failed[/red]"))
-                            break
-
+                # Removed MCP server health check as it's no longer used.
+                # The application will now continue unless explicitly exited.
                 user_input_str = ""
                 try:
-                    prompt_text = HTML(f'<ansiblue><b>You ({LLM_PROVIDER.capitalize()}): </b></ansiblue>')
-                    user_input_str = await asyncio.to_thread(session.prompt, prompt_text, reserve_space_for_menu=0)
-                except KeyboardInterrupt: console.print("\n[bold yellow]Exiting broker...[/bold yellow]"); break
-                except EOFError: console.print("\n[bold yellow]Exiting broker (EOF)...[/bold yellow]"); break
+                    if args.voice:
+                        # Import voice_input here to avoid loading it if not needed
+                        from desktop_tools import voice_input
+                        console.print("[cyan]Listening for voice command (Ctrl+C to cancel recording)...[/cyan]")
+                        # Use a default recording duration or make it configurable
+                        RECORDING_DURATION = config.get("VOICE_RECORDING_DURATION", 5)
+                        WHISPER_MODEL_NAME = config.get("WHISPER_MODEL_NAME", voice_input.DEFAULT_WHISPER_MODEL)
 
-                if user_input_str.lower() == 'exit': console.print("[bold yellow]Exiting broker...[/bold yellow]"); break
+                        temp_audio_file = await asyncio.to_thread(voice_input.record_audio, duration_seconds=RECORDING_DURATION)
+                        if temp_audio_file:
+                            console.print(f"[dim]Audio recorded to {temp_audio_file}, transcribing...[/dim]")
+                            user_input_str = await asyncio.to_thread(voice_input.transcribe_audio_with_whisper, temp_audio_file, WHISPER_MODEL_NAME)
+                            if user_input_str:
+                                console.print(HTML(f"<ansigreen><b>You (Voice): </b></ansigreen>{user_input_str}"))
+                            else:
+                                console.print("[yellow]Transcription failed or no speech detected. Please try again or type your command.[/yellow]")
+                                continue # Skip processing if transcription failed
+                        else:
+                            console.print("[yellow]Audio recording failed. Please try again or type your command.[/yellow]")
+                            continue # Skip processing if recording failed
+                    else: # Standard text input
+                        prompt_text = HTML(f'<ansiblue><b>You ({LLM_PROVIDER.capitalize()}): </b></ansiblue>')
+                        user_input_str = await asyncio.to_thread(session.prompt, prompt_text, reserve_space_for_menu=0)
+
+                except KeyboardInterrupt:
+                    # Check if it was during voice recording (sd.wait() can be interrupted)
+                    # This is a bit tricky to detect perfectly here, but generally, if voice mode, assume recording might have been interrupted.
+                    if args.voice:
+                        console.print("\n[yellow]Voice recording cancelled. Type your command or try voice again.[/yellow]")
+                        continue # Go to next iteration of the loop
+                    else:
+                        console.print("\n[bold yellow]Exiting assistant...[/bold yellow]"); break
+                except EOFError: console.print("\n[bold yellow]Exiting assistant (EOF)...[/bold yellow]"); break
+
+                if not user_input_str: # If voice input failed and resulted in empty string
+                    continue
+
+                if user_input_str.strip().lower() == 'exit':
+                    console.print("[bold yellow]Exiting assistant...[/bold yellow]"); break
 
                 process_args = {
                     "user_input_str": user_input_str,
@@ -797,21 +816,15 @@ async def main_loop():
 
                 await _process_command(**process_args)
 
-    except FileNotFoundError as e:
-        logger.critical(f"Setup Error - RBX MCP Server path: {e}")
-        console.print(Panel(f"[bold red]Setup Error:[/bold red] MCP Server executable not found at '{RBX_MCP_SERVER_PATH}'. Details: {e}. Ensure it is built and accessible.", title="[red]Critical Error[/red]"))
-    except MCPConnectionError as e:
-        logger.critical(f"MCP Critical Connection Error on startup: {e}")
-        console.print(Panel(f"[bold red]MCP Critical Connection Error:[/bold red] {e}. Could not connect to Roblox Studio.", title="[red]Critical Error[/red]"))
-    except Exception as e:
+    # FileNotFoundError for RBX_MCP_SERVER_PATH is no longer relevant.
+    # MCPConnectionError is no longer relevant.
+    except Exception as e: # Catch other potential errors during setup or main loop
         logger.critical(f"Critical unhandled exception in main_loop: {e}", exc_info=True)
         console.print(Panel(f"[bold red]Critical unhandled exception:[/bold red] {e}", title="[red]Critical Error[/red]"))
     finally:
-        if mcp_client_instance and mcp_client_instance.is_alive(): # mcp_client_instance should be mcp_client
-            console.print("[bold yellow]Shutting down MCP server...[/bold yellow]")
-            await mcp_client.stop()
-        logger.info(f"Broker application finished (LLM Provider: {LLM_PROVIDER}).")
-        console.print(f"[bold yellow]Broker application finished (LLM Provider: {LLM_PROVIDER}).[/bold yellow]")
+        # No MCP server to shut down.
+        logger.info(f"Desktop Assistant application finished (LLM Provider: {LLM_PROVIDER}).")
+        console.print(f"[bold yellow]Desktop Assistant application finished (LLM Provider: {LLM_PROVIDER}).[/bold yellow]")
 
 if __name__ == '__main__':
     # Args are parsed globally now, so main_loop can use them directly.

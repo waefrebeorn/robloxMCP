@@ -3,3 +3,14 @@ python-dotenv
 rich
 prompt_toolkit
 ollama
+pyautogui
+Pillow
+requests
+pytesseract
+pandas
+openai-whisper
+sounddevice
+scipy
+pyttsx3
+PyGetWindow
+PyWinCtl
