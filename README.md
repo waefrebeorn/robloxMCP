@@ -261,3 +261,13 @@ sometimes is hidden in the system tray, so ensure you've exited it completely.
 1. Type a prompt in Claude Desktop and accept any permissions to communicate with Studio.
 1. Verify that the intended action is performed in Studio by checking the console, inspecting the
    data model in Explorer, or visually confirming the desired changes occurred in your place.
+
+---
+
+## License
+
+This project is licensed under the **Waefrebeorn Umbrella License v3.0**.
+See the [LICENSE](LICENSE) file for the full license text.
+
+The Waefrebeorn Umbrella License is a custom source-available license.
+It is not OSI-approved and not FSF-approved.
